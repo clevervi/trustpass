@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { cache } from "react";
+import { resolvePassportOrigin } from "@/lib/passport-origin";
 import { encodeQr, passportUrl, type QrCode } from "@/lib/qr";
 import { describeCategory, describeClaim, describeStatus, type Tone } from "../claim-wording";
 import { fetchPassport, type PassportView } from "../passport";
@@ -292,10 +294,19 @@ function Passport({ passport }: { passport: PassportView }) {
  * can take data. Not an `<img>` either, which would cost a second request for
  * something already computed here.
  */
-function PassportQr({ trustpassId }: { trustpassId: string }) {
+async function PassportQr({ trustpassId }: { trustpassId: string }) {
+  const origin = resolvePassportOrigin({ host: (await headers()).get("host") });
+
+  // No origin, no QR — and the rest of the passport is unaffected. Everything
+  // else on this page is still true; a code pointing at the wrong host would
+  // not be, and it would be the one part a reader acts on.
+  if (origin.kind === "unknown") {
+    return null;
+  }
+
   let code: QrCode;
   try {
-    code = encodeQr(passportUrl(trustpassId));
+    code = encodeQr(passportUrl(trustpassId, origin.baseUrl));
   } catch {
     // The encoder refuses anything it would corrupt. A passport that rendered
     // is proof the identifier is well formed, so this is unreachable in
