@@ -6,3 +6,11 @@ packages:
 # to fetch the platform binary used by tsup and vitest.
 onlyBuiltDependencies:
   - esbuild
+
+# drizzle-kit pulls two esbuild versions carrying dev-server advisories:
+# 0.27.7 (GHSA low) and, via the deprecated @esbuild-kit/* chain, 0.18.20
+# (GHSA medium). Neither is exploitable here — the advisories require running
+# `esbuild --serve`, and drizzle-kit only uses esbuild to bundle its config —
+# but an open alert on a public repository is worth closing.
+overrides:
+  esbuild: ">=0.28.2"
