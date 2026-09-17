@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-17
+- **Amended:** 2026-09-17 — wording and two boundaries, marked inline. The decision is unchanged.
 
 ## Context
 
@@ -54,9 +55,22 @@ neither derived from the other by default.**
 | Answers | what occurred, when, who, why | what is the case, on whose authority |
 | Example | `PRODUCT_SUSPENDED`, reason `theft_report` | `issuer: verified` |
 
-An event is a fact about the world: *on this date, this actor did this, for this
-reason.* It is never revised, because the past does not change. A mistake is
-corrected by recording a correcting event, not by editing the original.
+An event is a **recorded assertion that something happened**: *on this date,
+this actor stated that this occurred, for this reason.* It is never revised,
+because what was recorded at the time does not change. A mistake is corrected by
+recording a correcting event, not by editing the original.
+
+That wording is deliberate and replaces an earlier "a fact about the world".
+TrustPass cannot witness a repair; it can only record that a repairer said one
+happened in March. Calling that a fact about the world converts an assertion
+into truth by storing it, which is the single failure
+[ADR 0003](0003-identity-is-not-authenticity.md) exists to prevent — reached
+through the history table instead of through a badge.
+
+What the system knows for certain is narrower and worth stating exactly: **that
+this assertion was made, by this actor, in this capacity, at this time.** How
+much the assertion is worth depends on who made it and what backs it, and that
+is a separate question the evidence model will answer.
 
 A claim is an assertion about the present: *this is currently true, and here is
 who says so.* It may be withdrawn, superseded or re-verified.
@@ -69,30 +83,99 @@ audit log that pretends to be a verdict, or a verdict with no evidence behind it
 
 Fixed now so that every later feature writes the same shape:
 
-| Field | Why it is not optional |
-| --- | --- |
-| `product` | what this happened to |
-| `type` | what happened, from a closed set — not free text |
-| `actor` | who did it, and in what capacity |
-| `occurred_at` | when it happened in the world |
-| `recorded_at` | when TrustPass learned of it |
-| `reason` | **why**, from a closed set |
-| `source` / `evidence` | what backs it, where that exists |
-| `previous_state` | what it moved from |
-| `resulting_state` | what it moved to |
+| Field | What it carries | Always? |
+| --- | --- | --- |
+| `product` | what this happened to | yes |
+| `type` | what happened, from a closed set — not free text | yes |
+| `actor` | in what capacity somebody acted | yes |
+| `principal` | which issuer, when the actor was one | when applicable |
+| `occurred_at` | when it happened in the world | yes |
+| `recorded_at` | when TrustPass learned of it | yes |
+| `reason` | **why**, from a closed set | by event type |
+| `source` / `evidence` | what backs it, where that exists | where it exists |
+| `previous_state` / `resulting_state` | what it moved from and to | both or neither |
 
-Two of these are worth defending.
+**An actor is a capacity and a principal, never a name.** `actor` is the
+standing somebody acted in, from a closed set; `principal` identifies which
+issuer it was, by reference. Neither is free text, and separating them is what
+lets the same party act in different capacities at different times without the
+record confusing the two. Identifying a *person* needs authentication, which is
+`TP-141` — until then the system records the capacity honestly and stops there,
+rather than writing a name it cannot verify.
+
+Three of these are worth defending further.
 
 **`occurred_at` and `recorded_at` are both required and are not the same
 date.** A repair happened in March and was recorded in September. Storing one
 timestamp forces a choice between lying about when the repair happened and
 lying about when it became known, and a system built on provenance cannot do
-either. The distance between them is itself information: a sale recorded two
-years late is a weaker record than one recorded the same day.
+either.
+
+The distance between them is **a provenance signal, not a reliability verdict**.
+An earlier draft of this ADR said a sale recorded two years late is "a weaker
+record" than one recorded the same day. That is a verdict, and principle 5
+forbids exactly that — a record written immediately may be a seller's unchecked
+word, while one written two years later may be backed by an official document.
+The system shows both dates and lets a reader weigh them. It does not do the
+weighing.
 
 **`reason` is a closed set, not a description.** A free-text field is not
 queryable, not translatable, and invites a sentence where a fact belongs. The
 wording lives in the interface, as ADR 0003 already requires for claim states.
+
+It is also **required per event type rather than universally**. `product_suspended`
+and `product_retired` cannot be recorded without one — a suspension nobody can
+explain is the defect this ADR exists to close. `record_enrolled` and
+`product_registered` need none, because the event type already says everything
+there is to say, and demanding one would produce a `normal_operation` filler
+value that drains the column of meaning everywhere else. The schema makes the
+column nullable and the write paths require it where it matters.
+
+### `origin` and actor capacity are different dimensions
+
+They are easy to conflate — an earlier draft of this ADR did, describing
+`RECORD_ENROLLED` as carrying "the origin as its actor capacity".
+
+**`origin` is a property of the record**: where a product's TrustPass record
+started, one of `manufacturer`, `supply_chain` or `holder`. It is set once and
+describes the record for its whole life.
+
+**Actor capacity is a property of one event**: the standing in which somebody
+acted at one moment, which varies event by event. A record with
+`origin: supply_chain` can carry a later event whose actor capacity is
+`authority` — a police report about a product a distributor first enrolled — and
+nothing about that is contradictory.
+
+Collapsing them means the passport cannot say where a record came from without
+first interpreting who happened to act, and the two answers diverge the moment a
+second actor touches the product.
+
+### A minimum shape for evidence, before any exists
+
+`source_reference` is a bounded string today: a report number, a case reference,
+an invoice identifier. That is deliberate and it is not the evidence model.
+
+What this ADR fixes now is the floor, so that "what evidence is behind this"
+never becomes an arbitrary blob nobody can interpret. When evidence gains
+structure it carries at least: **what kind** it is, **its reference**, **who
+provided it**, and **when it was recorded** — with an integrity value if the
+thing referenced can be hashed.
+
+Kinds start narrow and grow the way every other closed set here does:
+`internal_record`, `document`, `receipt`, `manufacturer_reference`,
+`inspection`, `external_source`.
+
+### The boundary this ADR must not be used to cross
+
+Claims are a derived view of current state for now, and that is acceptable
+through v0.6.0.
+
+It stops being acceptable at verification. **Before any claim is presented as
+independently verified, the model must be able to answer who verified it, using
+what source, when, and with what authority.** Shipping `issuer: verified` and
+`warranty: verified` with no answer to those questions would be a green tick
+with nothing behind it — the thing this project's first ADR was written to
+prevent.
 
 ### Reasons are reasons; they do not become states
 
@@ -109,7 +192,7 @@ place that does not forget.
 
 Per [ADR 0007](0007-identity-may-begin-after-manufacture.md), a record begins at
 enrolment and declares an unknown period before it. That is an event —
-`RECORD_ENROLLED`, with the origin as its actor capacity — and it is the first
+`RECORD_ENROLLED` — and it is the first
 row in the product's history rather than a column consulted separately.
 
 This also makes the unknown period a property of the history rather than a note
