@@ -2,6 +2,27 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-17
+- **Amended:** 2026-09-17 — terminology, see below. The decision is unchanged.
+
+## Amendment: what "begins" is the record, not the product
+
+The title and the original wording said identity *begins* at enrolment. That
+conflates two different things, and the conflation matters.
+
+A graphics card has had an identity since it was manufactured. It has a serial,
+a maker and a history whether or not any ledger knows about it. What begins at
+enrolment is **TrustPass's record of that identity**, not the identity itself.
+
+Read the loose way, the model implies a product did not exist before it was
+enrolled — which would make the unknown period look like a defect in the product
+rather than a limit on what this system can see. The gap is ours, not the
+object's, and a passport that blames the object for our ignorance is the kind of
+false signal this project exists to avoid.
+
+So throughout: enrolment establishes **where the TrustPass record starts**.
+Everywhere the word `origin` appears, it means the origin of the record.
+
+The filename and title are kept so existing links and history stay intact.
 
 ## Context
 
@@ -135,8 +156,10 @@ weight.
 later registers the same serial. The existing partial unique index is per issuer,
 so both survive, and the system must eventually decide whether they are one
 product with two records or a duplicate to reconcile. This ADR does not decide
-that. It records that the decision is now reachable and must be made before
-first-party registration ships, not after.
+that. It is tracked as
+[#49](https://github.com/clevervi/trustpass/issues/49) and must be decided
+before first-party registration ships, not after — an acknowledged problem with
+no owner is a problem that disappears.
 
 *Every surface must carry origin.* A passport that does not say how its identity
 began is worse after this change than before it, because the reader now has two
