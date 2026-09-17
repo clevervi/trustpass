@@ -64,6 +64,8 @@ packages/
   db/         Drizzle schema, migrations and Postgres client
 docs/
   adr/        Architecture decision records
+  product-lifecycle.md
+              Product statuses and the moves allowed between them
 ```
 
 ## Scripts

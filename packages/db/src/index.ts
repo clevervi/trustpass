@@ -1,4 +1,12 @@
 export { createDatabase, type Database, type DatabaseOptions } from "./client.js";
+export {
+  assertTransition,
+  canTransition,
+  IllegalProductStatusTransition,
+  isTerminal,
+  nextStatuses,
+  PRODUCT_STATUS_TRANSITIONS,
+} from "./domain/product-status.js";
 export { isDatabaseReachable } from "./health.js";
 export {
   generateTrustPassId,
