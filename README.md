@@ -1,18 +1,30 @@
 # TrustPass
 
+[![CI](https://github.com/clevervi/trustpass/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/clevervi/trustpass/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/clevervi/trustpass/actions/workflows/codeql.yml/badge.svg)](https://github.com/clevervi/trustpass/actions/workflows/codeql.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+![Version](https://img.shields.io/badge/version-0.2.0-green)
+
 Verifiable digital identity, warranty and lifecycle history for physical products.
 
-A product gets a TrustPass ID at issue time. From then on, every meaningful event
-in its life — sold, activated, inspected, repaired, transferred — is recorded
-against that identity. When the product is resold, its history travels with it.
+The goal: a product receives a TrustPass ID at issue time, and every meaningful
+event in its life — sold, activated, inspected, repaired, transferred — is
+recorded against that identity, so that when the product is resold its history
+travels with it.
 
 The first target market is high-value consumer electronics (GPUs, laptops,
 phones, consoles) in Colombia, where the resale market runs on trust that nobody
 can verify.
 
-> **Status: v0.1.0 — foundation.** The platform runs locally end to end. Product
-> identity, passports, warranty and lifecycle events are not implemented yet.
-> See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> **Status: v0.2.0, nothing deployed.** Identity is complete: the TrustPass
+> ID, issuer and product models, the status lifecycle, `POST /products`, and
+> one live identity per serial.
+>
+> **Not built yet:** the public passport page, warranty, lifecycle events,
+> ownership transfer, blockchain anchoring, NFC. The verified resale flow
+> described above does not exist. There is also no authentication, so the API
+> must not be exposed publicly yet. See [`docs/ROADMAP.md`](docs/ROADMAP.md)
+> and [`CHANGELOG.md`](CHANGELOG.md).
 
 ## What this is honest about
 
@@ -29,6 +41,7 @@ Requires Node 24+, pnpm 10+ and Docker.
 cp .env.example .env
 pnpm install
 pnpm db:up          # Postgres on localhost:5433
+pnpm db:migrate     # apply schema migrations
 pnpm dev            # API on :3001, web on :3000
 ```
 
@@ -41,6 +54,7 @@ page is a mock.
 | `http://localhost:3001/health`      | Liveness plus dependency check |
 | `http://localhost:3001/version`     | Deployed service version      |
 | `http://localhost:3001/openapi.json` | Generated OpenAPI 3.1 document |
+| `POST http://localhost:3001/products` | Register a product, receive its TrustPass ID |
 
 ## Repository layout
 
@@ -52,6 +66,8 @@ packages/
   db/         Drizzle schema, migrations and Postgres client
 docs/
   adr/        Architecture decision records
+  product-lifecycle.md
+              Product statuses and the moves allowed between them
 ```
 
 ## Scripts
@@ -68,6 +84,11 @@ Every script runs from the repository root across all workspace packages.
 | `pnpm format`     | Biome lint and format, writing fixes             |
 | `pnpm db:up`      | Starts Postgres via Docker Compose               |
 | `pnpm db:down`    | Stops Postgres                                   |
+| `pnpm db:logs`    | Follows the Postgres container logs              |
+| `pnpm db:migrate` | Applies pending migrations                       |
+| `pnpm db:generate`| Generates a migration from schema changes        |
+| `pnpm db:reset`   | Destroys the local volume and rebuilds from zero |
+| `pnpm db:studio`  | Opens Drizzle Studio against the local database  |
 
 Integration tests that need Postgres skip themselves when `DATABASE_URL` is
 unset, so a clean checkout can run `pnpm test` without Docker. CI always
@@ -80,7 +101,16 @@ Vitest. Smart contracts (Foundry) and a Python fraud service arrive later, each
 gated on the previous layer proving its value. See
 [`docs/adr/`](docs/adr/) for the reasoning.
 
+## Maintainer
+
+[@clevervi](https://github.com/clevervi), who also commits as
+[@raishark](https://github.com/raishark).
+
 ## Contributing
 
 Read [`CONTRIBUTING.md`](CONTRIBUTING.md) first. Branching, commit format,
 definition of ready and definition of done are all enforced there.
+
+- [`CHANGELOG.md`](CHANGELOG.md) — what shipped and when.
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — how we treat each other.
+- [`.github/SECURITY.md`](.github/SECURITY.md) — how to report a vulnerability.

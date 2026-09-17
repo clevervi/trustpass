@@ -29,17 +29,27 @@ gated on the previous one working.
 
 ### v0.1.0 — Foundation ✅
 
-Monorepo, Postgres, API with generated OpenAPI, Next.js frontend, CI with
-linting, typechecking, tests against a real database, and secret scanning.
+Monorepo, Postgres, API with generated OpenAPI, Next.js frontend, and CI
+covering linting, typechecking, build, tests against a real database, and a
+secret scan. CodeQL and dependency review were added after this tag.
 
 `TP-010` `TP-011` `TP-012` `TP-013` `TP-014` `TP-015` `TP-016`
 
-### v0.2.0 — Identity
+### v0.2.0 — Identity ✅
 
-A business registers, registers a product, and receives a TrustPass ID. Duplicate
-serials from the same issuer are rejected.
+A business registers a product and receives a TrustPass ID. One physical product
+cannot hold two live identities.
 
 `TP-020` `TP-021` `TP-022` `TP-023` `TP-024` `TP-025`
+
+Merged to `develop` and awaiting a release tag. Notable beyond the original
+scope: the status lifecycle is enforced by a database trigger, product creation
+is restricted to `draft` and `registered`, and issuers are keyed by registration
+number rather than by legal name — see
+[ADR 0006](adr/0006-issuers-are-identified-by-registration-number.md).
+
+**Not included:** authentication. Anyone reaching `POST /products` can register
+against any issuer, so the API must not be exposed publicly before `TP-141`.
 
 ### v0.3.0 — Passport
 

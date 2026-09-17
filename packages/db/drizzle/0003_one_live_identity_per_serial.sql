@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "product_live_issuer_serial_idx" ON "product" USING btree ("issuer_id",lower("serial")) WHERE "product"."status" <> 'retired';

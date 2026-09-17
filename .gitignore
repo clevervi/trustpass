@@ -35,3 +35,6 @@ Thumbs.db
 
 # Agent tooling (not part of the product)
 .atl/
+.claude/
+apps/web/AGENTS.md
+apps/web/CLAUDE.md

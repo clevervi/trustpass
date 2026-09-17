@@ -1,6 +1,6 @@
 {
   "name": "@trustpass/api",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.13.5",
+    "drizzle-orm": "^0.45.2",
     "tsup": "^8.5.1",
     "tsx": "^4.23.13",
     "vitest": "^5.0.1"
