@@ -5,12 +5,9 @@ import { loadEnv } from "./env.js";
 import { logger } from "./logger.js";
 import { version } from "./version.js";
 
-try {
-  process.loadEnvFile(new URL("../../../.env", import.meta.url).pathname);
-} catch {
-  // no-op: CI and production inject configuration directly
-}
-
+// Configuration arrives from the environment. The dev and start scripts point
+// Node's --env-file-if-exists at the repository root .env; production injects
+// the variables directly and no file is needed.
 const env = loadEnv();
 const db = createDatabase(env.DATABASE_URL);
 
