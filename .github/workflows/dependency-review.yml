@@ -1,0 +1,28 @@
+name: Dependency review
+
+on:
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: Review dependency changes
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Review added and updated dependencies
+        uses: actions/dependency-review-action@v4
+        with:
+          # A dependency is code we did not write running with our privileges.
+          # Anything moderate or worse blocks the pull request.
+          fail-on-severity: moderate
+          comment-summary-in-pr: on-failure
+          # Copyleft licences are incompatible with how this project may later
+          # be distributed; surface them at the point of introduction.
+          deny-licenses: AGPL-3.0, AGPL-3.0-only, AGPL-3.0-or-later, GPL-3.0, GPL-3.0-only
