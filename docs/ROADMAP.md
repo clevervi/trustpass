@@ -35,21 +35,21 @@ secret scan. CodeQL and dependency review were added after this tag.
 
 `TP-010` `TP-011` `TP-012` `TP-013` `TP-014` `TP-015` `TP-016`
 
-### v0.2.0 — Identity (in progress)
+### v0.2.0 — Identity ✅
 
-A business registers, registers a product, and receives a TrustPass ID. Duplicate
-serials from the same issuer are rejected.
+A business registers a product and receives a TrustPass ID. One physical product
+cannot hold two live identities.
 
-| Task     | What                                             | State       |
-| -------- | ------------------------------------------------ | ----------- |
-| `TP-020` | TrustPass ID format, generation and validation    | Done        |
-| `TP-022` | Issuer model and verification states              | Done        |
-| `TP-021` | Product model                                     | Not started |
-| `TP-025` | Product status and allowed transitions            | Not started |
-| `TP-023` | `POST /products`                                  | Not started |
-| `TP-024` | No duplicate active identity for one serial       | Not started |
+`TP-020` `TP-021` `TP-022` `TP-023` `TP-024` `TP-025`
 
-Nothing in this milestone is released. "Done" means merged to `develop`.
+Merged to `develop` and awaiting a release tag. Notable beyond the original
+scope: the status lifecycle is enforced by a database trigger, product creation
+is restricted to `draft` and `registered`, and issuers are keyed by registration
+number rather than by legal name — see
+[ADR 0006](adr/0006-issuers-are-identified-by-registration-number.md).
+
+**Not included:** authentication. Anyone reaching `POST /products` can register
+against any issuer, so the API must not be exposed publicly before `TP-141`.
 
 ### v0.3.0 — Passport
 
