@@ -34,7 +34,7 @@ Every state can reach `retired`. Nothing leaves it.
 | ------------ | ----------------------------------------------------------------------- |
 | `draft`      | A row exists. It claims nothing. The default.                           |
 | `registered` | TrustPass holds an established record for this product.                 |
-| `active`     | In an owner's hands. The only state whose passport is worth reading.     |
+| `active`     | Ownership has been established and the product is in an owner's hands.  |
 | `suspended`  | Something is wrong: a fraud flag, a theft report, a disputed claim.      |
 | `retired`    | End of life. Terminal.                                                   |
 
@@ -64,11 +64,19 @@ That separation is why the state machine stays five states while the trust model
 keeps getting richer. A status is a position in a lifecycle; it is not a summary
 of how much anyone should believe.
 
-**`active` is the one that still overstates itself.** It reads "in an owner's
-hands" while ownership does not exist until v0.5.0, so today nothing can make it
-true. It must become a consequence of ownership being established rather than a
-label anyone sets — `changeProductStatus` refuses to set it, in the type, for
-exactly that reason.
+**`active` is a consequence, not a label.** Ownership does not exist until
+v0.5.0, so today nothing can make it true and `changeProductStatus` refuses to
+set it — in the type, so the compiler enforces it rather than a reviewer.
+
+Its description also used to end "the only state whose passport is worth
+reading". That was true when the only way in was an issuer registering a
+product, and enrolment made it false: a `registered` product carries an
+identity, its claims, its history and an explicit unknown period before the
+record began. That is a passport well worth reading, and it is the one most
+readers will meet first.
+
+**Every state has a passport worth reading.** What changes between them is what
+the passport is able to say, and saying that accurately is the entire job.
 
 ## Allowed moves
 
