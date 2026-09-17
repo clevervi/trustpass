@@ -96,9 +96,31 @@ explicitly rather than showing an empty history that reads as a clean one.
 
 `TP-046` … `TP-049`
 
-Enrolment and events ship together because they are the same statement. "This
-identity began here, and everything before it is outside TrustPass" is the first
-entry in a product's history, not a field beside it.
+Enrolment and events ship together because they are the same statement. "The
+TrustPass **record** starts here, and everything before it is outside TrustPass"
+is the first entry in a product's history, not a field beside it. The object's
+own identity is older than the record — the unknown period is a limit on what
+this system saw, not a gap in the product.
+
+The shape of an event is fixed by
+[ADR 0008](adr/0008-events-record-what-happened-claims-assert-what-is-true.md)
+before any of it is built, because every milestone after this one writes to the
+same spine and a wrong shape is migrated, not edited. Three things it settles
+that constrain this milestone directly:
+
+- **`occurred_at` and `recorded_at` are separate.** A repair done in March and
+  recorded in September is two dates, and the distance between them is itself
+  information.
+- **Reasons are a closed set and never become states.** `suspended` stays one
+  state; `theft_report`, `fraud_flag` and `dispute` are reasons on the event
+  that caused it.
+- **Enrolment must not produce `active`.** `active` means "in an owner's hands"
+  and ownership does not exist until v0.5.0, so a `holder`-enrolled product
+  stops at `registered`. Asserted by test, not left to judgement.
+
+`origin` crosses the API boundary as part of the passport contract, not as
+something the page decides. A marketplace reading `GET /passports/{id}` has to be
+able to tell a manufacturer-registered product from a holder-enrolled one.
 
 #### Why this is no longer the warranty milestone
 
