@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
+import { buildDependencies } from "./testing/dependencies.js";
 
 function buildApp(databaseUp: boolean) {
-  return createApp({
-    version: "0.1.0-test",
-    checkDatabase: async () => databaseUp,
-  });
+  return createApp(
+    buildDependencies({ version: "0.1.0-test", checkDatabase: async () => databaseUp }),
+  );
 }
 
 describe("GET /health", () => {

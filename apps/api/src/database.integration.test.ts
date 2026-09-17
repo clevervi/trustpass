@@ -1,6 +1,7 @@
 import { createDatabase, isDatabaseReachable } from "@trustpass/db";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
+import { buildDependencies } from "./testing/dependencies.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -23,10 +24,12 @@ describe.skipIf(!databaseUrl)("database integration", () => {
   });
 
   it("serves /health as ok when backed by the real database", async () => {
-    const app = createApp({
-      version: "0.1.0-integration",
-      checkDatabase: () => isDatabaseReachable(db),
-    });
+    const app = createApp(
+      buildDependencies({
+        version: "0.1.0-integration",
+        checkDatabase: () => isDatabaseReachable(db),
+      }),
+    );
 
     const response = await app.request("/health");
 

@@ -17,13 +17,14 @@ phones, consoles) in Colombia, where the resale market runs on trust that nobody
 can verify.
 
 > **Status: pre-release, nothing deployed.** Latest tag is `v0.1.0`
-> (foundation). Merged to `develop` since: the TrustPass ID and the issuer
-> model.
+> (foundation). Merged to `develop` since: the TrustPass ID, the issuer and
+> product models, the status lifecycle, and `POST /products`.
 >
-> **Not built yet:** product registration, the public passport page, warranty,
-> lifecycle events, ownership transfer, blockchain anchoring, NFC. The verified
-> resale flow described above does not exist. See
-> [`docs/ROADMAP.md`](docs/ROADMAP.md) and [`CHANGELOG.md`](CHANGELOG.md).
+> **Not built yet:** the public passport page, warranty, lifecycle events,
+> ownership transfer, blockchain anchoring, NFC. The verified resale flow
+> described above does not exist, and nothing yet prevents one issuer
+> registering the same serial twice. See [`docs/ROADMAP.md`](docs/ROADMAP.md)
+> and [`CHANGELOG.md`](CHANGELOG.md).
 
 ## What this is honest about
 
@@ -53,6 +54,7 @@ page is a mock.
 | `http://localhost:3001/health`      | Liveness plus dependency check |
 | `http://localhost:3001/version`     | Deployed service version      |
 | `http://localhost:3001/openapi.json` | Generated OpenAPI 3.1 document |
+| `POST http://localhost:3001/products` | Register a product, receive its TrustPass ID |
 
 ## Repository layout
 

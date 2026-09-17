@@ -16,4 +16,6 @@ export {
   type TrustPassIdParseError,
   type TrustPassIdParseResult,
 } from "./identity/trustpass-id.js";
+export { findIssuerByRegistration } from "./repositories/issuer-repository.js";
+export { insertProduct } from "./repositories/product-repository.js";
 export * as schema from "./schema/index.js";
