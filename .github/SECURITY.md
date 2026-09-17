@@ -23,14 +23,21 @@ Send an email to **raivel.studio@gmail.com** with:
 
 ### What to expect
 
-| Step                        | Timeline            |
-| --------------------------- | ------------------- |
-| Acknowledgement of report   | Within 48 hours     |
-| Initial triage and severity | Within 5 days       |
-| Fix available or workaround | Within 30 days      |
-| Public disclosure            | After fix is released |
+This project has one maintainer and no support agreement, so **no response time
+is guaranteed and none is promised here.** A timeline that cannot be kept is
+worse than no timeline: it tells a reporter their disclosure clock is running
+while nobody has read the report.
 
-If the timeline slips, we will notify you with an updated estimate.
+What is committed to:
+
+- A report is acknowledged before the issue is discussed anywhere public.
+- Reporters are credited in the fix unless they ask not to be.
+- Good-faith research within this repository's scope will not be met with legal
+  action.
+
+Reports can also be filed privately through GitHub's
+[security advisories](https://github.com/clevervi/trustpass/security/advisories/new),
+which keeps the thread attached to the repository instead of an inbox.
 
 ### What happens next
 
