@@ -119,14 +119,33 @@ mechanism would pass; the review would not have happened.
 
 **Merge policy by risk label:**
 
-| Risk                       | Merges when                                          |
-| -------------------------- | ---------------------------------------------------- |
-| `low`, `medium`            | Every independent gate is green                       |
-| `high`, `critical`         | A human has read the diff and said so                 |
+| Risk              | Merges when                                                              |
+| ----------------- | ------------------------------------------------------------------------ |
+| `low`, `medium`   | Every independent gate is green                                          |
+| `high`, `critical` | Every independent gate is green, **and** the self-review bar below is met |
 
-The split is deliberate. Waiting on a human for a dependency bump wastes the
-gate on something the automation already covers. Waiting on one before changing
-how trust is established is the entire point of having a gate.
+The maintainer has delegated merging at every risk level to whoever authors the
+change. There is no second reader, and this document does not pretend there is.
+What replaces one is a bar the author has to clear in public, on the pull
+request, where anyone can check it was cleared.
+
+**The self-review bar for `high` and `critical`:**
+
+1. **Every guard that protects something is mutation-checked.** Break it on
+   purpose — remove the check, loosen the constraint, add the forbidden field —
+   run the tests, see them fail, restore it. A test that has never failed has not
+   been shown to test anything.
+2. **The mutations and their results are listed in the pull request body.** Not
+   summarised as "tested thoroughly": which guard, what was broken, how many
+   tests went red.
+3. **An inline self-review is posted** on the lines worth disagreeing with,
+   labelled as a self-review and never recorded as an approval.
+4. **Review threads are resolved** before merging. Branch protection enforces it.
+
+This is weaker than an independent reader, and saying so is the point. A mutation
+check proves a test can fail; it cannot prove the author tested the right thing.
+The bar makes the author's reasoning inspectable, which is the most a single
+author can honestly offer.
 
 ## Break-glass
 
@@ -171,7 +190,9 @@ moving one into the other, and it is the only time `main` changes.
 2. Bump `version` in the root manifest and in every workspace package, on
    `develop`, before the release pull request. The API serves its own version
    from its manifest, so skipping this ships a service that reports the previous
-   release while running the new one.
+   release while running the new one. Bump the README's version badge in the
+   same commit — every version printed anywhere becomes a false claim the moment
+   it is left behind, and the badge is the one a reader sees first.
 3. Open a pull request from `develop` into `main`, titled `release: vX.Y.Z`.
 4. Merge it with a **merge commit**, not a squash. The individual changes already
    have their own history and flattening it here destroys the trail from a

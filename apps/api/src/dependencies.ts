@@ -1,3 +1,5 @@
+import type { TrustPassId } from "@trustpass/db";
+import type { ReadPassportResult } from "./passports/read-passport.js";
 import type { RegisterProductInput, RegisterProductResult } from "./products/register-product.js";
 
 /**
@@ -13,4 +15,10 @@ export interface AppDependencies {
   checkDatabase: () => Promise<boolean>;
   /** Registers a product against an existing issuer. */
   registerProduct: (input: RegisterProductInput) => Promise<RegisterProductResult>;
+  /**
+   * Reads a product's public passport. Takes an already-parsed identifier, so an
+   * unverified string cannot reach the database and the mistyped-versus-unknown
+   * decision is made before any lookup.
+   */
+  readPassport: (trustpassId: TrustPassId) => Promise<ReadPassportResult>;
 }

@@ -41,6 +41,11 @@ export const ApiErrorCode = {
   ISSUER_NOT_FOUND: "issuer_not_found",
   DUPLICATE_SERIAL: "duplicate_serial",
   NOT_FOUND: "not_found",
+  /** The identifier's check symbol failed: a transcription error, not an unknown product. */
+  MISTYPED_TRUSTPASS_ID: "mistyped_trustpass_id",
+  /** The value is not a TrustPass ID in any version this build understands. */
+  MALFORMED_TRUSTPASS_ID: "malformed_trustpass_id",
+  PASSPORT_NOT_FOUND: "passport_not_found",
 } as const;
 
 /**

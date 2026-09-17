@@ -12,6 +12,9 @@ export function buildDependencies(overrides: Partial<AppDependencies> = {}): App
     registerProduct: async () => {
       throw new Error("registerProduct was called but this test did not provide one.");
     },
+    readPassport: async () => {
+      throw new Error("readPassport was called but this test did not provide one.");
+    },
     ...overrides,
   };
 }

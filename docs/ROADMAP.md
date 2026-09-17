@@ -51,13 +51,28 @@ number rather than by legal name — see
 **Not included:** authentication. Anyone reaching `POST /products` can register
 against any issuer, so the API must not be exposed publicly before `TP-141`.
 
-### v0.3.0 — Passport
+### v0.3.0 — Passport (in progress)
 
 A QR resolves to a public passport page showing what is verified and what is not,
 per [ADR 0003](adr/0003-identity-is-not-authenticity.md). This is the first
 milestone that demonstrates the product to someone who has never seen it.
 
-`TP-030` `TP-031` `TP-032` `TP-033` `TP-034`
+| Task | What | Risk |
+| --- | --- | --- |
+| `TP-030` | Resolve a TrustPass ID to a public passport | high |
+| `TP-031` | Product identity, with the serial masked | high |
+| `TP-033` | Each verification claim stated separately | critical |
+| `TP-032` | The QR that resolves to the passport | low |
+
+**`TP-034` moved to v0.5.0.** It renders lifecycle history, and lifecycle events
+are `TP-050`. There is no event table today, so the section would show nothing —
+and nothing currently records *why* a status changed, so even a transition log is
+unavailable. The milestone is smaller than originally written, deliberately.
+
+**`TP-032` is a web task, not an API one.** Hono's `secureHeaders()` sets
+`Cross-Origin-Resource-Policy: same-origin`, so a page on one port cannot embed an
+SVG served from another. The QR is an encoding of a URL and the web app owns the
+URL, so it is rendered there.
 
 ### v0.4.0 — Warranty
 
@@ -71,7 +86,8 @@ machine.
 Events recorded against the product identity, with role-based authorisation over
 who may record what. Ownership transfer requires acceptance by the receiver.
 
-`TP-050` … `TP-053`, `TP-060` … `TP-064`
+`TP-050` … `TP-053`, `TP-060` … `TP-064`, and `TP-034` (moved from
+v0.3.0: the passport's history section needs events to show).
 
 ### v0.6.0 — Verification and security hardening
 
