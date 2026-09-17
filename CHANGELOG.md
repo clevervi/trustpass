@@ -14,6 +14,8 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-09-17
+
 Identity. A business registers a product and receives a TrustPass ID, and one
 physical product cannot hold two live identities.
 
@@ -134,5 +136,6 @@ health checks, and a CI pipeline that enforces quality before any code reaches
   path, which failed on Windows
   ([`1f4bb5f`](https://github.com/clevervi/trustpass/commit/1f4bb5f))
 
-[Unreleased]: https://github.com/clevervi/trustpass/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/clevervi/trustpass/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/clevervi/trustpass/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/clevervi/trustpass/releases/tag/v0.1.0
