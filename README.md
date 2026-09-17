@@ -7,17 +7,23 @@
 
 Verifiable digital identity, warranty and lifecycle history for physical products.
 
-A product gets a TrustPass ID at issue time. From then on, every meaningful event
-in its life — sold, activated, inspected, repaired, transferred — is recorded
-against that identity. When the product is resold, its history travels with it.
+The goal: a product receives a TrustPass ID at issue time, and every meaningful
+event in its life — sold, activated, inspected, repaired, transferred — is
+recorded against that identity, so that when the product is resold its history
+travels with it.
 
 The first target market is high-value consumer electronics (GPUs, laptops,
 phones, consoles) in Colombia, where the resale market runs on trust that nobody
 can verify.
 
-> **Status: v0.1.0 — foundation.** The platform runs locally end to end. Product
-> identity, passports, warranty and lifecycle events are not implemented yet.
-> See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> **Status: pre-release, nothing deployed.** Latest tag is `v0.1.0`
+> (foundation). Merged to `develop` since: the TrustPass ID and the issuer
+> model.
+>
+> **Not built yet:** product registration, the public passport page, warranty,
+> lifecycle events, ownership transfer, blockchain anchoring, NFC. The verified
+> resale flow described above does not exist. See
+> [`docs/ROADMAP.md`](docs/ROADMAP.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
 ## What this is honest about
 
@@ -74,6 +80,7 @@ Every script runs from the repository root across all workspace packages.
 | `pnpm format`     | Biome lint and format, writing fixes             |
 | `pnpm db:up`      | Starts Postgres via Docker Compose               |
 | `pnpm db:down`    | Stops Postgres                                   |
+| `pnpm db:logs`    | Follows the Postgres container logs              |
 | `pnpm db:migrate` | Applies pending migrations                       |
 | `pnpm db:generate`| Generates a migration from schema changes        |
 | `pnpm db:studio`  | Opens Drizzle Studio against the local database  |
