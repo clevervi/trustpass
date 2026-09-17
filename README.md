@@ -29,6 +29,7 @@ Requires Node 24+, pnpm 10+ and Docker.
 cp .env.example .env
 pnpm install
 pnpm db:up          # Postgres on localhost:5433
+pnpm db:migrate     # apply schema migrations
 pnpm dev            # API on :3001, web on :3000
 ```
 
@@ -68,6 +69,9 @@ Every script runs from the repository root across all workspace packages.
 | `pnpm format`     | Biome lint and format, writing fixes             |
 | `pnpm db:up`      | Starts Postgres via Docker Compose               |
 | `pnpm db:down`    | Stops Postgres                                   |
+| `pnpm db:migrate` | Applies pending migrations                       |
+| `pnpm db:generate`| Generates a migration from schema changes        |
+| `pnpm db:studio`  | Opens Drizzle Studio against the local database  |
 
 Integration tests that need Postgres skip themselves when `DATABASE_URL` is
 unset, so a clean checkout can run `pnpm test` without Docker. CI always

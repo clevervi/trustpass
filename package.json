@@ -17,7 +17,10 @@
     "format": "biome check --write .",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
-    "db:logs": "docker compose logs -f postgres"
+    "db:logs": "docker compose logs -f postgres",
+    "db:migrate": "pnpm --filter @trustpass/db db:migrate",
+    "db:generate": "pnpm --filter @trustpass/db db:generate",
+    "db:studio": "pnpm --filter @trustpass/db db:studio"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",

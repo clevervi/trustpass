@@ -83,6 +83,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Apply database migrations
+        run: pnpm db:migrate
+
       - name: Run test suites
         run: pnpm test
 
