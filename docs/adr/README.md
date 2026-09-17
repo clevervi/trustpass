@@ -16,6 +16,7 @@ Write one when the answer to "why is it like this?" would otherwise be lost.
 | [0004](0004-trustpass-id-format.md)         | TrustPass ID format: 128-bit Crockford base32    | Accepted |
 | [0005](0005-internal-keys-are-never-public.md) | Internal keys are never public                  | Accepted |
 | [0006](0006-issuers-are-identified-by-registration-number.md) | Issuers are keyed by registration number, not name | Accepted |
+| [0007](0007-identity-may-begin-after-manufacture.md) | Identity may begin after manufacture, and the record says where | Accepted |
 
 ## Template
 
