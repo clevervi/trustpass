@@ -29,17 +29,27 @@ gated on the previous one working.
 
 ### v0.1.0 — Foundation ✅
 
-Monorepo, Postgres, API with generated OpenAPI, Next.js frontend, CI with
-linting, typechecking, tests against a real database, and secret scanning.
+Monorepo, Postgres, API with generated OpenAPI, Next.js frontend, and CI
+covering linting, typechecking, build, tests against a real database, and a
+secret scan. CodeQL and dependency review were added after this tag.
 
 `TP-010` `TP-011` `TP-012` `TP-013` `TP-014` `TP-015` `TP-016`
 
-### v0.2.0 — Identity
+### v0.2.0 — Identity (in progress)
 
 A business registers, registers a product, and receives a TrustPass ID. Duplicate
 serials from the same issuer are rejected.
 
-`TP-020` `TP-021` `TP-022` `TP-023` `TP-024` `TP-025`
+| Task     | What                                             | State       |
+| -------- | ------------------------------------------------ | ----------- |
+| `TP-020` | TrustPass ID format, generation and validation    | Done        |
+| `TP-022` | Issuer model and verification states              | Done        |
+| `TP-021` | Product model                                     | Not started |
+| `TP-025` | Product status and allowed transitions            | Not started |
+| `TP-023` | `POST /products`                                  | Not started |
+| `TP-024` | No duplicate active identity for one serial       | Not started |
+
+Nothing in this milestone is released. "Done" means merged to `develop`.
 
 ### v0.3.0 — Passport
 

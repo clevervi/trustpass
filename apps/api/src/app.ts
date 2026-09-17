@@ -20,7 +20,9 @@ export function createApp(deps: AppDependencies): OpenAPIHono {
       version: deps.version,
       title: "TrustPass API",
       description:
-        "Verifiable digital identity, warranty and lifecycle history for physical products.",
+        "Verifiable digital identity for physical products. This build exposes " +
+        "system endpoints only — product, warranty, lifecycle and ownership " +
+        "endpoints are not implemented yet. The paths below are the whole API.",
     },
   });
 
