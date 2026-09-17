@@ -18,6 +18,13 @@ export const SqlState = {
   UNIQUE_VIOLATION: "23505",
   CHECK_VIOLATION: "23514",
   INVALID_TEXT_REPRESENTATION: "22P02",
+  /**
+   * Project-defined. Raised by the product status trigger so that an illegal
+   * lifecycle move is distinguishable from an ordinary check violation, and a
+   * caller can say "that move is not allowed" rather than "the database said
+   * no". See drizzle/0002_product_status_transition_guard.sql.
+   */
+  ILLEGAL_STATUS_TRANSITION: "TP001",
 } as const;
 
 export type SqlStateCode = (typeof SqlState)[keyof typeof SqlState];
@@ -33,6 +40,27 @@ export function sqlStateOf(error: unknown): string | undefined {
     const code = (current as { code?: unknown }).code;
     if (typeof code === "string") {
       return code;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+
+  return undefined;
+}
+
+/**
+ * The driver's own message, which carries what a RAISE EXCEPTION actually said.
+ *
+ * Drizzle's wrapper stringifies as "Failed query: ..." and drops it, so
+ * asserting against the surfaced error tests the wrapper rather than the
+ * database. Walks to the node that carries the SQLSTATE and reads its message.
+ */
+export function sqlMessageOf(error: unknown): string | undefined {
+  let current: unknown = error;
+
+  while (current !== null && current !== undefined) {
+    const candidate = current as { code?: unknown; message?: unknown };
+    if (typeof candidate.code === "string" && typeof candidate.message === "string") {
+      return candidate.message;
     }
     current = (current as { cause?: unknown }).cause;
   }
