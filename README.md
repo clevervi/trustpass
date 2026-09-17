@@ -3,7 +3,7 @@
 [![CI](https://github.com/clevervi/trustpass/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/clevervi/trustpass/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/clevervi/trustpass/actions/workflows/codeql.yml/badge.svg)](https://github.com/clevervi/trustpass/actions/workflows/codeql.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-0.2.0--dev-green)
+![Version](https://img.shields.io/badge/version-0.2.0-green)
 
 Verifiable digital identity, warranty and lifecycle history for physical products.
 
@@ -16,9 +16,9 @@ The first target market is high-value consumer electronics (GPUs, laptops,
 phones, consoles) in Colombia, where the resale market runs on trust that nobody
 can verify.
 
-> **Status: pre-release, nothing deployed.** Latest tag is `v0.1.0`
-> (foundation). Merged to `develop` since: the TrustPass ID, the issuer and
-> product models, the status lifecycle, and `POST /products`.
+> **Status: v0.2.0, nothing deployed.** Identity is complete: the TrustPass
+> ID, issuer and product models, the status lifecycle, `POST /products`, and
+> one live identity per serial.
 >
 > **Not built yet:** the public passport page, warranty, lifecycle events,
 > ownership transfer, blockchain anchoring, NFC. The verified resale flow
