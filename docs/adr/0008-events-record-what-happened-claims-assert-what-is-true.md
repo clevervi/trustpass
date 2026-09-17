@@ -49,16 +49,22 @@ neither derived from the other by default.**
 
 | | Event | Claim |
 | --- | --- | --- |
-| Says | something happened | something is true now |
+| Says | somebody reported or caused this to happen | something is true now |
 | Tense | past, fixed | present, revisable |
 | Mutability | append-only, never edited | recomputed or restated |
 | Answers | what occurred, when, who, why | what is the case, on whose authority |
 | Example | `PRODUCT_SUSPENDED`, reason `theft_report` | `issuer: verified` |
 
-An event is a **recorded assertion that something happened**: *on this date,
-this actor stated that this occurred, for this reason.* It is never revised,
-because what was recorded at the time does not change. A mistake is corrected by
-recording a correcting event, not by editing the original.
+> **An event records that an actor reported or caused a change to have happened
+> within TrustPass. It does not independently prove that the real-world event
+> occurred.**
+
+That is the canonical definition; everything below is why it is worded that way.
+
+An event is a **recorded assertion**: *on this date, this actor stated that this
+occurred, for this reason.* It is never revised, because what was recorded at the
+time does not change. A mistake is corrected by recording a correcting event, not
+by editing the original.
 
 That wording is deliberate and replaces an earlier "a fact about the world".
 TrustPass cannot witness a repair; it can only record that a repairer said one
