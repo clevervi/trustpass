@@ -53,9 +53,13 @@ export const productCategory = pgEnum("product_category", [
 export const productStatus = pgEnum("product_status", [
   /** A row exists. Nothing is claimed by it. The honest default. */
   "draft",
-  /** The issuer has committed to the record. */
+  /**
+   * A TrustPass record exists. It does not say who vouches for it — a
+   * manufacturer and a person enrolling their own device both land here, and
+   * which it was is carried by origin and by the record's first event.
+   */
   "registered",
-  /** In the hands of an owner, with a passport worth reading. */
+  /** Ownership has been established. A consequence, never a label anyone sets. */
   "active",
   /** Something is wrong: a fraud flag, a theft report, a disputed claim. */
   "suspended",

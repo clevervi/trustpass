@@ -17,10 +17,15 @@ import type { ProductStatus } from "../schema/product.js";
  *
  * - `draft` is a row that exists and claims nothing. It can be committed to, or
  *   abandoned, and nothing else.
- * - `registered` means the issuer stands behind the record. From there a
- *   product is activated by an owner, flagged before it ever sells, or retired.
- * - `active` is the only state whose passport is worth reading, and the only
- *   one a buyer sees in a resale. It can be flagged or retired.
+ * - `registered` means a TrustPass record exists for this product. It does not
+ *   say who vouches for it: a manufacturer registering at the factory and a
+ *   person enrolling a device they hold both land here, and which one it was is
+ *   carried by the record's origin and by its first event, not by its status.
+ *   From there a product is activated once ownership exists, flagged before it
+ *   ever sells, or retired.
+ * - `active` means ownership has been established. It is a consequence of that
+ *   happening, never a label anyone sets — and it is not a precondition for a
+ *   passport being worth reading, which every state is.
  * - `suspended` exists because something is wrong: a fraud flag, a theft report,
  *   a disputed claim. It deliberately cannot return to `active` in one step.
  *   Clearing a suspension returns the product to `registered`, and activating it
