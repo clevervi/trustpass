@@ -1,5 +1,5 @@
 import { createDatabase, type Database, schema } from "@trustpass/db";
-import { eq, like } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { buildDependencies } from "../testing/dependencies.js";
@@ -52,8 +52,14 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
   });
 
   afterAll(async () => {
-    await db.delete(schema.product).where(like(schema.product.serial, `${run}%`));
-    await db.delete(schema.issuer).where(like(schema.issuer.registrationNumber, `${run}%`));
+    // Deliberately no cleanup. Since TP-051 a registered product carries a
+    // lifecycle event, events cannot be deleted, and the product foreign key is
+    // RESTRICT — so these rows cannot be removed and neither can the issuer
+    // that owns them.
+    //
+    // That is the guarantee working rather than a leak: a teardown that
+    // succeeded here would prove a product's history can be erased. Each run
+    // uses its own prefix, so the rows accumulate without colliding.
     await db.$client.end();
   });
 
