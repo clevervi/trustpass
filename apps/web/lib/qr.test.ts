@@ -145,4 +145,23 @@ describe("passportUrl", () => {
       "https://trustpass.example/trustpass/a%2F..%2Fb",
     );
   });
+
+  it("reads no environment variable and has no default host", () => {
+    // The defect this replaced: with NEXT_PUBLIC_SITE_URL unset, every code
+    // encoded http://localhost:3000 wherever the app was actually served, and
+    // scanned perfectly to whatever else held that port. Deciding the origin is
+    // a question about the request and the deployment; a pure function cannot
+    // see either, so it must not guess.
+    const previous = process.env.NEXT_PUBLIC_SITE_URL;
+    process.env.NEXT_PUBLIC_SITE_URL = "https://from-the-environment.example";
+
+    try {
+      expect(passportUrl(TRUSTPASS_ID, "https://given.example")).toBe(
+        `https://given.example/trustpass/${TRUSTPASS_ID}`,
+      );
+    } finally {
+      if (previous === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+      else process.env.NEXT_PUBLIC_SITE_URL = previous;
+    }
+  });
 });
