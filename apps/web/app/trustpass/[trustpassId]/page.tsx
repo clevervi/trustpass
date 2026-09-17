@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { cache } from "react";
+import { encodeQr, passportUrl, type QrCode } from "@/lib/qr";
 import { describeCategory, describeClaim, describeStatus, type Tone } from "../claim-wording";
 import { fetchPassport, type PassportView } from "../passport";
 
@@ -274,11 +275,80 @@ function Passport({ passport }: { passport: PassportView }) {
         </ol>
       </Card>
 
+      <PassportQr trustpassId={passport.trustpassId} />
+
       <p className="text-balance text-xs text-black/50 dark:text-white/50">
         A TrustPass passport records who made each claim about a product and what TrustPass has
         checked. It is not a certificate of authenticity.
       </p>
     </Shell>
+  );
+}
+
+/**
+ * The passport's own QR, rendered server-side as SVG elements.
+ *
+ * Not `dangerouslySetInnerHTML` over an SVG string: the path is data, and React
+ * can take data. Not an `<img>` either, which would cost a second request for
+ * something already computed here.
+ */
+function PassportQr({ trustpassId }: { trustpassId: string }) {
+  let code: QrCode;
+  try {
+    code = encodeQr(passportUrl(trustpassId));
+  } catch {
+    // The encoder refuses anything it would corrupt. A passport that rendered
+    // is proof the identifier is well formed, so this is unreachable in
+    // practice — but a thrown error here would replace a valid passport with an
+    // error page, and a missing QR is a far smaller loss than a missing
+    // passport.
+    return null;
+  }
+
+  return (
+    <Card title="Scan or share" id="qr">
+      <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-6">
+        {/*
+          Black on white in both colour schemes, deliberately. An inverted QR —
+          light modules on a dark background — is rejected by a large share of
+          scanners, so this is the one element on the page that must ignore dark
+          mode.
+        */}
+        <svg
+          viewBox={`0 0 ${code.extent} ${code.extent}`}
+          className="size-40 shrink-0 rounded-lg bg-white"
+          shapeRendering="crispEdges"
+          role="img"
+          aria-label="QR code linking to this passport"
+        >
+          <title>QR code linking to this passport</title>
+          <path d={code.path} fill="#000" />
+        </svg>
+
+        <div className="space-y-2 text-center sm:text-left">
+          <p className="text-sm text-black/70 dark:text-white/70">
+            This code points at this page and nothing else.
+          </p>
+          {/*
+            Said here rather than left implied. A QR can be photographed from a
+            marketplace listing and reprinted onto any object, so a successful
+            scan is evidence that someone had the code — not evidence about the
+            object in your hands. ADR 0003.
+          */}
+          <p className="text-xs text-black/50 dark:text-white/50">
+            Scanning it proves only that someone had the code. A QR can be copied from a photograph
+            onto any object.
+          </p>
+          <a
+            href={`/trustpass/${encodeURIComponent(trustpassId)}/qr.svg`}
+            className="inline-block text-xs underline underline-offset-4 opacity-70 hover:opacity-100"
+            download={`${trustpassId}.svg`}
+          >
+            Download as SVG
+          </a>
+        </div>
+      </div>
+    </Card>
   );
 }
 

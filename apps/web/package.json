@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "next": "16.3.5",
+    "qrcode-generator": "^2.0.4",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
@@ -19,6 +20,7 @@
     "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "jsqr": "^1.4.0",
     "tailwindcss": "^4",
     "vitest": "^5.0.1"
   }
