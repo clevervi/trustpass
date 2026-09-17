@@ -16,6 +16,23 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ### Decided
 
+- **Lifecycle events now come before warranty.** The order was v0.4.0 Warranty →
+  v0.5.0 Lifecycle and ownership. It is now v0.4.0 Lifecycle events and
+  enrolment → v0.5.0 Ownership → v0.6.0 Warranty, with verification and
+  blockchain shifting to v0.7.0 and v0.8.0.
+
+  The reason is already visible in this repository rather than hypothetical:
+  [`docs/product-lifecycle.md`](docs/product-lifecycle.md) states that a status
+  change leaves no record of *why* it happened. Products can be suspended today,
+  and the passport can say `Suspended` while being unable to say whether that
+  was a theft report, a fraud flag or a disputed claim — which mean very
+  different things to a buyer. Every feature after this one writes history, so
+  warranty should be the event spine's first consumer rather than its accidental
+  author.
+
+  Note that `docs/releases/v0.3.0.md` still points forward to the old ordering.
+  It is a dated snapshot of what that tag contained and is deliberately not
+  rewritten; `docs/ROADMAP.md` is the current plan.
 - **[ADR 0007](docs/adr/0007-identity-may-begin-after-manufacture.md) — identity
   may begin after manufacture.** A product can currently only be registered by a
   business holding a national registration number, which makes every product
