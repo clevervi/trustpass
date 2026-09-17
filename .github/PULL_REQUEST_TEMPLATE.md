@@ -36,5 +36,7 @@ Closes TP-
 
 - [ ] CI is green
 - [ ] `pnpm lint`, `pnpm typecheck`, `pnpm test` and `pnpm build` pass locally
+- [ ] `pnpm-lock.yaml` is committed if any dependency changed — a local run
+      passes against an already-populated `node_modules`, CI does not
 - [ ] No secrets, keys or production data in the diff
 - [ ] Documentation updated if behaviour changed

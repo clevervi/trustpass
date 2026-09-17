@@ -88,6 +88,39 @@ pnpm build
 All four must pass locally. CI runs the same commands plus a secret scan over
 the full history, so pushing a key is caught before review, not after.
 
+## Who reviews, and what that review is worth
+
+Every change goes through a pull request, and branch protection enforces it. But
+a pull request is only a gate if something actually looks at it, so it is worth
+being precise about what does.
+
+**Genuinely independent.** These have no stake in the change and no memory of
+writing it:
+
+| Gate                      | Looks for                                             |
+| ------------------------- | ----------------------------------------------------- |
+| Lint, typecheck and build | Contract and style violations                         |
+| Test against Postgres     | Behaviour, including the integration path             |
+| Secret scan               | Credentials committed anywhere in history             |
+| CodeQL                    | Security and quality defects, refreshed weekly        |
+| Dependency review         | New dependencies with known vulnerabilities or copyleft licences |
+
+**Not independent.** An agent reviewing a diff it wrote is a second pass by the
+same judgement. A second pass catches real things and is worth doing, but it is
+not a second opinion and must never be recorded as an approval. It is posted as
+a review comment, labelled as a self-review.
+
+**Merge policy by risk label:**
+
+| Risk                       | Merges when                                          |
+| -------------------------- | ---------------------------------------------------- |
+| `low`, `medium`            | Every independent gate is green                       |
+| `high`, `critical`         | A human has read the diff and said so                 |
+
+The split is deliberate. Waiting on a human for a dependency bump wastes the
+gate on something the automation already covers. Waiting on one before changing
+how trust is established is the entire point of having a gate.
+
 ## Break-glass
 
 `main` and `develop` are protected, and the protection applies to
