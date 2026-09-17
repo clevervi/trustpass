@@ -14,13 +14,87 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-17
+
+Passport. A TrustPass ID now resolves to a page anyone can read, and that page
+states what has been checked and — more importantly — what has not.
+
+### Added
+
+- **`GET /passports/{trustpassId}`** — the first public read surface. A separate
+  prefix from `/products` on purpose: `POST /products` returns the whole serial,
+  and the same prefix returning a masked one on read is an asymmetry waiting to
+  cause a mistake. When authentication arrives (TP-141) `/products/*` locks and
+  `/passports/*` stays public, which is a prefix rule rather than a per-method
+  exception.
+- **Serial disclosure** — the last four characters, and only when at least five
+  remain hidden. Below that nothing is shown, because masking that discloses
+  half the value is not masking. Counts code points, so a serial containing an
+  astral character is never split mid-pair.
+- **Verification claims** — issuer, serial, secure tag, warranty and physical
+  authenticity, each stated separately with its own state. The serial is
+  `recorded`, never `verified`: the issuer supplied it and nothing has compared
+  it to any object. Physical authenticity is permanently `not_verifiable`. There
+  is no aggregate verdict and no score.
+- **The passport page** at `/trustpass/{trustpassId}`, rendering four outcomes
+  distinctly — the passport, a mistyped code, an unissued code, and TrustPass
+  being unreachable.
+- **QR codes**, rendered inline on the passport as server-side SVG and served as
+  a downloadable file at `/trustpass/{trustpassId}/qr.svg`. Both come from one
+  function. The page says beside the code that scanning it proves only that
+  someone had the code.
+- **The first tests in `apps/web`**, with a Vitest config. The script was
+  `vitest run --passWithNoTests`, which reported success on an app with no tests.
+
 ### Changed
 
+- **Serials are no longer exposed whole by the read path.** `PublicPassport` has
+  no field for one, so the type makes it unrenderable rather than merely absent.
 - **Merge policy.** `high` and `critical` pull requests no longer wait for a
   second reader; merging is delegated to the author. What replaces the reader is
   a public bar: every protective guard mutation-checked, the results listed in
   the pull request, and an inline self-review. The document states plainly that
   this is weaker than independent review.
+- **`TP-034` (lifecycle history) moved to v0.5.0.** There is no event table, so
+  the section would render nothing or repeat two facts shown above it.
+
+### Fixed
+
+- The home page announced `v0.1.0` while the repository was at `v0.2.0`, and
+  nothing updated it on release. A label nobody maintains becomes a false claim
+  on its own.
+
+### Trust model notes
+
+- **A mistyped identifier and an unissued one are different answers.** A typo
+  returns `422 mistyped_trustpass_id` and the page says so; an unissued but
+  well-formed identifier returns `404`. Returning 404 for a typo would be the
+  system agreeing a product is unregistered because one character was misread,
+  which is the false accusation ADR 0004's check symbol exists to prevent.
+- **A failure to check is never a verdict.** When the API cannot be reached the
+  page says no check was made, rather than rendering a passport-shaped layout
+  with blank fields.
+- **Draft products have no passport.** A draft is a row that claims nothing, and
+  publishing its passport would publish a claim nobody made. It returns 404.
+- **Passports are never indexed.** Every branch of the page carries `noindex`,
+  deliberately without a robots.txt disallow — a crawler blocked by robots.txt
+  never fetches the page and so never sees the directive.
+- **A QR is discovery, not security.** It can be photographed from a listing and
+  reprinted onto any object, so a successful scan is evidence that someone had
+  the code and nothing more.
+
+### Known limitations
+
+- **No authentication.** Anyone who can reach `POST /products` can register
+  against any issuer. The API must not be exposed publicly before TP-141.
+- **The 404 passport page renders no HTML** ([#38](https://github.com/clevervi/trustpass/issues/38)).
+  The status is correct, but Next 16.3.5 leaves the not-found boundary for the
+  client, so a reader without JavaScript sees a blank page. Measured across four
+  configurations against a production build.
+- No warranty, lifecycle events or ownership transfer.
+- **The QR has not been scanned by a physical phone.** Its matrix is decoded by
+  an independent decoder in CI, which proves the encoding is correct but not
+  that it scans across camera apps and print sizes.
 
 ## [0.2.0] — 2026-09-17
 
@@ -144,6 +218,7 @@ health checks, and a CI pipeline that enforces quality before any code reaches
   path, which failed on Windows
   ([`1f4bb5f`](https://github.com/clevervi/trustpass/commit/1f4bb5f))
 
-[Unreleased]: https://github.com/clevervi/trustpass/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/clevervi/trustpass/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/clevervi/trustpass/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/clevervi/trustpass/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/clevervi/trustpass/releases/tag/v0.1.0
