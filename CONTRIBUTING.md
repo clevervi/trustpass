@@ -154,6 +154,36 @@ process quietly stops existing.
 | `high`     | Touches auth, money, personal data or product truth  |
 | `critical` | A mistake here corrupts the trust model itself       |
 
+## Releases
+
+`develop` is always green. `main` is always deployable. A release is the act of
+moving one into the other, and it is the only time `main` changes.
+
+1. Confirm the milestone is closed: every issue in it is done, and CI on
+   `develop` is green.
+2. Open a pull request from `develop` into `main`, titled `release: vX.Y.Z`.
+3. Merge it with a **merge commit**, not a squash. The individual changes already
+   have their own history and flattening it here destroys the trail from a
+   released version back to the pull request that introduced a line.
+4. Tag `main`:
+
+   ```bash
+   git checkout main && git pull
+   git tag -a vX.Y.Z -m "vX.Y.Z — <what this release makes possible>"
+   git push origin vX.Y.Z
+   ```
+
+5. Publish release notes from the tag, grouped by the conventional-commit type.
+
+Versioning follows semver against the **public contract** — the HTTP API, the
+TrustPass ID format, and the database schema. Internal refactors are patch
+releases no matter how large the diff.
+
+A tag is a claim that a version works. Cut it only after the artefact has been
+run, not merely built: `v0.1.0` was tagged once, found broken on first
+execution, and re-cut. That was free because it had not been pushed. After a
+push it is not free, because other people's checkouts already believe it.
+
 ## Architecture decisions
 
 Any decision that is expensive to reverse gets an ADR in
