@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: trustpass-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trustpass}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trustpass_local_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-trustpass}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    # Postgres 18 images expect the volume at /var/lib/postgresql, not at
+    # /var/lib/postgresql/data: the data directory became version-scoped so that
+    # pg_upgrade --link can run without crossing a mount boundary.
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trustpass} -d ${POSTGRES_DB:-trustpass}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres_data:
+    name: trustpass_postgres_data

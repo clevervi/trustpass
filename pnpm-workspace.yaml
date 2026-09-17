@@ -1,0 +1,8 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 10 blocks lifecycle scripts by default. esbuild needs its postinstall
+# to fetch the platform binary used by tsup and vitest.
+onlyBuiltDependencies:
+  - esbuild
