@@ -1,6 +1,14 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 import type { Database } from "../client.js";
-import { type NewProduct, type Product, product } from "../schema/product.js";
+import type { TrustPassId } from "../identity/trustpass-id.js";
+import { type IssuerVerificationStatus, issuer } from "../schema/issuer.js";
+import {
+  type NewProduct,
+  type Product,
+  type ProductCategory,
+  type ProductStatus,
+  product,
+} from "../schema/product.js";
 
 /** Postgres unique_violation. */
 const UNIQUE_VIOLATION = "23505";
@@ -97,6 +105,83 @@ export async function findLiveProductBySerial(
         ne(product.status, "retired"),
       ),
     )
+    .limit(1);
+
+  return found;
+}
+
+/**
+ * A product and the issuer that registered it, as stored.
+ *
+ * **Not safe to publish.** It carries the whole serial. Anything leaving the API
+ * must project it first — mask the serial, compute the claims — and the name
+ * says "record", not "passport", so nobody mistakes it for the public shape.
+ *
+ * What it does not carry matters as much: no `product.id`, no
+ * `product.issuerId`, no `issuer.id`. Per ADR 0005 those never cross the API
+ * boundary, and the surest way to keep them from leaking is to never select
+ * them.
+ */
+export interface ProductWithIssuer {
+  readonly trustpassId: TrustPassId;
+  readonly brand: string;
+  readonly model: string;
+  readonly serial: string;
+  readonly category: ProductCategory;
+  readonly status: ProductStatus;
+  readonly createdAt: Date;
+  readonly issuer: {
+    readonly companyName: string;
+    readonly country: string;
+    readonly registrationNumber: string;
+    readonly verificationStatus: IssuerVerificationStatus;
+  };
+}
+
+/**
+ * Finds a product by its public identifier, with its issuer, in one query.
+ *
+ * Takes the branded `TrustPassId` rather than a string, so an unparsed value
+ * cannot reach Postgres. That forces the caller through `parseTrustPassId`
+ * first — which is what lets it tell a mistyped identifier from an unknown one,
+ * the distinction ADR 0004's check symbol exists to make.
+ *
+ * One join rather than two queries. The passport always needs both rows; and a
+ * second query would need `product.issuerId` in hand, which puts an internal
+ * key into a value that travels back up to the API. `issuer_id` is not null
+ * with a restricting foreign key, so an inner join cannot drop a row.
+ *
+ * The identifier is compared as-is, not lower-cased. `parseTrustPassId`
+ * returns the canonical upper-case form, and wrapping the column in `lower()`
+ * would stop `product_trustpass_id_idx` from being used.
+ *
+ * Returns whatever row exists, in any status. Deciding that a draft is not
+ * publishable belongs to the caller: a repository that hides rows makes "not
+ * found" ambiguous for every future caller.
+ */
+export async function findProductByTrustPassId(
+  db: Database,
+  trustpassId: TrustPassId,
+): Promise<ProductWithIssuer | undefined> {
+  const [found] = await db
+    .select({
+      trustpassId: product.trustpassId,
+      brand: product.brand,
+      model: product.model,
+      serial: product.serial,
+      category: product.category,
+      status: product.status,
+      createdAt: product.createdAt,
+      issuer: {
+        companyName: issuer.companyName,
+        country: issuer.country,
+        registrationNumber: issuer.registrationNumber,
+        verificationStatus: issuer.verificationStatus,
+      },
+    })
+    .from(product)
+    .innerJoin(issuer, eq(product.issuerId, issuer.id))
+    .where(eq(product.trustpassId, trustpassId))
     .limit(1);
 
   return found;
