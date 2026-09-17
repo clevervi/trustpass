@@ -16,6 +16,22 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ### Decided
 
+- **[ADR 0008](docs/adr/0008-events-record-what-happened-claims-assert-what-is-true.md)
+  — events record what happened; claims assert what is true.** Fixed before the
+  first event row exists, because every milestone after v0.4.0 writes to the
+  same spine and a wrong shape is migrated rather than edited. An event is
+  past-tense and append-only, carrying `occurred_at` **and** `recorded_at`
+  separately, with `reason` from a closed set. Reasons never become states:
+  `suspended` stays one state and `theft_report`, `fraud_flag` and `dispute` are
+  reasons on the event that caused it. Enrolment is the first event and must not
+  produce `active`, which means "in an owner's hands" and cannot be true before
+  ownership exists.
+- **[ADR 0007](docs/adr/0007-identity-may-begin-after-manufacture.md) amended:
+  what begins at enrolment is the record, not the product.** A device has had an
+  identity since it was made; what starts is TrustPass's knowledge of it. Read
+  loosely the original wording implied a product did not exist before enrolment,
+  which would make the unknown period look like a defect in the object rather
+  than a limit on what this system saw. The decision is unchanged.
 - **Lifecycle events now come before warranty.** The order was v0.4.0 Warranty →
   v0.5.0 Lifecycle and ownership. It is now v0.4.0 Lifecycle events and
   enrolment → v0.5.0 Ownership → v0.6.0 Warranty, with verification and
