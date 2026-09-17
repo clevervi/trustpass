@@ -49,6 +49,31 @@ Then open <http://localhost:3000>. The landing page reports live API and
 database health, so a red dot means the stack is genuinely broken, not that the
 page is a mock.
 
+### Configuration
+
+| Variable | Where | Required |
+| --- | --- | --- |
+| `DATABASE_URL` | API | Always |
+| `NEXT_PUBLIC_API_URL` | Web | Always |
+| `NEXT_PUBLIC_SITE_URL` | Web | **In production** |
+
+`NEXT_PUBLIC_SITE_URL` is the public origin this deployment is served from, and
+it is what passport QR codes encode.
+
+In development it may be omitted: the origin is taken from the request, so the
+codes work on whatever port you are using. **In production an unset value means
+no QR is rendered at all** — the passport page omits it and
+`/trustpass/{id}/qr.svg` answers `503`.
+
+That is deliberate. A QR built from a guess still scans; it simply resolves
+somewhere else, and nobody finds out until a camera follows it onto a printed
+label that cannot be recalled. Publishing nothing is the safe answer to a
+deployment that cannot say where it lives.
+
+The origin is never taken from the request in production, because the `Host`
+header is caller-controlled and the QR response is cached for a year — a forged
+host would be served to everyone who came after.
+
 | Endpoint                            | Purpose                       |
 | ----------------------------------- | ----------------------------- |
 | `http://localhost:3001/health`      | Liveness plus dependency check |
