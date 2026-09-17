@@ -124,10 +124,37 @@ export const product = pgTable(
     // dashboard and behind most fraud signals.
     index("product_issuer_id_idx").on(table.issuerId),
 
-    // Looking a product up by serial is how a support conversation starts, and
-    // how TP-024 will detect a duplicate. Lower-cased because serials get typed
-    // by hand off a sticker.
+    // Looking a product up by serial is how a support conversation starts.
+    // Lower-cased because serials get typed by hand off a sticker.
     index("product_serial_idx").on(sql`lower(${table.serial})`),
+
+    // The rule that makes a passport mean anything: one physical product, one
+    // live identity. If a serial could hold two, a seller would show whichever
+    // history looked better and the passport would prove nothing.
+    //
+    // It lives here rather than in application code because an application
+    // check reads, decides, then writes, and two concurrent retries both pass
+    // the read before either writes. Under a retry storm that is not a rare
+    // race, it is the expected behaviour.
+    //
+    // Lower-cased for the same reason as the lookup index. A plain unique index
+    // is case sensitive, so "M1LMCS004896" and "m1lmcs004896" would both be
+    // accepted and the constraint would stop nothing anyone actually types.
+    // The issuer table had exactly this defect before it was caught.
+    //
+    // "Active" means every status except retired. A draft, registered, active
+    // or suspended product still holds a live identity and must block a second
+    // one. Retirement releases the serial, because a warranty replacement unit
+    // legitimately carries the serial of the unit it replaced, and a retired
+    // product poisoning its serial forever would make that impossible.
+    //
+    // Scoped to one issuer on purpose. Two issuers holding units with colliding
+    // serials is legitimate -- serials are only unique within a manufacturer's
+    // own numbering. The same serial across different issuers is a fraud signal
+    // to weigh, not a constraint to enforce (TP-111).
+    uniqueIndex("product_live_issuer_serial_idx")
+      .on(table.issuerId, sql`lower(${table.serial})`)
+      .where(sql`${table.status} <> 'retired'`),
 
     // Shape only. The application parser in identity/trustpass-id.ts is
     // authoritative, including the check symbol; this catches a raw UUID, an

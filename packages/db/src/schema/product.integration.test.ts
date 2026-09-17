@@ -27,6 +27,11 @@ describe.skipIf(!databaseUrl)("product table", () => {
   }
 
   function build(overrides: Partial<NewProduct> = {}): NewProduct {
+    // Each product needs its own serial. Before the partial unique index
+    // landed, every product built here shared one and nothing complained —
+    // these fixtures were creating duplicates of each other unnoticed.
+    sequence += 1;
+
     return {
       trustpassId: generateTrustPassId(),
       issuerId,
