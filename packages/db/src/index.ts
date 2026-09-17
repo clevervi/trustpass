@@ -35,3 +35,10 @@ export {
   type ProductWithIssuer,
 } from "./repositories/product-repository.js";
 export * as schema from "./schema/index.js";
+export type {
+  LifecycleActorKind,
+  LifecycleEvent,
+  LifecycleEventReason,
+  LifecycleEventType,
+  NewLifecycleEvent,
+} from "./schema/lifecycle-event.js";
