@@ -1,5 +1,10 @@
 # TrustPass
 
+[![CI](https://github.com/clevervi/trustpass/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/clevervi/trustpass/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/clevervi/trustpass/actions/workflows/codeql.yml/badge.svg)](https://github.com/clevervi/trustpass/actions/workflows/codeql.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+![Version](https://img.shields.io/badge/version-0.1.0-green)
+
 Verifiable digital identity, warranty and lifecycle history for physical products.
 
 A product gets a TrustPass ID at issue time. From then on, every meaningful event
@@ -84,7 +89,16 @@ Vitest. Smart contracts (Foundry) and a Python fraud service arrive later, each
 gated on the previous layer proving its value. See
 [`docs/adr/`](docs/adr/) for the reasoning.
 
+## Maintainer
+
+[@clevervi](https://github.com/clevervi), who also commits as
+[@raishark](https://github.com/raishark).
+
 ## Contributing
 
 Read [`CONTRIBUTING.md`](CONTRIBUTING.md) first. Branching, commit format,
 definition of ready and definition of done are all enforced there.
+
+- [`CHANGELOG.md`](CHANGELOG.md) — what shipped and when.
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — how we treat each other.
+- [`.github/SECURITY.md`](.github/SECURITY.md) — how to report a vulnerability.
