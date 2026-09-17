@@ -14,6 +14,27 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ## [Unreleased]
 
+### Fixed
+
+- **A passport QR could encode a host this deployment does not own**
+  ([#43](https://github.com/clevervi/trustpass/issues/43)). `passportUrl`
+  defaulted to `http://localhost:3000` when `NEXT_PUBLIC_SITE_URL` was unset,
+  and both call sites relied on that default. The resulting code scanned
+  cleanly and resolved elsewhere — and on a developer's machine that address is
+  not dead, it is whatever else holds the port.
+
+### Changed
+
+- **`NEXT_PUBLIC_SITE_URL` is now required in production.** Unset, no QR is
+  rendered: the passport page omits it and `/trustpass/{id}/qr.svg` answers
+  `503`. A missing QR is honest; one pointing at the wrong host is not, and it
+  is printed onto an object that cannot be recalled.
+- **The QR's `Cache-Control` now depends on where its origin came from.** A
+  configured origin is cached for a year as before. An origin derived from the
+  request — development only — is `no-store`, because `Host` is
+  caller-controlled and caching it would serve a forged host to every later
+  visitor.
+
 ## [0.3.0] — 2026-09-17
 
 Passport. A TrustPass ID now resolves to a page anyone can read, and that page
