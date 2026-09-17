@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   check,
+  index,
   pgEnum,
   pgTable,
   timestamp,
@@ -41,6 +42,16 @@ export const issuer = pgTable(
     /** Registered name, the one a company registry would return. */
     legalName: varchar("legal_name", { length: 200 }).notNull(),
 
+    /**
+     * National business identifier: NIT in Colombia, RFC in Mexico, EIN in the
+     * United States, VAT number across the EU.
+     *
+     * This is the issuer's identity, not its name — see ADR 0006. Names are
+     * only unique where naming law makes them so, and they change when a
+     * company rebrands. A key that changes is not a key.
+     */
+    registrationNumber: varchar("registration_number", { length: 50 }).notNull(),
+
     /** ISO 3166-1 alpha-2. */
     country: varchar("country", { length: 2 }).notNull(),
 
@@ -56,19 +67,27 @@ export const issuer = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    // Company registries issue one legal name per jurisdiction, so a collision
-    // here is a duplicate record rather than two real companies. Duplicate
-    // issuers fragment a product's trust history across two identities, which
-    // is precisely the failure the passport exists to prevent.
-    //
-    // Indexed on the lower-cased name: a plain unique index is case sensitive,
-    // so "ANDES TECH SAS" and "Andes Tech SAS" would both be accepted and the
-    // constraint would prevent nothing that anyone actually types.
-    //
-    // Known limit: whitespace and punctuation variants still slip through
-    // ("ANDES  TECH" with two spaces). Catching those belongs to the issuer
-    // verification workflow, which compares against a registry, not to an index.
-    uniqueIndex("issuer_legal_name_country_idx").on(sql`lower(${table.legalName})`, table.country),
+    // The uniqueness guarantee comes from the authority that issues the number,
+    // rather than from an assumption about naming law. Colombia enforces
+    // national name uniqueness through the RUES; the United States registers
+    // names per state, so two legitimate companies may both be "Acme LLC".
+    uniqueIndex("issuer_country_registration_number_idx").on(
+      table.country,
+      table.registrationNumber,
+    ),
+
+    // Looking an issuer up by name stays a normal thing to do; it is simply not
+    // how identity is established. Lower-cased so the lookup is case tolerant.
+    index("issuer_legal_name_idx").on(sql`lower(${table.legalName})`),
+
+    // Shaped like a registration number, without teaching the schema the rules
+    // of every tax authority on earth. Accepts 900123456-7, ABC123456T1A and
+    // 12-3456789. Whether the number is real is what verification_status exists
+    // to answer.
+    check(
+      "issuer_registration_number_format",
+      sql`${table.registrationNumber} ~ '^[A-Z0-9-]{4,50}$'`,
+    ),
 
     // Length alone would accept "co", "C1" or "  ". The registered format is
     // two uppercase letters and nothing else.

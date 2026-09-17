@@ -11,6 +11,7 @@ const databaseUrl = process.env.DATABASE_URL;
  */
 const CHECK_VIOLATION = "23514";
 const UNIQUE_VIOLATION = "23505";
+const NOT_NULL_VIOLATION = "23502";
 const INVALID_ENUM_INPUT = "22P02";
 
 /**
@@ -49,18 +50,26 @@ async function expectSqlState(operation: Promise<unknown>, code: string): Promis
  * Constraints are the point of this suite, and a constraint only exists in the
  * database. Asserting them against a mock would test the mock.
  *
- * Rows are namespaced with a per-run suffix and removed afterwards rather than
+ * Rows are namespaced with a per-run prefix and removed afterwards rather than
  * wrapped in a rolled-back transaction: half of these tests provoke constraint
  * violations, and a violation aborts the surrounding transaction in Postgres.
  */
 describe.skipIf(!databaseUrl)("issuer table", () => {
-  const suffix = `-test-${Math.random().toString(36).slice(2, 10)}`;
+  const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
+  let sequence = 0;
+
+  /** A registration number unique to this run, so repeat runs cannot collide. */
+  function registrationNumber(): string {
+    sequence += 1;
+    return `${run}-${String(sequence).padStart(4, "0")}`;
+  }
 
   function build(overrides: Partial<NewIssuer> = {}): NewIssuer {
     return {
       companyName: "Andes Tech Imports",
-      legalName: `ANDES TECH IMPORTS SAS${suffix}`,
+      legalName: "ANDES TECH IMPORTS SAS",
+      registrationNumber: registrationNumber(),
       country: "CO",
       ...overrides,
     };
@@ -71,135 +80,179 @@ describe.skipIf(!databaseUrl)("issuer table", () => {
   });
 
   afterAll(async () => {
-    await db.delete(issuer).where(like(issuer.legalName, `%${suffix}`));
+    await db.delete(issuer).where(like(issuer.registrationNumber, `${run}%`));
     await db.$client.end();
   });
 
-  it("round-trips an issuer", async () => {
-    const [created] = await db.insert(issuer).values(build()).returning();
+  describe("persistence", () => {
+    it("round-trips an issuer", async () => {
+      const [created] = await db.insert(issuer).values(build()).returning();
 
-    expect(created).toBeDefined();
-    expect(created?.companyName).toBe("Andes Tech Imports");
-    expect(created?.country).toBe("CO");
+      expect(created).toBeDefined();
+      expect(created?.companyName).toBe("Andes Tech Imports");
+      expect(created?.country).toBe("CO");
 
-    const [found] = await db
-      .select()
-      .from(issuer)
-      .where(eq(issuer.id, created?.id as number));
+      const [found] = await db
+        .select()
+        .from(issuer)
+        .where(eq(issuer.id, created?.id as number));
 
-    expect(found).toEqual(created);
+      expect(found).toEqual(created);
+    });
+
+    it("defaults an issuer to unverified", async () => {
+      // The honest default. An issuer we have checked nothing about must not
+      // start life claiming otherwise.
+      const [created] = await db.insert(issuer).values(build()).returning();
+
+      expect(created?.verificationStatus).toBe("unverified");
+    });
+
+    it("stores timestamps with a timezone", async () => {
+      const [created] = await db.insert(issuer).values(build()).returning();
+
+      expect(created?.createdAt).toBeInstanceOf(Date);
+      expect(created?.updatedAt).toBeInstanceOf(Date);
+    });
+
+    it("advances updated_at when a row changes", async () => {
+      const [created] = await db.insert(issuer).values(build()).returning();
+
+      // Millisecond resolution needs room to move before the comparison.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const [updated] = await db
+        .update(issuer)
+        .set({ verificationStatus: "verified" })
+        .where(eq(issuer.id, created?.id as number))
+        .returning();
+
+      expect(updated?.verificationStatus).toBe("verified");
+      // Strictly greater, not "greater or equal": the weaker assertion passes
+      // even when $onUpdate never fires, which is the thing under test.
+      expect(updated?.updatedAt.getTime()).toBeGreaterThan(created?.updatedAt.getTime() as number);
+      expect(updated?.createdAt.getTime()).toBe(created?.createdAt.getTime());
+    });
   });
 
-  it("defaults an issuer to unverified", async () => {
-    // The honest default. An issuer we have checked nothing about must not
-    // start life claiming otherwise.
-    const [created] = await db
-      .insert(issuer)
-      .values(build({ legalName: `DEFAULT STATUS SAS${suffix}` }))
-      .returning();
-
-    expect(created?.verificationStatus).toBe("unverified");
-  });
-
-  it("stores timestamps with a timezone", async () => {
-    const [created] = await db
-      .insert(issuer)
-      .values(build({ legalName: `TIMESTAMPS SAS${suffix}` }))
-      .returning();
-
-    expect(created?.createdAt).toBeInstanceOf(Date);
-    expect(created?.updatedAt).toBeInstanceOf(Date);
-  });
-
-  it("rejects a verification status outside the enum", async () => {
-    await expectSqlState(
-      db
+  describe("identity — see ADR 0006", () => {
+    it("rejects a duplicate registration number within one country", async () => {
+      const duplicated = registrationNumber();
+      await db
         .insert(issuer)
-        .values({
-          ...build({ legalName: `BAD STATUS SAS${suffix}` }),
-          // Casting past the type is the point: the guarantee has to hold at
-          // the database, not only at the TypeScript boundary.
-          verificationStatus: "totally_legit" as never,
-        })
-        .returning(),
-      INVALID_ENUM_INPUT,
-    );
-  });
+        .values(build({ registrationNumber: duplicated }))
+        .returning();
 
-  it.each([
-    ["lower case", "co"],
-    ["digits", "C1"],
-    ["blank", "  "],
-  ])("rejects a country that is not ISO 3166-1 alpha-2: %s", async (label, country) => {
-    await expectSqlState(
-      db
+      await expectSqlState(
+        db
+          .insert(issuer)
+          .values(build({ registrationNumber: duplicated }))
+          .returning(),
+        UNIQUE_VIOLATION,
+      );
+    });
+
+    it("allows the same registration number in a different country", async () => {
+      // Registries are national. A Colombian NIT and a Mexican RFC that happen
+      // to collide identify two different companies.
+      const shared = registrationNumber();
+      await db
         .insert(issuer)
-        .values(build({ legalName: `BAD COUNTRY ${label} SAS${suffix}`, country }))
-        .returning(),
-      CHECK_VIOLATION,
-    );
-  });
+        .values(build({ registrationNumber: shared, country: "CO" }))
+        .returning();
 
-  it("rejects a second issuer with the same legal name in the same country", async () => {
-    const values = build({ legalName: `DUPLICATE SAS${suffix}` });
-    await db.insert(issuer).values(values).returning();
-
-    // Two records for one company fragment a product's trust history across
-    // two identities, which is the failure the passport exists to prevent.
-    await expectSqlState(db.insert(issuer).values(values).returning(), UNIQUE_VIOLATION);
-  });
-
-  it("rejects a duplicate whose legal name differs only in case", async () => {
-    // A plain unique index is case sensitive, so this pair was accepted before
-    // the index moved to lower(legal_name). Verified against Postgres directly:
-    // "CASE PROBE SAS" and "case probe sas" both inserted.
-    await db
-      .insert(issuer)
-      .values(build({ legalName: `MIXED CASE SAS${suffix}` }))
-      .returning();
-
-    await expectSqlState(
-      db
+      const [mexican] = await db
         .insert(issuer)
-        .values(build({ legalName: `mixed case sas${suffix}`.toLowerCase() }))
-        .returning(),
-      UNIQUE_VIOLATION,
-    );
+        .values(build({ registrationNumber: shared, country: "MX" }))
+        .returning();
+
+      expect(mexican?.country).toBe("MX");
+    });
+
+    it("allows two issuers to share a legal name in one country", async () => {
+      // United States business names are registered per state, so two
+      // legitimate companies may both be "Acme LLC". Keying identity on the
+      // name would have refused the second one.
+      await db
+        .insert(issuer)
+        .values(build({ legalName: "ACME LLC", country: "US" }))
+        .returning();
+
+      const [second] = await db
+        .insert(issuer)
+        .values(build({ legalName: "ACME LLC", country: "US" }))
+        .returning();
+
+      expect(second?.legalName).toBe("ACME LLC");
+    });
+
+    it("requires a registration number", async () => {
+      // Nullable would be worse than absent: Postgres allows unlimited nulls in
+      // a unique index, so duplicate protection would switch itself off for
+      // exactly the unverified issuers where duplicates are most likely.
+      await expectSqlState(
+        db
+          .insert(issuer)
+          .values({ ...build(), registrationNumber: null as never })
+          .returning(),
+        NOT_NULL_VIOLATION,
+      );
+    });
+
+    it.each([
+      ["lower case", "abc123"],
+      ["spaces", "ABC 123"],
+      ["fewer than four characters", "AB1"],
+      ["punctuation", "ABC/123"],
+    ])("rejects a registration number with %s", async (_label, registration) => {
+      await expectSqlState(
+        db
+          .insert(issuer)
+          .values(build({ registrationNumber: registration }))
+          .returning(),
+        CHECK_VIOLATION,
+      );
+    });
+
+    it.each([
+      ["Colombian NIT", "900123456-7"],
+      ["Mexican RFC", "ABC123456T1A"],
+      ["United States EIN", "12-3456789"],
+    ])("accepts a real %s", async (_label, registration) => {
+      const [created] = await db
+        .insert(issuer)
+        .values(build({ registrationNumber: `${run}${registration}` }))
+        .returning();
+
+      expect(created?.registrationNumber).toBe(`${run}${registration}`);
+    });
   });
 
-  it("allows the same legal name in a different country", async () => {
-    const legalName = `CROSS BORDER SAS${suffix}`;
-    await db
-      .insert(issuer)
-      .values(build({ legalName, country: "CO" }))
-      .returning();
+  describe("field constraints", () => {
+    it("rejects a verification status outside the enum", async () => {
+      await expectSqlState(
+        db
+          .insert(issuer)
+          .values({
+            ...build(),
+            // Casting past the type is the point: the guarantee has to hold at
+            // the database, not only at the TypeScript boundary.
+            verificationStatus: "totally_legit" as never,
+          })
+          .returning(),
+        INVALID_ENUM_INPUT,
+      );
+    });
 
-    const [mexican] = await db
-      .insert(issuer)
-      .values(build({ legalName, country: "MX" }))
-      .returning();
-
-    expect(mexican?.country).toBe("MX");
-  });
-
-  it("advances updated_at when a row changes", async () => {
-    const [created] = await db
-      .insert(issuer)
-      .values(build({ legalName: `TOUCHED SAS${suffix}` }))
-      .returning();
-
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
-    const [updated] = await db
-      .update(issuer)
-      .set({ verificationStatus: "verified" })
-      .where(eq(issuer.id, created?.id as number))
-      .returning();
-
-    expect(updated?.verificationStatus).toBe("verified");
-    // Strictly greater, not "greater or equal": the weaker assertion passes
-    // even when $onUpdate never fires, which is the thing under test.
-    expect(updated?.updatedAt.getTime()).toBeGreaterThan(created?.updatedAt.getTime() as number);
-    expect(updated?.createdAt.getTime()).toBe(created?.createdAt.getTime());
+    it.each([
+      ["lower case", "co"],
+      ["digits", "C1"],
+      ["blank", "  "],
+    ])("rejects a country that is not ISO 3166-1 alpha-2: %s", async (_label, country) => {
+      await expectSqlState(
+        db.insert(issuer).values(build({ country })).returning(),
+        CHECK_VIOLATION,
+      );
+    });
   });
 });

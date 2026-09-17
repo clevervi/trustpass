@@ -32,9 +32,11 @@ never crosses the API boundary.**
 Public identifiers are separate columns: random, uniquely indexed, and added to
 a table only when an external consumer actually needs to name that row.
 
-For `product`, that column is the TrustPass ID. For `issuer`, there is no such
-column yet, because nothing outside the system needs to name an issuer until
-`POST /products` accepts one — and that endpoint can be built when it is built.
+For `product`, that column is the TrustPass ID, which TrustPass generates. For
+`issuer` it is the registration number, which a national authority already
+issued and already publishes — see [ADR 0006](0006-issuers-are-identified-by-registration-number.md).
+A public identifier does not have to be one we invented; it has to be unique,
+stable, and safe to expose.
 
 Consequently:
 
