@@ -39,6 +39,7 @@ export type ApiError = z.infer<typeof ApiErrorSchema>;
 export const ApiErrorCode = {
   VALIDATION_FAILED: "validation_failed",
   ISSUER_NOT_FOUND: "issuer_not_found",
+  DUPLICATE_SERIAL: "duplicate_serial",
   NOT_FOUND: "not_found",
 } as const;
 

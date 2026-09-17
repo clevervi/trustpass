@@ -1,6 +1,7 @@
 import {
   type Database,
   findIssuerByRegistration,
+  findLiveProductBySerial,
   generateTrustPassId,
   insertProduct,
   type schema,
@@ -50,7 +51,17 @@ export interface RegisteredProduct {
  */
 export type RegisterProductResult =
   | { readonly ok: true; readonly product: RegisteredProduct }
-  | { readonly ok: false; readonly reason: "issuer_not_found" };
+  | { readonly ok: false; readonly reason: "issuer_not_found" }
+  | {
+      readonly ok: false;
+      readonly reason: "duplicate_serial";
+      /**
+       * The identity this serial already holds. Returned so a client that timed
+       * out and retried learns the identifier it already created, rather than
+       * only being told no.
+       */
+      readonly existingTrustpassId: string;
+    };
 
 /**
  * Registers a product against an existing issuer.
@@ -63,11 +74,11 @@ export type RegisterProductResult =
  * is the issuer committing to the record. `draft` exists for rows that arrive
  * some other way, such as a bulk import staged before review.
  *
- * Known gap until TP-024: nothing here stops the same issuer registering the
- * same serial twice. A client retrying after a timeout will produce a second
- * identity for one physical product, which is the failure a passport exists to
- * prevent. The fix belongs in the database, because two concurrent retries both
- * pass an application-level check before either writes.
+ * One issuer cannot hold two live identities for one serial. That is enforced
+ * by a partial unique index rather than checked here, because two concurrent
+ * retries would both pass an application check before either writes. This
+ * translates the rejection into an outcome and reports which identity the
+ * serial already belongs to.
  */
 export async function registerProduct(
   db: Database,
@@ -83,7 +94,7 @@ export async function registerProduct(
     return { ok: false, reason: "issuer_not_found" };
   }
 
-  const created = await insertProduct(db, {
+  const inserted = await insertProduct(db, {
     trustpassId: generateTrustPassId(),
     issuerId: issuer.id,
     brand: input.brand,
@@ -92,6 +103,21 @@ export async function registerProduct(
     category: input.category,
     status: "registered",
   });
+
+  if (!inserted.ok) {
+    const existing = await findLiveProductBySerial(db, issuer.id, input.serial);
+
+    return {
+      ok: false,
+      reason: "duplicate_serial",
+      // The lookup can only miss if the winning row was retired between the
+      // rejection and this read. Reporting the conflict without an identifier
+      // is still the honest answer; inventing one would not be.
+      existingTrustpassId: existing?.trustpassId ?? "unknown",
+    };
+  }
+
+  const created = inserted.product;
 
   return {
     ok: true,

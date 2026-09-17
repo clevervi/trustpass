@@ -72,6 +72,12 @@ A product that can come back from end of life makes the word meaningless on a
 passport. Recycled, destroyed and decommissioned units must stay that way, or
 "retired" stops being evidence of anything.
 
+Retirement also releases the product's serial. One issuer may hold only one
+**live** identity per serial — every status except `retired` — so retiring a unit
+is what allows a warranty replacement to be registered under the serial it
+replaces. Moving a product to `retired` is therefore not only an end state; it
+is the act that frees the serial. See `product_live_issuer_serial_idx`.
+
 ## Where this is enforced
 
 In two places, deliberately.
