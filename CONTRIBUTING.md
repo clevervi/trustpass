@@ -86,7 +86,9 @@ pnpm build
 ```
 
 All four must pass locally. CI runs the same commands plus a secret scan over
-the full history, so pushing a key is caught before review, not after.
+the commits you are adding, so pushing a key is caught before review rather than
+after. A separate weekly job sweeps the entire history, because a per-change scan
+says nothing about a key that is already in it.
 
 ## Who reviews, and what that review is worth
 
@@ -101,7 +103,8 @@ writing it:
 | ------------------------- | ----------------------------------------------------- |
 | Lint, typecheck and build | Contract and style violations                         |
 | Test against Postgres     | Behaviour, including the integration path             |
-| Secret scan               | Credentials committed anywhere in history             |
+| Secret scan               | Credentials introduced by this change                 |
+| Full secret scan          | Credentials anywhere in history — weekly, not per change |
 | CodeQL                    | Security and quality defects, refreshed weekly        |
 | Dependency review         | New dependencies with known vulnerabilities or copyleft licences |
 

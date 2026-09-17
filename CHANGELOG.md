@@ -58,7 +58,7 @@ health checks, and a CI pipeline that enforces quality before any code reaches
   status
   ([`3d347be`](https://github.com/clevervi/trustpass/commit/3d347be))
 - **CI** — GitHub Actions pipeline: lint, typecheck, build, tests against a real
-  Postgres service, and a secret scan over the full history
+  Postgres service, and a secret scan over the commits in each change
   ([`0fe943a`](https://github.com/clevervi/trustpass/commit/0fe943a))
 
 ### Documentation
