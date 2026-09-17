@@ -3,6 +3,7 @@ import { createDatabase, isDatabaseReachable } from "@trustpass/db";
 import { createApp } from "./app.js";
 import { loadEnv } from "./env.js";
 import { logger } from "./logger.js";
+import { registerProduct } from "./products/register-product.js";
 import { version } from "./version.js";
 
 // Configuration arrives from the environment. The dev and start scripts point
@@ -14,6 +15,7 @@ const db = createDatabase(env.DATABASE_URL);
 const app = createApp({
   version,
   checkDatabase: () => isDatabaseReachable(db),
+  registerProduct: (input) => registerProduct(db, input),
 });
 
 serve({ fetch: app.fetch, port: env.API_PORT }, (info) => {
