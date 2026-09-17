@@ -3,6 +3,7 @@ import { createDatabase, isDatabaseReachable } from "@trustpass/db";
 import { createApp } from "./app.js";
 import { loadEnv } from "./env.js";
 import { logger } from "./logger.js";
+import { readPassport } from "./passports/read-passport.js";
 import { registerProduct } from "./products/register-product.js";
 import { version } from "./version.js";
 
@@ -16,6 +17,7 @@ const app = createApp({
   version,
   checkDatabase: () => isDatabaseReachable(db),
   registerProduct: (input) => registerProduct(db, input),
+  readPassport: (trustpassId) => readPassport(db, trustpassId),
 });
 
 serve({ fetch: app.fetch, port: env.API_PORT }, (info) => {

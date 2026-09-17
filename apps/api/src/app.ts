@@ -5,6 +5,7 @@ import { secureHeaders } from "hono/secure-headers";
 import type { AppDependencies } from "./dependencies.js";
 import { ApiErrorCode, validationError } from "./http/errors.js";
 import { registerHealthRoutes } from "./routes/health.js";
+import { registerPassportRoutes } from "./routes/passports.js";
 import { registerProductRoutes } from "./routes/products.js";
 
 export function createApp(deps: AppDependencies): OpenAPIHono {
@@ -27,6 +28,7 @@ export function createApp(deps: AppDependencies): OpenAPIHono {
 
   registerHealthRoutes(app, deps);
   registerProductRoutes(app, deps);
+  registerPassportRoutes(app, deps);
 
   app.doc("/openapi.json", {
     openapi: "3.1.0",
