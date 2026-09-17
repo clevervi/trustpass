@@ -14,6 +14,14 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ## [Unreleased]
 
+### Changed
+
+- **Merge policy.** `high` and `critical` pull requests no longer wait for a
+  second reader; merging is delegated to the author. What replaces the reader is
+  a public bar: every protective guard mutation-checked, the results listed in
+  the pull request, and an inline self-review. The document states plainly that
+  this is weaker than independent review.
+
 ## [0.2.0] — 2026-09-17
 
 Identity. A business registers a product and receives a TrustPass ID, and one
