@@ -88,6 +88,23 @@ pnpm build
 All four must pass locally. CI runs the same commands plus a secret scan over
 the full history, so pushing a key is caught before review, not after.
 
+## Break-glass
+
+`main` and `develop` are protected, and the protection applies to
+administrators too. That is deliberate: on a repository with a single
+maintainer, a rule that the owner can silently step around is not a rule.
+
+There is still an escape hatch, and it is meant to be an inconvenient one:
+
+1. Disable the protection rule for the branch, in the repository settings.
+2. Make the change.
+3. Re-enable the protection.
+4. Open an issue recording what was bypassed, why, and what would have to be
+   true for it not to happen again.
+
+Step 4 is the part that matters. A bypass that nobody wrote down is how a
+process quietly stops existing.
+
 ## Priority and risk labels
 
 | Priority | Meaning                                  |
