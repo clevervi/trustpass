@@ -168,11 +168,15 @@ moving one into the other, and it is the only time `main` changes.
 
 1. Confirm the milestone is closed: every issue in it is done, and CI on
    `develop` is green.
-2. Open a pull request from `develop` into `main`, titled `release: vX.Y.Z`.
-3. Merge it with a **merge commit**, not a squash. The individual changes already
+2. Bump `version` in the root manifest and in every workspace package, on
+   `develop`, before the release pull request. The API serves its own version
+   from its manifest, so skipping this ships a service that reports the previous
+   release while running the new one.
+3. Open a pull request from `develop` into `main`, titled `release: vX.Y.Z`.
+4. Merge it with a **merge commit**, not a squash. The individual changes already
    have their own history and flattening it here destroys the trail from a
    released version back to the pull request that introduced a line.
-4. Tag `main`:
+5. Tag `main`:
 
    ```bash
    git checkout main && git pull
@@ -180,7 +184,7 @@ moving one into the other, and it is the only time `main` changes.
    git push origin vX.Y.Z
    ```
 
-5. Publish release notes from the tag, grouped by the conventional-commit type.
+6. Publish release notes from the tag, grouped by the conventional-commit type.
 
 Versioning follows semver against the **public contract** — the HTTP API, the
 TrustPass ID format, and the database schema. Internal refactors are patch

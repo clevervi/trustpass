@@ -14,19 +14,43 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ## [Unreleased]
 
+Identity. A business registers a product and receives a TrustPass ID, and one
+physical product cannot hold two live identities.
+
 ### Added
 
 - **TrustPass ID** — 128-bit Crockford base32 identifier with a check symbol
   that detects every single-character typo
   ([`8b190e7`](https://github.com/clevervi/trustpass/commit/8b190e7))
-- **Issuer model** — issuer registration with four verification states:
-  `unverified`, `pending`, `verified`, `suspended`
+- **Issuer model** — four verification states (`unverified`, `pending`,
+  `verified`, `suspended`), keyed by the registration number its national
+  authority guarantees unique
   ([`f665312`](https://github.com/clevervi/trustpass/commit/f665312))
+- **Product model** — brand, model, serial, category, status and issuer, with
+  the issuer foreign key set to RESTRICT so provenance cannot be deleted
+  ([`5666512`](https://github.com/clevervi/trustpass/commit/5666512))
+- **Status lifecycle** — the allowed moves between `draft`, `registered`,
+  `active`, `suspended` and `retired`, enforced by a database trigger rather
+  than by application code. `retired` is terminal, and `suspended` cannot
+  return to `active` in one step
+  ([`046b170`](https://github.com/clevervi/trustpass/commit/046b170))
+- **`POST /products`** — registers a product against an existing issuer and
+  returns its TrustPass ID, with validation at the boundary and one documented
+  error shape
+  ([`3acb78e`](https://github.com/clevervi/trustpass/commit/3acb78e))
+- **One live identity per serial** — a partial unique index over issuer and
+  lower-cased serial, excluding retired products, so a warranty replacement can
+  reuse the serial it replaces. A duplicate returns 409 naming the existing
+  TrustPass ID
+  ([`f040311`](https://github.com/clevervi/trustpass/commit/f040311))
 - **CodeQL** — security and quality analysis on every pull request and weekly
   ([`b936bdc`](https://github.com/clevervi/trustpass/commit/b936bdc))
 - **Dependency review** — blocks pull requests introducing dependencies with
   known vulnerabilities or copyleft licences
   ([`b936bdc`](https://github.com/clevervi/trustpass/commit/b936bdc))
+- **Full-history secret scan** — a weekly sweep of every commit, because the
+  per-change scan only covers the commits in each push
+  ([`281d5da`](https://github.com/clevervi/trustpass/commit/281d5da))
 - **Risk-based merge policy** — `low` and `medium` merge on green gates, `high`
   and `critical` wait for a human
   ([`b936bdc`](https://github.com/clevervi/trustpass/commit/b936bdc))
@@ -34,9 +58,47 @@ A version's section lists only what that tag actually contains. Work merged to
   ([`75ba503`](https://github.com/clevervi/trustpass/commit/75ba503))
 - Release process definition
   ([`ac26b13`](https://github.com/clevervi/trustpass/commit/ac26b13))
+- Migration policy and `pnpm db:reset`, which removes the volume. `DROP SCHEMA
+  public CASCADE` leaves Drizzle's ledger behind and is not a reset
+  ([`5666512`](https://github.com/clevervi/trustpass/commit/5666512))
 - ADR 0004 — TrustPass ID format
 - ADR 0005 — Internal keys are never public
 - ADR 0006 — Issuers are identified by registration number, not by name
+- [`docs/product-lifecycle.md`](docs/product-lifecycle.md) — the status diagram
+  and the reasoning behind the two one-way transitions
+
+### Changed
+
+- CI actions updated to current majors: `actions/checkout` 7,
+  `actions/setup-node` 7, `github/codeql-action` 4, `gitleaks-action` 3,
+  `pnpm/action-setup` 6
+  ([#15](https://github.com/clevervi/trustpass/pull/15)–[#19](https://github.com/clevervi/trustpass/pull/19))
+
+### Fixed
+
+- Documentation claims audited against what the code and tags actually contain.
+  The v0.1.0 notes credited that tag with work merged afterwards, the security
+  policy promised response times a single maintainer cannot keep, and the served
+  OpenAPI document advertised endpoints that do not exist
+  ([`755cd94`](https://github.com/clevervi/trustpass/commit/755cd94))
+- Next 16 regenerating agent instruction files into `apps/web` on every
+  `next dev`, which put deleted files back
+  ([`c0c5d68`](https://github.com/clevervi/trustpass/commit/c0c5d68))
+
+### Security
+
+- esbuild pinned past two dev-server advisories reaching the tree through
+  `drizzle-kit`. Neither was exploitable here — both require running esbuild's
+  development server — but an open alert on a public repository is a claim
+  nobody should have to disprove
+  ([`bd66d8b`](https://github.com/clevervi/trustpass/commit/bd66d8b))
+
+### Known limitations
+
+- **No authentication.** Anyone who can reach `POST /products` can register
+  against any issuer. The API must not be exposed publicly before TP-141.
+- No public passport page, warranty, lifecycle events or ownership transfer.
+- Serials are stored whole and are not safe to display; masking is TP-031.
 
 ## [0.1.0] — 2026-09-17
 
