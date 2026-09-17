@@ -25,6 +25,14 @@ export const SqlState = {
    * no". See drizzle/0002_product_status_transition_guard.sql.
    */
   ILLEGAL_STATUS_TRANSITION: "TP001",
+  /**
+   * Project-defined, and deliberately distinct from TP001. Raised when
+   * something tries to modify or delete a lifecycle event, so a caller can tell
+   * "that move is not allowed" from "history cannot be rewritten" without
+   * parsing a message.
+   * See drizzle/0005_lifecycle_event_append_only.sql.
+   */
+  HISTORY_IS_APPEND_ONLY: "TP002",
 } as const;
 
 export type SqlStateCode = (typeof SqlState)[keyof typeof SqlState];
