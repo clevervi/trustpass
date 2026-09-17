@@ -124,26 +124,96 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
     expect(created.issuer.verificationStatus).toBe("unverified");
   });
 
-  it("currently allows one issuer to register the same serial twice", async () => {
-    // KNOWN GAP, closed by TP-024.
-    //
-    // This asserts the behaviour as it is, not as it should be. A client
-    // retrying after a timeout produces a second identity for one physical
-    // product — two passports for one GPU, which is the exact failure the
-    // system exists to prevent.
-    //
-    // When TP-024 adds the partial unique index, this test must fail and be
-    // rewritten to expect the rejection. That is the point of writing it.
-    const serial = `${run}-DUPLICATE`;
+  describe("one live identity per serial", () => {
+    it("refuses a second registration of the same serial", async () => {
+      // The rule that makes a passport mean anything. Two live identities for
+      // one product would let a seller show whichever history looked better.
+      const serial = `${run}-DUPLICATE`;
 
-    const first = await post(body({ serial }));
-    const second = await post(body({ serial }));
+      const first = await post(body({ serial }));
+      expect(first.status).toBe(201);
+      const created = (await first.json()) as { trustpassId: string };
 
-    expect(first.status).toBe(201);
-    expect(second.status).toBe(201);
+      const second = await post(body({ serial }));
+      expect(second.status).toBe(409);
 
-    const rows = await db.select().from(schema.product).where(eq(schema.product.serial, serial));
+      const conflict = (await second.json()) as { error: string; message: string };
+      expect(conflict.error).toBe("duplicate_serial");
+      // The existing identifier is the recovery path for a client that timed
+      // out mid-registration and retried.
+      expect(conflict.message).toContain(created.trustpassId);
+      expect(conflict.message).not.toMatch(/constraint|violates|relation|SQLSTATE|index/i);
+    });
 
-    expect(rows).toHaveLength(2);
+    it("refuses a serial that differs only in case", async () => {
+      // A plain unique index is case sensitive, and serials get typed by hand
+      // off a sticker. The issuer table had exactly this defect before it was
+      // caught; this asserts the product table does not.
+      const serial = `${run}-CASETEST`;
+
+      expect((await post(body({ serial }))).status).toBe(201);
+      expect((await post(body({ serial: serial.toLowerCase() }))).status).toBe(409);
+    });
+
+    it("allows the serial again once the prior identity is retired", async () => {
+      // A retired product must not poison its serial forever: a warranty
+      // replacement unit legitimately carries the serial of the unit it
+      // replaced.
+      const serial = `${run}-REPLACED`;
+
+      const original = (await (await post(body({ serial }))).json()) as { trustpassId: string };
+      expect((await post(body({ serial }))).status).toBe(409);
+
+      await db
+        .update(schema.product)
+        .set({ status: "retired" })
+        .where(eq(schema.product.trustpassId, original.trustpassId as never));
+
+      const replacement = await post(body({ serial }));
+      expect(replacement.status).toBe(201);
+
+      const rows = await db.select().from(schema.product).where(eq(schema.product.serial, serial));
+      expect(rows).toHaveLength(2);
+    });
+
+    it("lets exactly one of several concurrent registrations win", async () => {
+      // The reason the constraint is in the database. An application-level
+      // check reads, decides, then writes, and every one of these would pass
+      // the read before any of them wrote.
+      const serial = `${run}-RACE`;
+
+      const responses = await Promise.all([
+        post(body({ serial })),
+        post(body({ serial })),
+        post(body({ serial })),
+        post(body({ serial })),
+        post(body({ serial })),
+      ]);
+
+      const statuses = responses.map((response) => response.status).sort();
+      expect(statuses.filter((status) => status === 201)).toHaveLength(1);
+      expect(statuses.filter((status) => status === 409)).toHaveLength(4);
+
+      const rows = await db.select().from(schema.product).where(eq(schema.product.serial, serial));
+      expect(rows).toHaveLength(1);
+    });
+
+    it("does not stop a different issuer using the same serial", async () => {
+      // Serials are unique only within a manufacturer's own numbering, so two
+      // importers holding colliding serials is legitimate. The same serial
+      // across issuers is a fraud signal to weigh (TP-111), not a constraint.
+      const serial = `${run}-CROSSISSUER`;
+      expect((await post(body({ serial }))).status).toBe(201);
+
+      const other = { country: "CO", registrationNumber: `${run}-9002` };
+      await db.insert(schema.issuer).values({
+        companyName: "Sierra Distribution",
+        legalName: `SIERRA REGISTER ${run} SAS`,
+        registrationNumber: other.registrationNumber,
+        country: other.country,
+      });
+
+      expect((await post(body({ serial, issuer: other }))).status).toBe(201);
+    });
   });
 });

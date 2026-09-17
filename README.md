@@ -22,8 +22,8 @@ can verify.
 >
 > **Not built yet:** the public passport page, warranty, lifecycle events,
 > ownership transfer, blockchain anchoring, NFC. The verified resale flow
-> described above does not exist, and nothing yet prevents one issuer
-> registering the same serial twice. See [`docs/ROADMAP.md`](docs/ROADMAP.md)
+> described above does not exist. There is also no authentication, so the API
+> must not be exposed publicly yet. See [`docs/ROADMAP.md`](docs/ROADMAP.md)
 > and [`CHANGELOG.md`](CHANGELOG.md).
 
 ## What this is honest about

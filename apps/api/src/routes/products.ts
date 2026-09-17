@@ -90,6 +90,11 @@ const registerProductRoute = createRoute({
       content: { "application/json": { schema: RegisteredProductSchema } },
       description: "The product was registered and given a TrustPass ID",
     },
+    409: {
+      content: { "application/json": { schema: ApiErrorSchema } },
+      description:
+        "This issuer already holds a live identity for that serial. The message carries its TrustPass ID.",
+    },
     422: {
       content: { "application/json": { schema: ApiErrorSchema } },
       description: "The body was malformed, or named an issuer that does not exist",
@@ -101,6 +106,22 @@ export function registerProductRoutes(app: OpenAPIHono, deps: AppDependencies): 
   app.openapi(registerProductRoute, async (c) => {
     const body = c.req.valid("json");
     const result = await deps.registerProduct(body);
+
+    if (!result.ok && result.reason === "duplicate_serial") {
+      // 409, not 422: the request is entirely valid and would have been
+      // accepted a moment ago. It conflicts with state that already exists.
+      //
+      // The existing identifier is returned deliberately. A client that timed
+      // out mid-registration and retried needs to learn what it already
+      // created, or it has no way to recover except by guessing.
+      return c.json(
+        {
+          error: ApiErrorCode.DUPLICATE_SERIAL,
+          message: `Serial ${body.serial} already belongs to ${result.existingTrustpassId} under this issuer. Retire that identity before registering the serial again.`,
+        },
+        409,
+      );
+    }
 
     if (!result.ok) {
       // A well-formed request naming something that does not exist is 422, not
