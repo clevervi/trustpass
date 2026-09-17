@@ -1,0 +1,199 @@
+import { eq, sql } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createDatabase, type Database } from "../client.js";
+import { generateTrustPassId } from "../identity/trustpass-id.js";
+import { issuer } from "../schema/issuer.js";
+import { lifecycleEvent } from "../schema/lifecycle-event.js";
+import { type NewProduct, product } from "../schema/product.js";
+import { findProductHistory } from "./lifecycle-event-repository.js";
+import { insertProduct } from "./product-repository.js";
+
+const databaseUrl = process.env.DATABASE_URL;
+
+/**
+ * Exercises the registration path's provenance against real Postgres.
+ *
+ * The property under test is that registering a product and recording where it
+ * came from are one act. A mock would let them be two.
+ */
+describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
+  const run = Math.random().toString(36).slice(2, 8).toUpperCase();
+  let db: Database;
+  let issuerId: number;
+  let sequence = 0;
+
+  function build(overrides: Partial<NewProduct> = {}): NewProduct {
+    sequence += 1;
+
+    return {
+      trustpassId: generateTrustPassId(),
+      issuerId,
+      brand: "ASUS",
+      model: "ROG Strix RTX 5070 Ti",
+      serial: `${run}-PROV-${sequence}`,
+      category: "gpu",
+      status: "registered",
+      ...overrides,
+    };
+  }
+
+  beforeAll(async () => {
+    db = createDatabase(databaseUrl as string);
+
+    const [created] = await db
+      .insert(issuer)
+      .values({
+        companyName: `Prov ${run}`,
+        legalName: `Prov ${run} SAS`,
+        registrationNumber: `${run}-PV`,
+        country: "CO",
+      })
+      .returning({ id: issuer.id });
+    issuerId = created?.id as number;
+  });
+
+  afterAll(async () => {
+    await db.$client.end();
+  });
+
+  it("writes exactly one event when a product is registered", async () => {
+    const result = await insertProduct(db, build());
+    if (!result.ok) throw new Error(`expected success, got ${result.reason}`);
+
+    const history = await findProductHistory(db, result.product.id);
+
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({
+      type: "product_registered",
+      actorKind: "issuer",
+      previousState: null,
+      resultingState: null,
+    });
+  });
+
+  it("records the issuer as the actor, not an anonymous write", async () => {
+    const result = await insertProduct(db, build());
+    if (!result.ok) throw new Error("expected success");
+
+    const [event] = await db
+      .select()
+      .from(lifecycleEvent)
+      .where(eq(lifecycleEvent.productId, result.product.id));
+
+    // The capacity and the issuer travel together, and the check constraint
+    // would have refused one without the other. Asserting it here is about the
+    // repository supplying both, not about the constraint.
+    expect(event?.actorKind).toBe("issuer");
+    expect(event?.issuerId).toBe(issuerId);
+  });
+
+  it("dates the event to the product's own creation, not to a second clock", async () => {
+    const result = await insertProduct(db, build());
+    if (!result.ok) throw new Error("expected success");
+
+    // Asked of Postgres, not compared in JavaScript.
+    //
+    // An earlier version of this test compared two `Date` objects and passed
+    // while the database disagreed: `timestamptz` holds microseconds, a
+    // JavaScript `Date` holds milliseconds, so both sides had already been
+    // truncated to the same wrong value. The comparison has to happen where the
+    // precision still exists.
+    const [row] = await db.execute<{ aligned: boolean }>(sql`
+      SELECT e.occurred_at = p.created_at AS aligned
+      FROM lifecycle_event e
+      JOIN product p ON p.id = e.product_id
+      WHERE e.product_id = ${result.product.id}
+    `);
+
+    expect(row?.aligned).toBe(true);
+  });
+
+  it("says the record began rather than that an issuer committed, for a draft", async () => {
+    const result = await insertProduct(db, build({ status: "draft" }));
+    if (!result.ok) throw new Error("expected success");
+
+    const history = await findProductHistory(db, result.product.id);
+
+    // A draft claims nothing. Recording it as `product_registered` would be a
+    // claim nobody made.
+    expect(history[0]?.type).toBe("record_enrolled");
+  });
+
+  it("leaves no product behind when the serial is already live", async () => {
+    const values = build();
+    const first = await insertProduct(db, values);
+    if (!first.ok) throw new Error("expected the first insert to succeed");
+
+    const second = await insertProduct(db, { ...values, trustpassId: generateTrustPassId() });
+
+    expect(second).toEqual({ ok: false, reason: "duplicate_live_serial" });
+
+    // The rejection still has to travel out of the transaction as its own
+    // outcome. Wrapping the writes must not turn a duplicate into a generic
+    // failure, which is what would happen if the constraint name were lost.
+    const rows = await db
+      .select({ id: product.id })
+      .from(product)
+      .where(eq(product.serial, values.serial));
+
+    expect(rows).toHaveLength(1);
+  });
+
+  it("gives each product its own history", async () => {
+    const one = await insertProduct(db, build());
+    const two = await insertProduct(db, build());
+    if (!one.ok || !two.ok) throw new Error("expected both to succeed");
+
+    expect(await findProductHistory(db, one.product.id)).toHaveLength(1);
+    expect(await findProductHistory(db, two.product.id)).toHaveLength(1);
+  });
+
+  it("returns nothing for a product with no history rather than failing", async () => {
+    sequence += 1;
+    const [bare] = await db
+      .insert(product)
+      .values(build({ serial: `${run}-BARE-${sequence}` }))
+      .returning({ id: product.id });
+
+    // Inserted around the repository on purpose: products created by another
+    // path have no provenance today, and a reader must render that as an empty
+    // history rather than crash. Closing that path is #54.
+    expect(await findProductHistory(db, bare?.id as number)).toEqual([]);
+  });
+
+  it("orders history by when things happened, not by when they were recorded", async () => {
+    const result = await insertProduct(db, build());
+    if (!result.ok) throw new Error("expected success");
+
+    const march = new Date("2026-03-04T10:00:00Z");
+    await db.insert(lifecycleEvent).values({
+      productId: result.product.id,
+      type: "product_suspended",
+      actorKind: "authority",
+      occurredAt: march,
+      reason: "theft_report",
+      previousState: "registered",
+      resultingState: "suspended",
+    });
+
+    const history = await findProductHistory(db, result.product.id);
+
+    // The suspension happened in March and was recorded just now. Ordering by
+    // when it was learned would put it first and tell the story of this
+    // system's bookkeeping instead of the story of the product.
+    expect(history.map((entry) => entry.type)).toEqual(["product_registered", "product_suspended"]);
+  });
+
+  it("does not expose internal keys to a reader", async () => {
+    const result = await insertProduct(db, build());
+    if (!result.ok) throw new Error("expected success");
+
+    const [entry] = await findProductHistory(db, result.product.id);
+
+    // ADR 0005. The projection lists its columns, so a column added to the
+    // table later cannot start appearing here on its own.
+    for (const key of ["id", "productId", "issuerId", "correctsEventId"]) {
+      expect(entry).not.toHaveProperty(key);
+    }
+  });
+});

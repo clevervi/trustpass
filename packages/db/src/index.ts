@@ -28,6 +28,10 @@ export {
 } from "./identity/trustpass-id.js";
 export { findIssuerByRegistration } from "./repositories/issuer-repository.js";
 export {
+  findProductHistory,
+  type ProductHistoryEntry,
+} from "./repositories/lifecycle-event-repository.js";
+export {
   findLiveProductBySerial,
   findProductByTrustPassId,
   type InsertProductResult,

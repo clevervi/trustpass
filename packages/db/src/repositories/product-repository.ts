@@ -2,6 +2,7 @@ import { and, eq, ne, sql } from "drizzle-orm";
 import type { Database } from "../client.js";
 import type { TrustPassId } from "../identity/trustpass-id.js";
 import { type IssuerVerificationStatus, issuer } from "../schema/issuer.js";
+import { lifecycleEvent } from "../schema/lifecycle-event.js";
 import {
   type NewProduct,
   type Product,
@@ -60,15 +61,45 @@ export async function insertProduct(
   values: NewProduct,
 ): Promise<InsertProductResult> {
   try {
-    const [created] = await db.insert(product).values(values).returning();
+    // One transaction, because a product and the record of where it came from
+    // are one fact. If the event cannot be written the product must not exist:
+    // a row with no provenance is exactly what ADR 0008's spine is for, and it
+    // would be invisible — nothing later can tell that its history is missing
+    // rather than empty.
+    return await db.transaction(async (tx) => {
+      const [created] = await tx.insert(product).values(values).returning();
 
-    if (!created) {
-      // A successful insert always returns its row. Reaching here means
-      // something changed underneath us, not a case a caller can handle.
-      throw new Error("Product insert returned no row.");
-    }
+      if (!created) {
+        // A successful insert always returns its row. Reaching here means
+        // something changed underneath us, not a case a caller can handle.
+        throw new Error("Product insert returned no row.");
+      }
 
-    return { ok: true, product: created };
+      await tx.insert(lifecycleEvent).values({
+        productId: created.id,
+        // What actually happened, rather than one generic "created". A product
+        // born `registered` is an issuer committing to the record; a `draft` is
+        // a row that claims nothing yet, so saying it was registered would be a
+        // claim nobody made.
+        type: created.status === "registered" ? "product_registered" : "record_enrolled",
+        // The capacity, not the person — identifying a person is TP-141. Today
+        // the only path here is an issuer registering through the API.
+        actorKind: "issuer",
+        issuerId: created.issuerId,
+        // `now()` rather than the returned `created.createdAt`, and the
+        // difference is not cosmetic. Postgres stores `timestamptz` to
+        // microseconds; a JavaScript `Date` holds milliseconds, so passing the
+        // value back through the client truncates it and the event lands up to
+        // 999 microseconds before the row it describes.
+        //
+        // `now()` is the transaction timestamp and is constant for the whole
+        // transaction, so this is the exact value the `created_at` default
+        // already took — the same clock reading, never a second one.
+        occurredAt: sql`now()`,
+      });
+
+      return { ok: true, product: created };
+    });
   } catch (error) {
     const violation = violatedConstraint(error);
 
