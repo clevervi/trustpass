@@ -13,6 +13,7 @@ Write one when the answer to "why is it like this?" would otherwise be lost.
 | [0001](0001-typescript-end-to-end.md)       | TypeScript end to end, Python deferred          | Accepted |
 | [0002](0002-layered-delivery-order.md)      | Layered delivery: product before infrastructure | Accepted |
 | [0003](0003-identity-is-not-authenticity.md) | Identity and authenticity are separate claims   | Accepted |
+| [0004](0004-trustpass-id-format.md)         | TrustPass ID format: 128-bit Crockford base32    | Accepted |
 
 ## Template
 
