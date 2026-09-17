@@ -5,26 +5,43 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 ![Version](https://img.shields.io/badge/version-0.3.0-green)
 
-Verifiable digital identity, warranty and lifecycle history for physical products.
+A verification layer for second-hand physical products.
 
-The goal: a product receives a TrustPass ID at issue time, and every meaningful
-event in its life — sold, activated, inspected, repaired, transferred — is
-recorded against that identity, so that when the product is resold its history
-travels with it.
+A buyer can see what is known about a product, who said it, what evidence is
+behind it — and what nobody has checked. Every participating product gets a
+persistent identity, and that identity carries its record across owners,
+marketplaces and repairs instead of dying with a listing.
 
-The first target market is high-value consumer electronics (GPUs, laptops,
-phones, consoles) in Colombia, where the resale market runs on trust that nobody
-can verify.
+The first target is high-value consumer electronics in Colombia, where the resale
+market runs on trust nobody can verify.
 
-> **Status: v0.2.0, nothing deployed.** Identity is complete: the TrustPass
-> ID, issuer and product models, the status lifecycle, `POST /products`, and
-> one live identity per serial.
+### The problem
+
+Buying second-hand means answering questions you have no way to answer:
+
+- Is this the product being advertised?
+- Is the warranty real, and does it still apply?
+- Has it been repaired, or had parts replaced?
+- Which part of its history is verified, and which is somebody's word?
+
+TrustPass exists to narrow that uncertainty without pretending to remove it.
+
+> **Status: v0.3.0, nothing deployed.** Identity and the public passport work
+> end to end: a TrustPass ID resolves to a page stating what has been checked
+> and what has not, with claims listed separately, the serial masked, and a QR
+> that points at it.
 >
-> **Not built yet:** the public passport page, warranty, lifecycle events,
-> ownership transfer, blockchain anchoring, NFC. The verified resale flow
-> described above does not exist. There is also no authentication, so the API
-> must not be exposed publicly yet. See [`docs/ROADMAP.md`](docs/ROADMAP.md)
-> and [`CHANGELOG.md`](CHANGELOG.md).
+> **Not built yet:** warranty, lifecycle events, ownership transfer, condition,
+> evidence from outside sources, blockchain anchoring, NFC. The verified resale
+> flow is the destination, not the current state. There is also no
+> authentication, so the API must not be exposed publicly yet. See
+> [`docs/ROADMAP.md`](docs/ROADMAP.md) and [`CHANGELOG.md`](CHANGELOG.md).
+
+## What this is not
+
+TrustPass is not a marketplace, not a payment system, not an NFT platform, and
+not an authenticity oracle. It is infrastructure that marketplaces, retailers,
+repairers and buyers can verify a product against.
 
 ## What this is honest about
 
@@ -32,6 +49,9 @@ TrustPass proves **identity**, not physical **authenticity**. If a fraudulent
 issuer registers a counterfeit as genuine, the ledger faithfully records that the
 issuer said so. The product surfaces what is actually verified — issuer, serial,
 tag, warranty — and never renders a blanket "100% authentic" badge.
+
+The principles this follows, including the ones that forbid features, are in
+[`docs/PRODUCT_PRINCIPLES.md`](docs/PRODUCT_PRINCIPLES.md).
 
 ## Quick start
 
@@ -128,8 +148,11 @@ gated on the previous layer proving its value. See
 
 ## Maintainer
 
-[@clevervi](https://github.com/clevervi), who also commits as
-[@raishark](https://github.com/raishark).
+[@clevervi](https://github.com/clevervi). One person, which
+[`.github/CODEOWNERS`](.github/CODEOWNERS) records and
+[`CONTRIBUTING.md`](CONTRIBUTING.md) builds the merge bar around, because a
+second account owned by the same person is a review signal with nothing behind
+it.
 
 ## Contributing
 
