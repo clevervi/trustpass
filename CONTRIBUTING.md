@@ -191,6 +191,35 @@ run, not merely built: `v0.1.0` was tagged once, found broken on first
 execution, and re-cut. That was free because it had not been pushed. After a
 push it is not free, because other people's checkouts already believe it.
 
+## Migrations
+
+```bash
+pnpm db:generate     # after changing a schema file
+pnpm db:migrate      # apply pending migrations
+pnpm db:reset        # destroy the local volume and rebuild from zero
+```
+
+Name every migration: `drizzle-kit generate --name=create_product`. The
+generator's default is a random two-word phrase, which tells a future reader
+nothing.
+
+**Migrations are forward-only.** Drizzle emits no down script and none is
+written by hand. Rolling a schema change backwards in production loses whatever
+the new shape recorded, so the recovery path is a restore plus a new forward
+migration — a down script would imply an undo that does not exist. Consequently:
+
+- Prefer additive changes. Add a column, backfill it, then stop using the old
+  one, in separate migrations.
+- A destructive change gets its own migration and its own pull request, so the
+  diff that drops data is the whole diff.
+- Never edit a migration that has been merged. It has already run somewhere.
+
+**`DROP SCHEMA public CASCADE` is not a reset.** Drizzle records applied
+migrations in a separate `drizzle` schema, which survives, so the next
+`db:migrate` skips everything and leaves an empty database that believes it is
+up to date. `pnpm db:reset` removes the volume, which is the only complete
+answer.
+
 ## Architecture decisions
 
 Any decision that is expensive to reverse gets an ADR in

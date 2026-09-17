@@ -1,15 +1,21 @@
 import { checkSymbol, decodeSymbols, encodeSymbols, normalizeSymbols } from "./crockford-base32.js";
 
-declare const brand: unique symbol;
-
 /**
  * A TrustPass ID that has been parsed and whose check symbol verified.
  *
  * The brand exists so that an unvalidated string cannot be passed where a
  * verified identifier is required. Construct one through `generateTrustPassId`
  * or `parseTrustPassId`; there is deliberately no cast helper.
+ *
+ * The marker is a named property rather than a `unique symbol` on purpose. An
+ * unexported symbol cannot be referenced from outside this module, so any
+ * consumer exporting a value whose type contains one fails to compile with
+ * TS4023 — "has or is using name 'brand' ... but cannot be named". A named
+ * property is nameable everywhere and rejects a plain string just as firmly.
+ *
+ * It never exists at runtime: the value is a string.
  */
-export type TrustPassId = string & { readonly [brand]: "TrustPassId" };
+export type TrustPassId = string & { readonly __trustPassId: "verified" };
 
 const PREFIX = "TP";
 

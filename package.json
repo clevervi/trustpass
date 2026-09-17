@@ -20,7 +20,8 @@
     "db:logs": "docker compose logs -f postgres",
     "db:migrate": "pnpm --filter @trustpass/db db:migrate",
     "db:generate": "pnpm --filter @trustpass/db db:generate",
-    "db:studio": "pnpm --filter @trustpass/db db:studio"
+    "db:studio": "pnpm --filter @trustpass/db db:studio",
+    "db:reset": "docker compose down -v && docker compose up -d --wait && pnpm db:migrate"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
