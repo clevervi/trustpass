@@ -35,3 +35,4 @@ Thumbs.db
 
 # Agent tooling (not part of the product)
 .atl/
+.claude/

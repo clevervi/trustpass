@@ -11,12 +11,6 @@ and the definitions of ready and done are all enforced there, not advisory.
 `main` and `develop` are protected for everyone including administrators. Every
 change arrives through a pull request.
 
-## Skills
-
-| Skill | Load when |
-|---|---|
-| `.claude/skills/trustpass-workflow/SKILL.md` | Starting a `TP-0XX` item, committing, opening or reviewing a pull request, cutting a release |
-
 ## Commands
 
 ```bash
