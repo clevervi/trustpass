@@ -105,10 +105,14 @@ writing it:
 | CodeQL                    | Security and quality defects, refreshed weekly        |
 | Dependency review         | New dependencies with known vulnerabilities or copyleft licences |
 
-**Not independent.** An agent reviewing a diff it wrote is a second pass by the
-same judgement. A second pass catches real things and is worth doing, but it is
-not a second opinion and must never be recorded as an approval. It is posted as
-a review comment, labelled as a self-review.
+**Not independent.** A second pass over a diff by whoever wrote it is the same
+judgement running twice. It catches real things and is worth doing — two defects
+in the issuer model were found that way — but it is not a second opinion, and it
+must never be recorded as an approval. It goes in as review comments, labelled
+as a self-review.
+
+A second account belonging to the same person does not change this. The
+mechanism would pass; the review would not have happened.
 
 **Merge policy by risk label:**
 
