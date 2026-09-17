@@ -1,48 +1,10 @@
 import { eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
+import { expectSqlState, SqlState } from "../testing/sql-state.js";
 import { issuer, type NewIssuer } from "./issuer.js";
 
 const databaseUrl = process.env.DATABASE_URL;
-
-/**
- * SQLSTATE codes, asserted by value so that a test cannot pass because the
- * insert failed for an unrelated reason such as a dropped connection.
- */
-const CHECK_VIOLATION = "23514";
-const UNIQUE_VIOLATION = "23505";
-const NOT_NULL_VIOLATION = "23502";
-const INVALID_ENUM_INPUT = "22P02";
-
-/**
- * Drizzle wraps driver failures, so the SQLSTATE lives somewhere down the
- * `cause` chain rather than on the error that surfaces.
- */
-function sqlStateOf(error: unknown): string | undefined {
-  let current: unknown = error;
-
-  while (current !== null && current !== undefined) {
-    const code = (current as { code?: unknown }).code;
-    if (typeof code === "string") {
-      return code;
-    }
-    current = (current as { cause?: unknown }).cause;
-  }
-
-  return undefined;
-}
-
-async function expectSqlState(operation: Promise<unknown>, code: string): Promise<void> {
-  try {
-    await operation;
-  } catch (error) {
-    expect(sqlStateOf(error)).toBe(code);
-    return;
-  }
-
-  // Reached only when the operation succeeded, which is itself the failure.
-  expect.fail(`Expected SQLSTATE ${code}, but the operation succeeded.`);
-}
 
 /**
  * Exercises the issuer table against a real Postgres instance.
@@ -148,7 +110,7 @@ describe.skipIf(!databaseUrl)("issuer table", () => {
           .insert(issuer)
           .values(build({ registrationNumber: duplicated }))
           .returning(),
-        UNIQUE_VIOLATION,
+        SqlState.UNIQUE_VIOLATION,
       );
     });
 
@@ -195,7 +157,7 @@ describe.skipIf(!databaseUrl)("issuer table", () => {
           .insert(issuer)
           .values({ ...build(), registrationNumber: null as never })
           .returning(),
-        NOT_NULL_VIOLATION,
+        SqlState.NOT_NULL_VIOLATION,
       );
     });
 
@@ -210,7 +172,7 @@ describe.skipIf(!databaseUrl)("issuer table", () => {
           .insert(issuer)
           .values(build({ registrationNumber: registration }))
           .returning(),
-        CHECK_VIOLATION,
+        SqlState.CHECK_VIOLATION,
       );
     });
 
@@ -240,7 +202,7 @@ describe.skipIf(!databaseUrl)("issuer table", () => {
             verificationStatus: "totally_legit" as never,
           })
           .returning(),
-        INVALID_ENUM_INPUT,
+        SqlState.INVALID_TEXT_REPRESENTATION,
       );
     });
 
@@ -251,7 +213,7 @@ describe.skipIf(!databaseUrl)("issuer table", () => {
     ])("rejects a country that is not ISO 3166-1 alpha-2: %s", async (_label, country) => {
       await expectSqlState(
         db.insert(issuer).values(build({ country })).returning(),
-        CHECK_VIOLATION,
+        SqlState.CHECK_VIOLATION,
       );
     });
   });
