@@ -33,10 +33,42 @@ Every state can reach `retired`. Nothing leaves it.
 | Status       | Meaning                                                                 |
 | ------------ | ----------------------------------------------------------------------- |
 | `draft`      | A row exists. It claims nothing. The default.                           |
-| `registered` | The issuer stands behind the record.                                     |
+| `registered` | TrustPass holds an established record for this product.                 |
 | `active`     | In an owner's hands. The only state whose passport is worth reading.     |
 | `suspended`  | Something is wrong: a fraud flag, a theft report, a disputed claim.      |
 | `retired`    | End of life. Terminal.                                                   |
+
+### `registered` says a record exists, not who vouches for it
+
+It used to read "the issuer stands behind the record", and that stopped being
+true when [ADR 0007](adr/0007-identity-may-begin-after-manufacture.md) made
+enrolment a first-class path. A person enrolling a device they hold is not an
+issuer and vouches for nothing beyond having read a serial — yet their product
+has to land somewhere, and the only honest landing place is `registered`.
+
+Keeping the old wording would have meant either a state that lies about
+holder-enrolled products, or a sixth state (`enrolled`) whose only job is to
+carry a distinction that belongs elsewhere.
+
+**The status says a record exists. Who vouches for it, and with what standing,
+is a separate question with a separate answer:**
+
+| Question | Where it is answered |
+| --- | --- |
+| Is there a record? | `status` |
+| Where did the record come from? | `origin` — `manufacturer`, `supply_chain`, `holder` |
+| Who acted, in what capacity? | the lifecycle event's actor |
+| Has anyone checked the issuer? | the `issuer` verification claim |
+
+That separation is why the state machine stays five states while the trust model
+keeps getting richer. A status is a position in a lifecycle; it is not a summary
+of how much anyone should believe.
+
+**`active` is the one that still overstates itself.** It reads "in an owner's
+hands" while ownership does not exist until v0.5.0, so today nothing can make it
+true. It must become a consequence of ownership being established rather than a
+label anyone sets — `changeProductStatus` refuses to set it, in the type, for
+exactly that reason.
 
 ## Allowed moves
 
