@@ -24,7 +24,7 @@ export default async function HomePage() {
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center gap-10 px-6 py-16">
       <header className="space-y-3">
         <p className="font-mono text-xs uppercase tracking-[0.2em] text-black/40 dark:text-white/40">
-          v0.1.0 · foundation
+          pre-release · not deployed
         </p>
         <h1 className="text-4xl font-semibold tracking-tight">TrustPass</h1>
         <p className="text-balance text-black/60 dark:text-white/60">
