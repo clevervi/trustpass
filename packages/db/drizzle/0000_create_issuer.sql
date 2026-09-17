@@ -10,4 +10,4 @@ CREATE TABLE "issuer" (
 	CONSTRAINT "issuer_country_iso_alpha2" CHECK ("issuer"."country" ~ '^[A-Z]{2}$')
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX "issuer_legal_name_country_idx" ON "issuer" USING btree ("legal_name","country");
+CREATE UNIQUE INDEX "issuer_legal_name_country_idx" ON "issuer" USING btree (lower("legal_name"),"country");

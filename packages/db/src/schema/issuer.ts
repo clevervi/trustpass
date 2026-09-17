@@ -60,7 +60,15 @@ export const issuer = pgTable(
     // here is a duplicate record rather than two real companies. Duplicate
     // issuers fragment a product's trust history across two identities, which
     // is precisely the failure the passport exists to prevent.
-    uniqueIndex("issuer_legal_name_country_idx").on(table.legalName, table.country),
+    //
+    // Indexed on the lower-cased name: a plain unique index is case sensitive,
+    // so "ANDES TECH SAS" and "Andes Tech SAS" would both be accepted and the
+    // constraint would prevent nothing that anyone actually types.
+    //
+    // Known limit: whitespace and punctuation variants still slip through
+    // ("ANDES  TECH" with two spaces). Catching those belongs to the issuer
+    // verification workflow, which compares against a registry, not to an index.
+    uniqueIndex("issuer_legal_name_country_idx").on(sql`lower(${table.legalName})`, table.country),
 
     // Length alone would accept "co", "C1" or "  ". The registered format is
     // two uppercase letters and nothing else.

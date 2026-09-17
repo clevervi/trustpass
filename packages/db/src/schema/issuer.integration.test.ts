@@ -149,6 +149,24 @@ describe.skipIf(!databaseUrl)("issuer table", () => {
     await expectSqlState(db.insert(issuer).values(values).returning(), UNIQUE_VIOLATION);
   });
 
+  it("rejects a duplicate whose legal name differs only in case", async () => {
+    // A plain unique index is case sensitive, so this pair was accepted before
+    // the index moved to lower(legal_name). Verified against Postgres directly:
+    // "CASE PROBE SAS" and "case probe sas" both inserted.
+    await db
+      .insert(issuer)
+      .values(build({ legalName: `MIXED CASE SAS${suffix}` }))
+      .returning();
+
+    await expectSqlState(
+      db
+        .insert(issuer)
+        .values(build({ legalName: `mixed case sas${suffix}`.toLowerCase() }))
+        .returning(),
+      UNIQUE_VIOLATION,
+    );
+  });
+
   it("allows the same legal name in a different country", async () => {
     const legalName = `CROSS BORDER SAS${suffix}`;
     await db
@@ -170,6 +188,8 @@ describe.skipIf(!databaseUrl)("issuer table", () => {
       .values(build({ legalName: `TOUCHED SAS${suffix}` }))
       .returning();
 
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
     const [updated] = await db
       .update(issuer)
       .set({ verificationStatus: "verified" })
@@ -177,8 +197,9 @@ describe.skipIf(!databaseUrl)("issuer table", () => {
       .returning();
 
     expect(updated?.verificationStatus).toBe("verified");
-    expect(updated?.updatedAt.getTime()).toBeGreaterThanOrEqual(
-      created?.updatedAt.getTime() as number,
-    );
+    // Strictly greater, not "greater or equal": the weaker assertion passes
+    // even when $onUpdate never fires, which is the thing under test.
+    expect(updated?.updatedAt.getTime()).toBeGreaterThan(created?.updatedAt.getTime() as number);
+    expect(updated?.createdAt.getTime()).toBe(created?.createdAt.getTime());
   });
 });

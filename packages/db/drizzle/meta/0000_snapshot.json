@@ -1,5 +1,5 @@
 {
-  "id": "78349b0a-51b0-4885-ba41-529853876bc5",
+  "id": "5aa26c86-9982-459c-a720-4758027dad9c",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -71,9 +71,9 @@
           "name": "issuer_legal_name_country_idx",
           "columns": [
             {
-              "expression": "legal_name",
-              "isExpression": false,
+              "expression": "lower(\"legal_name\")",
               "asc": true,
+              "isExpression": true,
               "nulls": "last"
             },
             {
