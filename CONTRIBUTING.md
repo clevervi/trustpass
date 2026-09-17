@@ -190,7 +190,9 @@ moving one into the other, and it is the only time `main` changes.
 2. Bump `version` in the root manifest and in every workspace package, on
    `develop`, before the release pull request. The API serves its own version
    from its manifest, so skipping this ships a service that reports the previous
-   release while running the new one.
+   release while running the new one. Bump the README's version badge in the
+   same commit — every version printed anywhere becomes a false claim the moment
+   it is left behind, and the badge is the one a reader sees first.
 3. Open a pull request from `develop` into `main`, titled `release: vX.Y.Z`.
 4. Merge it with a **merge commit**, not a squash. The individual changes already
    have their own history and flattening it here destroys the trail from a
