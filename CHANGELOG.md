@@ -14,6 +14,17 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ## [Unreleased]
 
+### Decided
+
+- **[ADR 0007](docs/adr/0007-identity-may-begin-after-manufacture.md) — identity
+  may begin after manufacture.** A product can currently only be registered by a
+  business holding a national registration number, which makes every product
+  that already exists unreachable. Enrolment becomes a first-class path
+  recording the record's **origin** (`manufacturer`, `supply_chain`, `holder`),
+  because a device enrolled by whoever held it asserts far less than one
+  registered at the factory and must not be mistakable for it. Scheduled as
+  `TP-046`…`TP-049` in v0.4.0.
+
 ### Fixed
 
 - **A passport QR could encode a host this deployment does not own**

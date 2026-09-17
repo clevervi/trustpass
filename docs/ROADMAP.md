@@ -74,12 +74,31 @@ unavailable. The milestone is smaller than originally written, deliberately.
 SVG served from another. The QR is an encoding of a URL and the web app owns the
 URL, so it is rendered there.
 
-### v0.4.0 — Warranty
+### v0.4.0 — Warranty and retroactive enrolment
 
 Warranty creation, activation, coverage calculation and claims with a real state
 machine.
 
 `TP-040` … `TP-045`
+
+**Retroactive enrolment joins this milestone**, per
+[ADR 0007](adr/0007-identity-may-begin-after-manufacture.md). Today a product
+can only be registered by a business holding a national registration number, so
+every product that already exists — which is the entire resale market — is
+unreachable, and the system cannot be exercised against real hardware at all.
+
+Enrolment records a product's **origin** (`manufacturer`, `supply_chain`,
+`holder`) and the passport shows it, because a device enrolled by whoever held it
+asserts far less than one registered at the factory and must not be mistakable
+for it. A passport whose identity began at enrolment declares its unknown period
+explicitly rather than showing an empty history that reads as a clean one.
+
+`TP-046` … `TP-049`
+
+It sits here rather than later because warranty is the first feature that cares
+where a product's record came from: a warranty attached to a `holder`-enrolled
+product is a claim by someone with no standing to make it, and that distinction
+is cheaper to model now than to retrofit.
 
 ### v0.5.0 — Lifecycle and ownership
 
