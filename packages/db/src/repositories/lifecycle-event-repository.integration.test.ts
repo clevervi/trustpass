@@ -5,6 +5,8 @@ import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { issuer } from "../schema/issuer.js";
 import { lifecycleEvent } from "../schema/lifecycle-event.js";
 import { type NewProduct, product } from "../schema/product.js";
+import { expectSqlState, SqlState } from "../testing/sql-state.js";
+import { insertProductWithProvenance, moveProductStatus } from "../testing/with-provenance.js";
 import { findHistoryByTrustPassId, findProductHistory } from "./lifecycle-event-repository.js";
 import { insertProduct } from "./product-repository.js";
 import { changeProductStatus } from "./product-status-repository.js";
@@ -149,17 +151,24 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
     expect(await findProductHistory(db, two.product.id)).toHaveLength(1);
   });
 
-  it("returns nothing for a product with no history rather than failing", async () => {
+  it("cannot be handed a product with no history, because one cannot exist", async () => {
     sequence += 1;
-    const [bare] = await db
-      .insert(product)
-      .values(build({ serial: `${run}-BARE-${sequence}` }))
-      .returning({ id: product.id });
 
-    // Inserted around the repository on purpose: products created by another
-    // path have no provenance today, and a reader must render that as an empty
-    // history rather than crash. Closing that path is #54.
-    expect(await findProductHistory(db, bare?.id as number)).toEqual([]);
+    // This used to insert a bare product and assert the reader returned an
+    // empty array. #54 closed that path: a product with no recorded origin is
+    // refused at COMMIT, so the case the reader was defending against is now
+    // unreachable. The test asserts the closure instead of the defence.
+    await expectSqlState(
+      db.insert(product).values(build({ serial: `${run}-BARE-${sequence}` })),
+      SqlState.PROVENANCE_REQUIRED,
+    );
+  });
+
+  it("returns nothing for an identifier no product holds", async () => {
+    // The case that remains: a well-formed identifier nobody issued. An empty
+    // array rather than a failure, because the passport read has already
+    // decided whether the product exists.
+    expect(await findHistoryByTrustPassId(db, generateTrustPassId())).toEqual([]);
   });
 
   it("orders history by when things happened, not by when they were recorded", async () => {

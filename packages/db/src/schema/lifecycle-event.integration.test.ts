@@ -1,8 +1,9 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
+import { insertProductWithProvenance, moveProductStatus } from "../testing/with-provenance.js";
 import { issuer } from "./issuer.js";
 import { lifecycleEvent, type NewLifecycleEvent } from "./lifecycle-event.js";
 import { product } from "./product.js";
@@ -30,7 +31,7 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
       type: "product_registered",
       actorKind: "issuer",
       issuerId,
-      occurredAt: new Date(),
+      occurredAt: sql`now()`,
       ...overrides,
     };
   }
@@ -49,18 +50,15 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
       .returning({ id: issuer.id });
     issuerId = created?.id as number;
 
-    const [registered] = await db
-      .insert(product)
-      .values({
-        trustpassId: generateTrustPassId(),
-        issuerId,
-        brand: "ASUS",
-        model: "ROG Strix RTX 5070 Ti",
-        serial: `${run}-EV-SERIAL`,
-        category: "gpu",
-        status: "registered",
-      })
-      .returning({ id: product.id });
+    const registered = await insertProductWithProvenance(db, {
+      trustpassId: generateTrustPassId(),
+      issuerId,
+      brand: "ASUS",
+      model: "ROG Strix RTX 5070 Ti",
+      serial: `${run}-EV-SERIAL`,
+      category: "gpu",
+      status: "registered",
+    });
     productId = registered?.id as number;
   });
 
@@ -307,18 +305,15 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
   describe("history outlives what it describes", () => {
     it("refuses to delete a product that has events", async () => {
       sequence += 1;
-      const [doomed] = await db
-        .insert(product)
-        .values({
-          trustpassId: generateTrustPassId(),
-          issuerId,
-          brand: "ASUS",
-          model: "RTX",
-          serial: `${run}-DOOMED-${sequence}`,
-          category: "gpu",
-          status: "registered",
-        })
-        .returning({ id: product.id });
+      const doomed = await insertProductWithProvenance(db, {
+        trustpassId: generateTrustPassId(),
+        issuerId,
+        brand: "ASUS",
+        model: "RTX",
+        serial: `${run}-DOOMED-${sequence}`,
+        category: "gpu",
+        status: "registered",
+      });
 
       await db.insert(lifecycleEvent).values(build({ productId: doomed?.id as number }));
 

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
@@ -10,6 +11,7 @@ import {
 } from "../schema/lifecycle-event.js";
 import { product } from "../schema/product.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
+import { insertProductWithProvenance, moveProductStatus } from "../testing/with-provenance.js";
 import { mayRecord, mayRetireFrom, RECORDING_AUTHORITY } from "./recording-authority.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -28,19 +30,16 @@ describe.skipIf(!databaseUrl)("what a capacity may record", () => {
 
   beforeAll(async () => {
     db = createDatabase(databaseUrl as string);
-    const [created] = await db
-      .insert(product)
-      .values({
-        trustpassId: generateTrustPassId(),
-        issuerId: null,
-        brand: "ASUS",
-        model: "ROG Strix RTX 5070 Ti",
-        serial: `${run}-AUTH`,
-        category: "gpu",
-        status: "registered",
-        origin: "holder",
-      })
-      .returning({ id: product.id });
+    const created = await insertProductWithProvenance(db, {
+      trustpassId: generateTrustPassId(),
+      issuerId: null,
+      brand: "ASUS",
+      model: "ROG Strix RTX 5070 Ti",
+      serial: `${run}-AUTH`,
+      category: "gpu",
+      status: "registered",
+      origin: "holder",
+    });
     productId = created?.id as number;
   });
 
@@ -54,7 +53,7 @@ describe.skipIf(!databaseUrl)("what a capacity may record", () => {
       type,
       actorKind,
       issuerId: null,
-      occurredAt: new Date(),
+      occurredAt: sql`now()`,
       // A correction needs a target and the check constraint enforces it; for
       // the pairing sweep the authority trigger fires first, so an unauthorised
       // pairing is refused before the target is missed.
@@ -112,19 +111,16 @@ describe.skipIf(!databaseUrl)("what a capacity may record", () => {
 
   describe("ending the life of a product under suspension", () => {
     async function suspended(): Promise<number> {
-      const [created] = await db
-        .insert(product)
-        .values({
-          trustpassId: generateTrustPassId(),
-          issuerId: null,
-          brand: "ASUS",
-          model: "RTX 5070",
-          serial: `${run}-SUSP-${Math.random().toString(36).slice(2, 8)}`,
-          category: "gpu",
-          status: "registered",
-          origin: "holder",
-        })
-        .returning({ id: product.id });
+      const created = await insertProductWithProvenance(db, {
+        trustpassId: generateTrustPassId(),
+        issuerId: null,
+        brand: "ASUS",
+        model: "RTX 5070",
+        serial: `${run}-SUSP-${Math.random().toString(36).slice(2, 8)}`,
+        category: "gpu",
+        status: "registered",
+        origin: "holder",
+      });
       const id = created?.id as number;
 
       await db.insert(lifecycleEvent).values({
@@ -132,7 +128,7 @@ describe.skipIf(!databaseUrl)("what a capacity may record", () => {
         type: "product_suspended",
         actorKind: "authority",
         issuerId: null,
-        occurredAt: new Date(),
+        occurredAt: sql`now()`,
         reason: "theft_report",
         previousState: "registered",
         resultingState: "suspended",
@@ -151,7 +147,7 @@ describe.skipIf(!databaseUrl)("what a capacity may record", () => {
         type: "product_retired",
         actorKind,
         issuerId: null,
-        occurredAt: new Date(),
+        occurredAt: sql`now()`,
         reason: "end_of_life",
         previousState: from,
         resultingState: "retired",
