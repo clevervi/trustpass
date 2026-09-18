@@ -2,6 +2,9 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-18
+- **Amended:** 2026-09-18 — §3 gains who writes `grant_id`, and §5 gains the
+  authorisation chain as a sequence. Both **extend** the decision: the original
+  said an event pins the grant and never said who chooses it.
 
 ## Context
 
@@ -96,6 +99,35 @@ why were they allowed to                 -> grant
 was that still valid at the time         -> the grant as it stood then
 ```
 
+#### `grant_id` is not the caller's to choose
+
+**Amendment.** The original decided that an event pins the grant and said
+nothing about who writes it. That omission has a record here:
+
+| Column | What happened |
+| --- | --- |
+| `recorded_at` | Had a default and a doc comment claiming the database set it. A default is what happens when nobody supplies a value, and the provenance triggers read that column to decide which transaction owned an event. An event planted ten years ahead let a status change commit with nothing recorded to explain it. |
+| `recorded_in_xact` | Introduced with the lesson already paid for: forced by trigger from the first line. |
+
+`grant_id` is the third column of the same kind and the most valuable yet. A
+caller who chooses it attributes their action to any grant they can name, and
+every guarantee in this ADR reduces to whatever the writer typed.
+
+> **`grant_id` is resolved by the server from the authenticated actor, written
+> by the database, and never changed afterwards.** No write path accepts it as
+> input.
+
+Its default follows the `recorded_in_xact` precedent and **fails closed**: a
+value no grant can hold, so removing whatever writes it makes every authorised
+action refuse loudly rather than pass silently. `recorded_at`'s `defaultNow()`
+failed open, which is why it needed a trigger before it could be trusted at all.
+
+*Rejected: accepting `grant_id` and validating it against the actor.* One extra
+check, and it is the wrong shape — it trusts an input and then looks for reasons
+to reject it, rather than never taking it. Validation is a filter somebody can
+forget to apply on the next write path; resolution is the only way the value can
+be produced.
+
 ### 4. What makes history immutable is that grants are append-only too
 
 This is the decision that turns ADR 0009's promise into a structure, and it is
@@ -131,6 +163,22 @@ request, intersected with `RECORDING_AUTHORITY`.
 Nothing in a write path reads a role, and nothing reads the credential twice. A
 valid credential for an actor with no grant may do nothing at all, which is the
 correct and frequently surprising answer.
+
+**Amendment — the chain, because a paragraph is easier to shortcut than a
+sequence.**
+
+```
+Credential  ──proves──▶  Actor
+                           └──member of──▶  Organization
+                                              └──holds──▶  Grant
+                                                             └──permits──▶  Capacity
+                                                                              └──authorizes──▶  Action
+```
+
+Never `Credential ──▶ manufacturer`. That collapse is where an implementation
+drifts when the rule is prose, and it is the same collapse ADR 0010 refuses
+between an actor's standing and evidence about an object: each arrow answers a
+different question, and skipping one means answering it by assumption.
 
 *Rejected: capabilities encoded in the credential itself.* Self-contained and
 elegant — and revoking before expiry then needs a revocation list, which is the
