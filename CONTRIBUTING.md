@@ -255,6 +255,44 @@ run, not merely built: `v0.1.0` was tagged once, found broken on first
 execution, and re-cut. That was free because it had not been pushed. After a
 push it is not free, because other people's checkouts already believe it.
 
+### A query that takes one row says why there is one
+
+```ts
+const [event] = await db.select().from(lifecycleEvent)
+  .where(eq(lifecycleEvent.productId, id));
+```
+
+`product_id` is not unique on `lifecycle_event`. That product had two events —
+the enrolment that created it and the suspension under test — and `[0]` took
+whichever Postgres returned first.
+
+**It passed for months.** It began failing when six new tables and their
+fixtures grew the database enough to change the planner's answer. Nothing about
+the test or its subject had changed; what changed was an outcome it had been
+silently depending on.
+
+So, before destructuring one row:
+
+- **If the predicate is unique** — a primary key, a unique index — nothing more
+  is needed. `WHERE id = $1` is self-evidently one row.
+- **If it is not unique and you want a specific row**, name it. `AND type =
+  'product_suspended'` says which one and why. `ORDER BY id` also passes and is
+  still an assertion about position rather than about the subject.
+- **If it is not unique and exactly one should exist**, assert that first:
+
+  ```ts
+  const events = await db.select()…;
+  expect(events).toHaveLength(1);
+  const [event] = events;
+  ```
+
+  The length assertion is what makes the `[0]` valid. When a second row appears,
+  the test fails there instead of silently reading the wrong one.
+
+The failure mode is specific and worth naming: a test that is consistently wrong
+in one context and consistently right in another is **order-dependent, not
+flaky**. Re-running it until it passes is how this class of bug survives.
+
 ### A `TP-` identifier has to resolve to something
 
 Two were found pointing at nothing, both by hand: `TP-130`, cited for secure

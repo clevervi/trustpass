@@ -77,10 +77,16 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
     const result = await insertProduct(db, build());
     if (!result.ok) throw new Error("expected success");
 
-    const [event] = await db
+    // The length assertion is what makes the `[0]` valid. `product_id` is not
+    // unique on `lifecycle_event`, so a query that returns one row today does
+    // so by construction rather than by constraint, and construction changes.
+    const events = await db
       .select()
       .from(lifecycleEvent)
       .where(eq(lifecycleEvent.productId, result.product.id));
+
+    expect(events).toHaveLength(1);
+    const [event] = events;
 
     // The capacity and the issuer travel together, and the check constraint
     // would have refused one without the other. Asserting it here is about the
