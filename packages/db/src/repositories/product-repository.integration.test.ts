@@ -4,6 +4,7 @@ import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId, type TrustPassId } from "../identity/trustpass-id.js";
 import { issuer } from "../schema/issuer.js";
 import { type ProductStatus, product } from "../schema/product.js";
+import { insertProductWithProvenance, moveProductStatus } from "../testing/with-provenance.js";
 import { findProductByTrustPassId } from "./product-repository.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -28,7 +29,7 @@ describe.skipIf(!databaseUrl)("findProductByTrustPassId", () => {
     // The status trigger only allows a product to be born draft or registered,
     // so later statuses are reached by legal moves.
     const insertAs = status === "draft" ? "draft" : "registered";
-    await db.insert(product).values({
+    await insertProductWithProvenance(db, {
       trustpassId,
       issuerId,
       brand: "ASUS",
@@ -39,7 +40,11 @@ describe.skipIf(!databaseUrl)("findProductByTrustPassId", () => {
     });
 
     if (status !== insertAs) {
-      await db.update(product).set({ status }).where(eq(product.trustpassId, trustpassId));
+      const [row] = await db
+        .select({ id: product.id })
+        .from(product)
+        .where(eq(product.trustpassId, trustpassId));
+      await moveProductStatus(db, row?.id as number, status);
     }
 
     return trustpassId;
@@ -57,15 +62,15 @@ describe.skipIf(!databaseUrl)("findProductByTrustPassId", () => {
         country: "CO",
         verificationStatus: "verified",
       })
-      .returning();
+      .returning({ id: issuer.id });
 
     issuerId = created?.id as number;
   });
 
   afterAll(async () => {
-    // Products first: the issuer foreign key is RESTRICT.
-    await db.delete(product).where(like(product.serial, `${run}%`));
-    await db.delete(issuer).where(like(issuer.registrationNumber, `${run}%`));
+    // Nothing is deleted: products carry events, events cannot be removed, and
+    // the foreign keys are RESTRICT. A teardown that succeeded would prove a
+    // product's history can be erased.
     await db.$client.end();
   });
 

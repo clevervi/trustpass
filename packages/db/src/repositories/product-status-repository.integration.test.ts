@@ -5,6 +5,7 @@ import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { issuer } from "../schema/issuer.js";
 import { lifecycleEvent } from "../schema/lifecycle-event.js";
 import { product } from "../schema/product.js";
+import { insertProductWithProvenance, moveProductStatus } from "../testing/with-provenance.js";
 import { findProductHistory } from "./lifecycle-event-repository.js";
 import { changeProductStatus } from "./product-status-repository.js";
 
@@ -25,18 +26,15 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
 
   async function aProduct(status: "draft" | "registered" = "registered"): Promise<number> {
     sequence += 1;
-    const [created] = await db
-      .insert(product)
-      .values({
-        trustpassId: generateTrustPassId(),
-        issuerId,
-        brand: "ASUS",
-        model: "ROG Strix RTX 5070 Ti",
-        serial: `${run}-ST-${sequence}`,
-        category: "gpu",
-        status,
-      })
-      .returning({ id: product.id });
+    const created = await insertProductWithProvenance(db, {
+      trustpassId: generateTrustPassId(),
+      issuerId,
+      brand: "ASUS",
+      model: "ROG Strix RTX 5070 Ti",
+      serial: `${run}-ST-${sequence}`,
+      category: "gpu",
+      status,
+    });
 
     return created?.id as number;
   }
@@ -132,8 +130,14 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
         occurredAt: lastMonth,
       });
 
-      const [event] = await findProductHistory(db, id);
+      const event = (await findProductHistory(db, id)).find(
+        (entry) => entry.type === "product_suspended",
+      );
 
+      // Found by type rather than position: the enrolment event happened just
+      // now and the theft is backdated, so ordering by when things happened
+      // puts the enrolment first.
+      //
       // A theft reported today may have happened last month, and the passport
       // should say when the theft was, not when the paperwork reached us.
       expect(event?.occurredAt.toISOString()).toBe(lastMonth.toISOString());
@@ -176,9 +180,12 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
 
       // Recording this as another "registered" would lose the fact that
       // something was once wrong — which is the fact a buyer most needs.
+      // The enrolment is the oldest entry now: since #54 a product cannot exist
+      // without one.
       expect(history.map((entry) => entry.type)).toEqual([
         "product_reinstated",
         "product_suspended",
+        "product_registered",
       ]);
     });
   });
@@ -229,9 +236,10 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
 
       const history = await findProductHistory(db, id);
 
-      // One event, from the retirement. A rejected move that still wrote its
-      // event would put a lie in a record that cannot be corrected by deletion.
-      expect(history).toHaveLength(1);
+      // The retirement and the enrolment, and nothing from the refused move. A
+      // rejected move that still wrote its event would put a lie in a record
+      // that cannot be corrected by deletion.
+      expect(history).toHaveLength(2);
       expect(history[0]?.type).toBe("product_retired");
     });
 
@@ -263,9 +271,10 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
       });
 
       expect(result).toMatchObject({ ok: true });
-      // Nothing moved, so nothing happened. An event here would claim a product
-      // was suspended twice.
-      expect(await findProductHistory(db, id)).toHaveLength(1);
+      // The suspension and the enrolment. Nothing moved the second time, so
+      // nothing was added — an event there would claim a product was suspended
+      // twice.
+      expect(await findProductHistory(db, id)).toHaveLength(2);
     });
   });
 
@@ -309,8 +318,11 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
       // The invariant that makes a history readable at all: each event starts
       // where the previous one ended. A break in the chain means the record
       // describes a product that took a step it never took.
+      // Only transitions form the chain. An enrolment or a correction records
+      // something that happened without moving the product, so both ends are
+      // null and neither belongs in the walk.
       let expected: string | null = "registered";
-      for (const entry of oldestFirst) {
+      for (const entry of oldestFirst.filter((e) => e.previousState !== null)) {
         expect(entry.previousState).toBe(expected);
         expected = entry.resultingState;
       }
@@ -357,13 +369,17 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
 
       const history = await findProductHistory(db, id);
 
+      // Ordered by when things happened. The four moves are backdated across
+      // 2026 and the enrolment is today, so it sorts newest — which is correct
+      // and is what "ordered by occurrence" means.
       expect(history.map((entry) => entry.type)).toEqual([
+        "record_enrolled",
         "product_retired",
         "product_reinstated",
         "product_suspended",
         "product_registered",
       ]);
-      expect(history.map((entry) => entry.reason)).toEqual([
+      expect(history.slice(1, 5).map((entry) => entry.reason)).toEqual([
         "end_of_life",
         "dispute_resolved",
         "theft_report",

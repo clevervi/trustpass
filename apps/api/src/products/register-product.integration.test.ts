@@ -1,4 +1,5 @@
 import { createDatabase, type Database, schema } from "@trustpass/db";
+import { moveProductStatus } from "@trustpass/db/testing";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
@@ -170,10 +171,13 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
       const original = (await (await post(body({ serial }))).json()) as { trustpassId: string };
       expect((await post(body({ serial }))).status).toBe(409);
 
-      await db
-        .update(schema.product)
-        .set({ status: "retired" })
+      const [row] = await db
+        .select({ id: schema.product.id })
+        .from(schema.product)
         .where(eq(schema.product.trustpassId, original.trustpassId as never));
+      // Through the helper since #54: a status change carries the event that
+      // explains it, and this test's subject is the serial rule.
+      await moveProductStatus(db, row?.id as number, "retired");
 
       const replacement = await post(body({ serial }));
       expect(replacement.status).toBe(201);

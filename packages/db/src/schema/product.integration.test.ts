@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
+import { insertProductWithProvenance, moveProductStatus } from "../testing/with-provenance.js";
 import { issuer } from "./issuer.js";
 import { type NewProduct, product } from "./product.js";
 
@@ -72,15 +73,13 @@ describe.skipIf(!databaseUrl)("product table", () => {
 
   afterAll(async () => {
     // Products first: the foreign key is RESTRICT, which is the point.
-    await db.delete(product).where(like(product.serial, `${run}%`));
-    await db.delete(issuer).where(like(issuer.registrationNumber, `${run}%`));
     await db.$client.end();
   });
 
   describe("persistence", () => {
     it("round-trips a product", async () => {
       const values = build();
-      const [created] = await db.insert(product).values(values).returning();
+      const created = await insertProductWithProvenance(db, values);
 
       expect(created).toBeDefined();
       expect(created?.trustpassId).toBe(values.trustpassId);
@@ -98,29 +97,29 @@ describe.skipIf(!databaseUrl)("product table", () => {
     it("defaults a product to draft", async () => {
       // A row existing is not a claim that the product is registered. Same
       // reasoning as `unverified` on issuer: the honest default.
-      const [created] = await db.insert(product).values(build()).returning();
+      const created = await insertProductWithProvenance(db, build());
 
       expect(created?.status).toBe("draft");
     });
 
     it("stores timestamps with a timezone", async () => {
-      const [created] = await db.insert(product).values(build()).returning();
+      const created = await insertProductWithProvenance(db, build());
 
       expect(created?.createdAt).toBeInstanceOf(Date);
       expect(created?.updatedAt).toBeInstanceOf(Date);
     });
 
     it("advances updated_at when a row changes", async () => {
-      const [created] = await db.insert(product).values(build()).returning();
+      const created = await insertProductWithProvenance(db, build());
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const [updated] = await db
-        .update(product)
-        .set({ status: "registered" })
-        .where(eq(product.id, created?.id as number))
-        .returning();
+      await moveProductStatus(db, created?.id as number, "registered");
 
+      const [updated] = await db
+        .select()
+        .from(product)
+        .where(eq(product.id, created?.id as number));
       expect(updated?.status).toBe("registered");
       expect(updated?.updatedAt.getTime()).toBeGreaterThan(created?.updatedAt.getTime() as number);
       expect(updated?.createdAt.getTime()).toBe(created?.createdAt.getTime());
@@ -130,7 +129,7 @@ describe.skipIf(!databaseUrl)("product table", () => {
       // The branded TrustPassId type has to survive the round trip into a
       // varchar column and back, or every caller ends up casting.
       const trustpassId = generateTrustPassId();
-      const [created] = await db.insert(product).values(build({ trustpassId })).returning();
+      const created = await insertProductWithProvenance(db, build({ trustpassId }));
 
       expect(created?.trustpassId).toBe(trustpassId);
       expect(created?.trustpassId).toMatch(/^TP1-/);
@@ -143,7 +142,7 @@ describe.skipIf(!databaseUrl)("product table", () => {
       // criterion existed to protect. A unique index enforces it without making
       // a random value the clustering key — see ADR 0005.
       const trustpassId = generateTrustPassId();
-      await db.insert(product).values(build({ trustpassId })).returning();
+      await insertProductWithProvenance(db, build({ trustpassId }));
 
       await expectSqlState(
         db.insert(product).values(build({ trustpassId })).returning(),
@@ -168,12 +167,12 @@ describe.skipIf(!databaseUrl)("product table", () => {
     it("accepts a future format version", async () => {
       // ADR 0004 versions the format. A constraint written today must not lock
       // out a TP2 identifier issued later.
-      const [created] = await db
-        .insert(product)
-        .values(build({ trustpassId: "TP2-SOMETHINGNEWENTIRELY" as NewProduct["trustpassId"] }))
-        .returning();
+      const created = await insertProductWithProvenance(
+        db,
+        build({ trustpassId: `TP2-FUTURE${run}` as NewProduct["trustpassId"] }),
+      );
 
-      expect(created?.trustpassId).toBe("TP2-SOMETHINGNEWENTIRELY");
+      expect(created?.trustpassId).toBe(`TP2-FUTURE${run}`);
     });
   });
 
@@ -197,10 +196,7 @@ describe.skipIf(!databaseUrl)("product table", () => {
       // The code is 23001 restrict_violation, not 23503 foreign_key_violation.
       // Postgres raises RESTRICT immediately and NO ACTION at constraint-check
       // time, and the distinction is exactly what proves RESTRICT is in force.
-      await db
-        .insert(product)
-        .values(build({ issuerId: otherIssuerId }))
-        .returning();
+      await insertProductWithProvenance(db, build({ issuerId: otherIssuerId }));
 
       await expectSqlState(
         db.delete(issuer).where(eq(issuer.id, otherIssuerId)),
@@ -261,12 +257,12 @@ describe.skipIf(!databaseUrl)("product table", () => {
       // one issuer from registering the same serial twice is TP-024, and it is
       // a different rule from this one.
       const serial = `${run}-SHARED-SERIAL`;
-      await db.insert(product).values(build({ serial, issuerId })).returning();
+      await insertProductWithProvenance(db, build({ serial, issuerId }));
 
-      const [second] = await db
-        .insert(product)
-        .values(build({ serial, issuerId: otherIssuerId }))
-        .returning();
+      const second = await insertProductWithProvenance(
+        db,
+        build({ serial, issuerId: otherIssuerId }),
+      );
 
       expect(second?.serial).toBe(serial);
     });
@@ -319,13 +315,15 @@ describe.skipIf(!databaseUrl)("where a record began", () => {
   });
 
   afterAll(async () => {
-    await db.delete(product).where(like(product.serial, `${run}%`));
-    await db.delete(issuer).where(like(issuer.registrationNumber, `${run}%`));
+    // Nothing is deleted. Products carry events since TP-051, events cannot be
+    // removed since TP-050, and the foreign keys are RESTRICT — so a teardown
+    // that succeeded would prove a product's history can be erased. Each run
+    // uses its own prefix, so the rows accumulate without colliding.
     await db.$client.end();
   });
 
   it("defaults to supply_chain rather than claiming a factory", async () => {
-    const [created] = await db.insert(product).values(row()).returning();
+    const created = await insertProductWithProvenance(db, row());
 
     // Every product registered before this column existed came through
     // POST /products from a business whose relationship to the factory nobody
@@ -335,7 +333,7 @@ describe.skipIf(!databaseUrl)("where a record began", () => {
   });
 
   it.each(["manufacturer", "supply_chain"] as const)("accepts %s", async (origin) => {
-    const [created] = await db.insert(product).values(row({ origin })).returning();
+    const created = await insertProductWithProvenance(db, row({ origin }));
 
     expect(created?.origin).toBe(origin);
   });
@@ -343,10 +341,10 @@ describe.skipIf(!databaseUrl)("where a record began", () => {
   it("accepts holder, but only without an issuer", async () => {
     // Since TP-047 a holder origin and an issuer are mutually exclusive: a
     // person cannot carry a company's standing.
-    const [created] = await db
-      .insert(product)
-      .values(row({ origin: "holder", issuerId: null }))
-      .returning();
+    const created = await insertProductWithProvenance(
+      db,
+      row({ origin: "holder", issuerId: null }),
+    );
 
     expect(created?.origin).toBe("holder");
     expect(created?.issuerId).toBeNull();
@@ -360,10 +358,7 @@ describe.skipIf(!databaseUrl)("where a record began", () => {
   });
 
   it("exists with no issuer at all", async () => {
-    const [created] = await db
-      .insert(product)
-      .values(holder(`${run}-H1`))
-      .returning();
+    const created = await insertProductWithProvenance(db, holder(`${run}-H1`));
 
     expect(created?.issuerId).toBeNull();
     expect(created?.origin).toBe("holder");
@@ -381,7 +376,7 @@ describe.skipIf(!databaseUrl)("where a record began", () => {
   it("refuses a second live holder record for the same serial", async () => {
     n += 1;
     const serial = `${run}-DUP-${n}`;
-    await db.insert(product).values(holder(serial));
+    await insertProductWithProvenance(db, holder(serial));
 
     // Without this, anyone could enrol a device, have something unwelcome
     // recorded against it, enrol it again and show the clean passport.
@@ -394,28 +389,26 @@ describe.skipIf(!databaseUrl)("where a record began", () => {
   it("lets an issuer register a product whose serial a holder already enrolled", async () => {
     n += 1;
     const serial = `${run}-SHARE-${n}`;
-    await db.insert(product).values(holder(serial));
+    await insertProductWithProvenance(db, holder(serial));
 
     // Serials are only unique inside a manufacturer's own numbering, so a
     // collision across these two is legitimate rather than a duplicate.
-    const [alsoRegistered] = await db
-      .insert(product)
-      .values({ ...holder(serial), issuerId, origin: "supply_chain" })
-      .returning();
+    const alsoRegistered = await insertProductWithProvenance(db, {
+      ...holder(serial),
+      issuerId,
+      origin: "supply_chain",
+    });
 
-    expect(alsoRegistered?.issuerId).toBe(issuerId);
+    expect(alsoRegistered.issuerId).toBe(issuerId);
   });
 
   it("releases the serial when the holder record is retired", async () => {
     n += 1;
     const serial = `${run}-REL-${n}`;
-    const [first] = await db.insert(product).values(holder(serial)).returning();
-    await db
-      .update(product)
-      .set({ status: "retired" })
-      .where(eq(product.id, first?.id as number));
+    const first = await insertProductWithProvenance(db, holder(serial));
+    await moveProductStatus(db, first?.id as number, "retired");
 
-    const [second] = await db.insert(product).values(holder(serial)).returning();
+    const second = await insertProductWithProvenance(db, holder(serial));
 
     expect(second?.id).not.toBe(first?.id);
   });
