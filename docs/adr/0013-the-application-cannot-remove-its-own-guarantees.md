@@ -195,8 +195,50 @@ Nothing prevents it.
 
   A `SET`-based count reads zero for it. So the question is deliberately *not*
   what the connection can become: **inheritance reaches the same privileges
-  without `SET ROLE` ever being called.** `MEMBER` is `USAGE OR SET` and covers
-  both paths.
+  without `SET ROLE` ever being called.**
+
+  *Corrected again by TP-168 (#130).* This paragraph originally closed with
+  "`MEMBER` is `USAGE OR SET`", which is false. `MEMBER` is strictly broader —
+  it reports membership whatever that membership confers:
+
+  ```
+  GRANT owner TO member WITH INHERIT FALSE, SET FALSE
+
+  MEMBER   USAGE   SET
+  t        f       f
+  ```
+
+  So the guard can refuse a connection whose membership grants it nothing. That
+  false positive is accepted deliberately: in a fail-closed barrier it is the
+  direction to be wrong in, and it means no future shape of `GRANT ... WITH`
+  slips past the inventory. Conservative, not exact — and the difference is
+  worth writing down rather than claiming an equivalence the catalogue does not
+  support.
+
+  The same correction found that the enum reasoning was wrong too. A type owner
+  cannot drop an enum value; Postgres 18.6 answers `ALTER TYPE ... DROP VALUE`
+  with `dropping an enum value is not implemented`. `RENAME VALUE` exists and is
+  worse, measured against the live type in a rolled-back transaction:
+
+  ```
+  ALTER TYPE lifecycle_actor_kind RENAME VALUE 'issuer' TO 'holder_verified';
+
+  issuer  1744   ->   holder_verified  1744
+  ```
+
+  **1,744 lifecycle events restated with zero UPDATEs.**
+  `lifecycle_event_no_update` never fires, because no row is touched. The
+  append-only guarantee that ADR 0005 established and #78 defended is bypassed
+  by editing the dictionary instead of the text — which is why `pg_type` belongs
+  in the inventory, and why the runtime attack suite now has a case for it.
+
+- **The guard is a startup barrier, not a continuous guarantee.** It asks once,
+  on one pooled connection, before anything is served. A membership granted at
+  10:20 against a process that started at 10:05 is not detected. The property
+  provided is *"the connection was in the right posture when the application
+  started"* — a defence against a misconfigured deployment, not against a
+  compromised administrator. Re-asking per request was considered and rejected:
+  a round trip on every request to detect what the role model already prevents.
 - The integration suite keeps running as the superuser, because it creates and
   cleans fixtures. Only the least-privilege suite connects as the runtime, which
   is correct: it is the only one asking what the application can do.

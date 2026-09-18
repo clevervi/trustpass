@@ -17,6 +17,19 @@ import type { Database } from "./client.js";
  * from editable. The first evidence would be a record that changed.
  *
  * So the process asks, and refuses to run if the answer is wrong.
+ *
+ * **What this is, precisely: a startup barrier, not a continuous guarantee.**
+ * It asks once, on one pooled connection, before anything is served. A
+ * membership granted at 10:20 against a process that started at 10:05 is not
+ * detected, and neither is a pooler that hands out sessions belonging to
+ * different roles. The property provided is *"the connection was in the right
+ * posture when the application started"*, which defends against a misconfigured
+ * deployment and not against a compromised administrator.
+ *
+ * Re-asking per request was considered and rejected: it costs a round trip on
+ * every request to detect something the role model in ADR 0013 already
+ * prevents, and the role model is the defence. This is the check that the role
+ * model is the one being used.
  */
 export interface ConnectionPrivileges {
   /** `current_user`, which is the effective role, not the one in the URL. */
@@ -60,8 +73,23 @@ export interface ConnectionPrivileges {
    * A `SET`-based count reads `0` for it and starts the application. So the
    * question is deliberately not "can this connection become that role" —
    * inheritance reaches the same privileges without `SET ROLE` ever being
-   * called. `MEMBER` is `USAGE OR SET` and covers both paths, and a role is a
-   * member of itself, which folds plain ownership in as well.
+   * called.
+   *
+   * **`MEMBER` is not `USAGE OR SET`, and an earlier version of this comment
+   * said it was.** It is strictly broader: it reports membership whatever that
+   * membership confers. Measured:
+   *
+   *   GRANT owner TO member WITH INHERIT FALSE, SET FALSE
+   *
+   *   MEMBER   USAGE   SET
+   *   t        f       f
+   *
+   * So this count can refuse a connection whose membership grants it nothing.
+   * That false positive is accepted on purpose: in a fail-closed barrier it is
+   * the direction to be wrong in, and it means no shape of `GRANT ... TO ...
+   * WITH` can arrive later and slip past the inventory. The guard is
+   * deliberately conservative rather than exact, and a role being a member of
+   * itself folds plain ownership in as well.
    */
   reachableOwnership: number;
 }
@@ -152,9 +180,26 @@ export async function readConnectionPrivileges(db: Database): Promise<Connection
 
       UNION ALL
 
-      -- Enums, domains and ranges. \`lifecycle_actor_kind\` is an enum, and
-      -- altering or dropping a value silently reinterprets every event ever
-      -- recorded under it — which 0023 already has a test defending.
+      -- Enums, domains and ranges, because a type owner can rewrite what the
+      -- stored data means without touching any of it.
+      --
+      -- An earlier version of this comment said the owner could drop an enum
+      -- value. It cannot — Postgres 18.6 answers ALTER TYPE ... DROP VALUE with
+      -- "dropping an enum value is not implemented". RENAME VALUE is what
+      -- exists, and it is worse. Run against the real type inside a rolled-back
+      -- transaction:
+      --
+      --   ALTER TYPE lifecycle_actor_kind RENAME VALUE 'issuer' TO 'holder_verified';
+      --
+      --   before                    after
+      --   issuer      1744          holder_verified  1744
+      --   authority   1167          authority        1167
+      --   holder       722          holder            722
+      --
+      -- 1,744 lifecycle events restated, and \`lifecycle_event_no_update\` never
+      -- fired, because no row was touched. The append-only guarantee is
+      -- bypassed by editing the dictionary instead of the text. DROP TYPE, and
+      -- the column with it, is the blunter version of the same ownership.
       --
       -- Restricted to those three kinds because pg_type also holds a composite
       -- type and an array type for every table, and counting those would count
