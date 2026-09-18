@@ -12,6 +12,7 @@
  * in a real recovery.
  */
 import { execFileSync, spawnSync } from "node:child_process";
+import { isAbsolute, relative, resolve } from "node:path";
 
 export interface Cluster {
   /** The container running Postgres. */
@@ -90,6 +91,33 @@ export function copyIn(
 ): { ok: boolean; stderr: string } {
   const result = spawnSync("docker", ["cp", localPath, `${container}:${containerPath}`]);
   return { ok: result.status === 0, stderr: (result.stderr ?? Buffer.alloc(0)).toString("utf8") };
+}
+
+/**
+ * Where a backup is allowed to be written.
+ *
+ * These scripts take a destination on the command line, and the command line is
+ * increasingly built by an agent rather than typed by a person — which is the
+ * threat the scanner named, in those words, on this pull request. A positional
+ * argument is not a place to decide that a backup of the whole database belongs
+ * outside the repository.
+ *
+ * So the argument may only move it *within* the repository. An operator writing
+ * to a mounted volume sets TP_BACKUP_ROOT, deliberately, once.
+ */
+export function backupDestination(requested: string, repoRoot: string): string {
+  const root = resolve(process.env.TP_BACKUP_ROOT || repoRoot);
+  const target = resolve(root, requested);
+  const inside = relative(root, target);
+
+  if (inside.startsWith("..") || isAbsolute(inside)) {
+    throw new Error(
+      `Refusing to write a backup to ${target}, which is outside ${root}.
+` + "Set TP_BACKUP_ROOT to write somewhere else on purpose.",
+    );
+  }
+
+  return target;
 }
 
 export function dockerVersion(): string {

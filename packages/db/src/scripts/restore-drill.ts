@@ -18,10 +18,19 @@
  * the recovery, not after it.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { takeBackup } from "./backup.js";
-import { cluster, clusterIsReachable, copyIn, query, run, tryQuery } from "./pg-tools.js";
+import {
+  backupDestination,
+  cluster,
+  clusterIsReachable,
+  copyIn,
+  query,
+  run,
+  tryQuery,
+} from "./pg-tools.js";
 
 interface Check {
   criterion: string;
@@ -87,7 +96,8 @@ async function main(): Promise<void> {
   const c = cluster();
   const source = process.env.TP_PG_DATABASE || "trustpass";
   const restored = process.env.TP_RESTORE_DATABASE || "trustpass_restore_drill";
-  const directory = resolve(process.argv[2] ?? ".backups/drill");
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
+  const directory = backupDestination(process.argv[2] ?? "packages/db/.backups/drill", repoRoot);
   const startedAt = new Date().toISOString();
 
   if (!clusterIsReachable(c)) {
@@ -113,7 +123,14 @@ async function main(): Promise<void> {
 
   // Copied in rather than piped. See copyIn: a custom-format dump is read by
   // seeking, and a pipe cannot seek.
-  const inContainer = "/tmp/tp-restore-drill.dump";
+  // Not a fixed path under /tmp. That directory is world-writable, so a fixed
+  // name can be replaced between the copy and the restore by anything else in
+  // the container — the same shape of race CodeQL found in the preflight. A
+  // private directory, made fresh, removes the window rather than narrowing it.
+  const scratch = run(c, ["mktemp", "-d", "-t", "tp-drill-XXXXXXXX"])
+    .stdout.toString("utf8")
+    .trim();
+  const inContainer = `${scratch}/restore.dump`;
   const copied = copyIn(c, join(directory, `${source}.dump`), inContainer);
   assert(
     "the dump reached the server",
@@ -262,7 +279,7 @@ async function main(): Promise<void> {
   // the schema` failed on TEMP. A boolean that the default answers yes to is
   // not a check.
   const aclStatements = readFileSync(join(directory, "database-acl.sql"), "utf8")
-    .replace(/@DATABASE@/g, restored)
+    .replaceAll("@DATABASE@", restored)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
@@ -325,7 +342,7 @@ async function main(): Promise<void> {
     "the failure the first drill missed",
   );
 
-  run(c, ["rm", "-f", inContainer]);
+  run(c, ["rm", "-rf", scratch]);
   report(startedAt, manifest, restored, directory);
 }
 
@@ -377,7 +394,9 @@ function report(startedAt: string, manifest: unknown, restored: string, director
   console.log("    pnpm --filter @trustpass/db test -- src/schema/least-privilege");
 }
 
-main().catch((error: unknown) => {
+try {
+  await main();
+} catch (error) {
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
-});
+}

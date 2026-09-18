@@ -21,8 +21,9 @@
  */
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { cluster, clusterIsReachable, run } from "./pg-tools.js";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { backupDestination, cluster, clusterIsReachable, run } from "./pg-tools.js";
 
 /** The database's own privileges, as statements that can be replayed elsewhere. */
 const ACL_SQL = `SELECT 'REVOKE ALL ON DATABASE @DATABASE@ FROM PUBLIC;'
@@ -111,7 +112,8 @@ const isEntryPoint =
   process.argv[1]?.endsWith("backup.ts") || process.argv[1]?.endsWith("backup.js");
 
 if (isEntryPoint) {
-  const directory = resolve(process.argv[2] ?? ".backups/latest");
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
+  const directory = backupDestination(process.argv[2] ?? "packages/db/.backups/latest", repoRoot);
   const database = process.env.TP_PG_DATABASE || "trustpass";
 
   try {
