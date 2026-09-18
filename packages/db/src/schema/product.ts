@@ -10,7 +10,6 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import type { TrustPassId } from "../identity/trustpass-id.js";
-import { issuer } from "./issuer.js";
 import { organization } from "./organization.js";
 
 /**
@@ -109,28 +108,15 @@ export const product = pgTable(
     trustpassId: varchar("trustpass_id", { length: 64 }).$type<TrustPassId>().notNull(),
 
     /**
-     * Who issued this product. Restrict rather than cascade: deleting an issuer
-     * with products would erase the provenance of everything it signed, which
-     * is the one thing a passport exists to preserve. Issuers are suspended,
-     * not deleted.
-     */
-    issuerId: bigint("issuer_id", { mode: "number" }).references(() => issuer.id, {
-      onDelete: "restrict",
-      onUpdate: "cascade",
-    }),
-
-    /**
      * Which party registered this product.
      *
      * Per ADR 0012 `organization` is the canonical identity of a party and
-     * `issuer` is a role it plays. This column exists beside `issuerId` during
-     * the move, which is the additive path `CONTRIBUTING.md` requires: add a
-     * column, backfill it, stop using the old one, in separate migrations. The
-     * destructive half gets its own pull request so the diff that drops data is
-     * the whole diff.
+     * `issuer` is a role it plays, and as of `0023` there is one table for a
+     * party rather than two.
      *
-     * Nullable for the same reason `issuerId` is: a holder-enrolled record has
-     * no party behind it.
+     * Nullable because a holder-enrolled record has no party behind it, which
+     * `product_holder_has_no_organization` ties to a holder origin so the
+     * absence is a stated fact rather than a missing one.
      */
     organizationId: bigint("organization_id", { mode: "number" }).references(
       () => organization.id,
@@ -184,7 +170,6 @@ export const product = pgTable(
 
     // "Everything this issuer registered" is the query behind an issuer
     // dashboard and behind most fraud signals.
-    index("product_issuer_id_idx").on(table.issuerId),
 
     // The same lookup, against the identity that will outlive issuer_id.
     index("product_organization_id_idx").on(table.organizationId),

@@ -162,6 +162,13 @@
       "when": 1789748098411,
       "tag": "0022_constraints_follow_the_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789750174368,
+      "tag": "0023_one_identity_remains",
+      "breakpoints": true
     }
   ]
 }
