@@ -73,6 +73,21 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
     };
   }
 
+  /** A batch of status moves and hand-written events, as one transaction. */
+  function inOneTransaction(
+    moves: readonly { id: number; to: "registered" | "suspended" | "retired" }[],
+    events: readonly { id: number; from: "registered" | "suspended"; to: string }[],
+  ) {
+    return db.transaction(async (tx) => {
+      for (const move of moves) {
+        await tx.update(product).set({ status: move.to }).where(eq(product.id, move.id));
+      }
+      for (const event of events) {
+        await tx.insert(lifecycleEvent).values(transitionEvent(event.id, event.from, event.to));
+      }
+    });
+  }
+
   beforeAll(() => {
     db = createDatabase(databaseUrl as string);
   });
@@ -136,17 +151,17 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
     // so a check asking whether *some* matching event exists accepts the third
     // move on the strength of the event that explained the first.
     await expectSqlState(
-      db.transaction(async (tx) => {
-        await tx.update(product).set({ status: "suspended" }).where(eq(product.id, created.id));
-        await tx.update(product).set({ status: "registered" }).where(eq(product.id, created.id));
-        await tx.update(product).set({ status: "suspended" }).where(eq(product.id, created.id));
-        await tx
-          .insert(lifecycleEvent)
-          .values(transitionEvent(created.id, "registered", "suspended"));
-        await tx
-          .insert(lifecycleEvent)
-          .values(transitionEvent(created.id, "suspended", "registered"));
-      }),
+      inOneTransaction(
+        [
+          { id: created.id, to: "suspended" },
+          { id: created.id, to: "registered" },
+          { id: created.id, to: "suspended" },
+        ],
+        [
+          { id: created.id, from: "registered", to: "suspended" },
+          { id: created.id, from: "suspended", to: "registered" },
+        ],
+      ),
       SqlState.PROVENANCE_REQUIRED,
     );
   });
@@ -159,16 +174,16 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
     // firings from inside a row trigger is not possible — so the correspondence
     // is made 1:1 by construction instead.
     await expectSqlState(
-      db.transaction(async (tx) => {
-        await tx.update(product).set({ status: "suspended" }).where(eq(product.id, created.id));
-        await tx.update(product).set({ status: "registered" }).where(eq(product.id, created.id));
-        await tx
-          .insert(lifecycleEvent)
-          .values(transitionEvent(created.id, "registered", "suspended"));
-        await tx
-          .insert(lifecycleEvent)
-          .values(transitionEvent(created.id, "suspended", "registered"));
-      }),
+      inOneTransaction(
+        [
+          { id: created.id, to: "suspended" },
+          { id: created.id, to: "registered" },
+        ],
+        [
+          { id: created.id, from: "registered", to: "suspended" },
+          { id: created.id, from: "suspended", to: "registered" },
+        ],
+      ),
       SqlState.PROVENANCE_REQUIRED,
     );
   });
@@ -179,12 +194,10 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
 
     // One event, one move, and they disagree. Counting alone would accept it.
     await expectSqlState(
-      db.transaction(async (tx) => {
-        await tx.update(product).set({ status: "retired" }).where(eq(product.id, created.id));
-        await tx
-          .insert(lifecycleEvent)
-          .values(transitionEvent(created.id, "suspended", "registered"));
-      }),
+      inOneTransaction(
+        [{ id: created.id, to: "retired" }],
+        [{ id: created.id, from: "suspended", to: "registered" }],
+      ),
       SqlState.PROVENANCE_REQUIRED,
     );
   });
@@ -196,11 +209,13 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
     // Row-level, so each product's firing looks for its own event. Verified
     // rather than assumed when review raised it.
     await expectSqlState(
-      db.transaction(async (tx) => {
-        await tx.update(product).set({ status: "suspended" }).where(eq(product.id, a.id));
-        await tx.update(product).set({ status: "suspended" }).where(eq(product.id, b.id));
-        await tx.insert(lifecycleEvent).values(transitionEvent(a.id, "registered", "suspended"));
-      }),
+      inOneTransaction(
+        [
+          { id: a.id, to: "suspended" },
+          { id: b.id, to: "suspended" },
+        ],
+        [{ id: a.id, from: "registered", to: "suspended" }],
+      ),
       SqlState.PROVENANCE_REQUIRED,
     );
   });
