@@ -20,6 +20,7 @@ Write one when the answer to "why is it like this?" would otherwise be lost.
 | [0008](0008-events-record-what-happened-claims-assert-what-is-true.md) | Events record what happened; claims assert what is true | Accepted |
 | [0009](0009-a-capacity-is-granted-not-claimed.md) | A capacity is granted, evidenced and revocable; it is not a role | Accepted |
 | [0010](0010-two-records-one-object.md) | Two records for one object are joined by evidence, and neither is destroyed | Accepted |
+| [0011](0011-authority-is-pinned-to-the-moment-it-was-used.md) | Authority is pinned to the moment it was used | Accepted |
 
 ## Template
 
