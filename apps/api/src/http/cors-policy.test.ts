@@ -121,6 +121,54 @@ describe("what a browser is told, per route", () => {
     }
   });
 
+  it("carries the same policy on the real request, not only the preflight", async () => {
+    // A preflight and the response to the actual request are separate
+    // exchanges, and a middleware can answer one and not the other. Testing
+    // OPTIONS alone would leave a POST that returns the data with no
+    // Access-Control-Allow-Origin — or worse, with the wrong one — undetected.
+    const body = JSON.stringify({
+      brand: "ASUS",
+      model: "ROG",
+      serial: "REAL-REQUEST",
+      category: "gpu",
+    });
+
+    const allowed = await app(ALLOWED).request("/enrolments", {
+      method: "POST",
+      headers: { origin: ALLOWED, "content-type": "application/json" },
+      body,
+    });
+
+    const refused = await app(ALLOWED).request("/enrolments", {
+      method: "POST",
+      headers: { origin: DISALLOWED, "content-type": "application/json" },
+      body,
+    });
+
+    expect(allowed.headers.get("access-control-allow-origin")).toBe(ALLOWED);
+    expect(refused.headers.get("access-control-allow-origin")).not.toBe(DISALLOWED);
+    expect(refused.headers.get("access-control-allow-origin")).not.toBe("*");
+  });
+
+  it("answers a preflight that asks about headers, not only about the method", async () => {
+    // A browser sending Content-Type: application/json preflights with
+    // Access-Control-Request-Headers. A policy that allows the method and not
+    // the header fails at exactly the moment a real client tries to use it.
+    const response = await app(ALLOWED).request("/enrolments", {
+      method: "OPTIONS",
+      headers: {
+        origin: ALLOWED,
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type",
+      },
+    });
+
+    expect(response.headers.get("access-control-allow-origin")).toBe(ALLOWED);
+    expect(response.headers.get("access-control-allow-headers")?.toLowerCase()).toContain(
+      "content-type",
+    );
+  });
+
   it("defaults to refusing writes when createApp is given no policy", async () => {
     // The argument is optional, and a caller that forgets it gets the safe
     // answer rather than the convenient one.
