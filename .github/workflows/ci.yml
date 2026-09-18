@@ -56,6 +56,28 @@ jobs:
       - name: Test the context router
         run: node --test ".claude/tests/*.test.mjs"
 
+      # Deliberately scoped to commit messages, not to the repository. A grep
+      # across the tree would flag `.claude/`, which names a model on nearly
+      # every line for good reasons, and a check that cries wolf gets switched
+      # off. What is checked here is whether an artefact we wrote credits a
+      # tool for the work.
+      - name: No artefact credits a tool for the work
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          if [ -z "$base" ]; then
+            git log -1 --format='%B%n%(trailers)' | node .claude/scripts/tp-attribution.mjs
+            exit $?
+          fi
+          failed=0
+          for sha in $(git rev-list "$base..$head"); do
+            if ! git log -1 --format='%B%n%(trailers)' "$sha" | node .claude/scripts/tp-attribution.mjs; then
+              echo "::error::$sha"
+              failed=1
+            fi
+          done
+          exit $failed
+
       # Migrations in this repository are hand-written, because triggers,
       # deferred constraint triggers and partial indexes are not things
       # drizzle-kit can express. But drizzle-kit keeps its own snapshot of the
