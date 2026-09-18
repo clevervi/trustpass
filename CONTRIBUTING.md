@@ -347,8 +347,20 @@ was deferring a decision to an identifier that tracked nothing. It now has one
 (#89).
 
 > **A `TP-` identifier in code, an ADR, a release note or this file must resolve
-> to an issue or to a roadmap entry. `docs/ROADMAP.md` itself may name unstarted
-> work, because that is what a roadmap is for.**
+> to an issue or to a roadmap entry, and to exactly one piece of work.**
+> `docs/ROADMAP.md` itself may name unstarted work, because that is what a
+> roadmap is for.
+
+The "exactly one" half was added after `TP-141` was found naming two: issue #102,
+an ADR closed in v0.5.0, and the authentication the roadmap says it "has to
+build", which was never filed. #120 cited it as a dependency, a reader followed
+it to a closed issue, and concluded #120 was unblocked. It was not.
+
+**An identifier resolving to two pieces of work is worse than one resolving to
+none.** Absence is visible the moment somebody looks. Ambiguity reads as
+completion, and nobody looks again. The implementation is #141 now, and the
+check below catches absence but not this — it is caught by reading the
+dependency before starting, which is the rule the issue skill states.
 
 To check:
 
