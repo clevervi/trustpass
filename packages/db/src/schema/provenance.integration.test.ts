@@ -59,6 +59,35 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
     });
   }
 
+  /** A transition event, for the cases that write one by hand. */
+  function transitionEvent(productId: number, from: "registered" | "suspended", to: string) {
+    return {
+      productId,
+      type: to === "suspended" ? ("product_suspended" as const) : ("product_reinstated" as const),
+      actorKind: "authority" as const,
+      issuerId: null,
+      occurredAt: sql`now()` as unknown as Date,
+      reason: to === "suspended" ? ("theft_report" as const) : ("dispute_resolved" as const),
+      previousState: from,
+      resultingState: to as "registered" | "suspended",
+    };
+  }
+
+  /** A batch of status moves and hand-written events, as one transaction. */
+  function inOneTransaction(
+    moves: readonly { id: number; to: "registered" | "suspended" | "retired" }[],
+    events: readonly { id: number; from: "registered" | "suspended"; to: string }[],
+  ) {
+    return db.transaction(async (tx) => {
+      for (const move of moves) {
+        await tx.update(product).set({ status: move.to }).where(eq(product.id, move.id));
+      }
+      for (const event of events) {
+        await tx.insert(lifecycleEvent).values(transitionEvent(event.id, event.from, event.to));
+      }
+    });
+  }
+
   beforeAll(() => {
     db = createDatabase(databaseUrl as string);
   });
@@ -111,6 +140,70 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
     // leave the third move unexplained while looking accounted for.
     await expectSqlState(
       db.update(product).set({ status: "suspended" }).where(eq(product.id, created.id)),
+      SqlState.PROVENANCE_REQUIRED,
+    );
+  });
+
+  it.each([
+    {
+      name: "one event explaining two identical moves",
+      moves: ["suspended", "registered", "suspended"],
+      events: [
+        ["registered", "suspended"],
+        ["suspended", "registered"],
+      ],
+    },
+    {
+      name: "two moves even when each has its own event",
+      moves: ["suspended", "registered"],
+      events: [
+        ["registered", "suspended"],
+        ["suspended", "registered"],
+      ],
+    },
+    {
+      name: "an event that describes a different move",
+      moves: ["retired"],
+      events: [["suspended", "registered"]],
+    },
+  ] as const)("refuses $name", async ({ moves, events }) => {
+    // The first case is the hole #54 left open: moves one and three share a
+    // (previous, resulting) pair, so a check asking whether *some* matching
+    // event exists accepts the third on the strength of the first's event.
+    //
+    // The second shows the rule is one move per transaction rather than
+    // balanced bookkeeping — counting a trigger's own firings from inside a row
+    // trigger is not possible, so the correspondence is made 1:1 by
+    // construction instead.
+    //
+    // The third shows counting alone is not enough: one event, one move, and
+    // they describe different transitions.
+    const created = await insertProductWithProvenance(db, values());
+    if (moves[0] === "retired") await moveWithReason(created.id, "registered", "suspended");
+
+    await expectSqlState(
+      inOneTransaction(
+        moves.map((to) => ({ id: created.id, to })),
+        events.map(([from, to]) => ({ id: created.id, from, to })),
+      ),
+      SqlState.PROVENANCE_REQUIRED,
+    );
+  });
+
+  it("refuses a second product moved without its own event", async () => {
+    const a = await insertProductWithProvenance(db, values());
+    const b = await insertProductWithProvenance(db, values());
+
+    // Row-level, so each product's firing looks for its own event. Verified
+    // rather than assumed when review raised it.
+    await expectSqlState(
+      inOneTransaction(
+        [
+          { id: a.id, to: "suspended" },
+          { id: b.id, to: "suspended" },
+        ],
+        [{ id: a.id, from: "registered", to: "suspended" }],
+      ),
       SqlState.PROVENANCE_REQUIRED,
     );
   });
