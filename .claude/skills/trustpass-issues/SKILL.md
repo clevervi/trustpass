@@ -28,8 +28,11 @@ issue, or when a change is growing past what its issue described.
 - **Never build a provisional version of a blocked dependency.** Wait, or do the
   part that is genuinely unblocked. A stand-in becomes a second system somebody
   later trusts.
-- **Merged is not done.** Map every acceptance criterion to its evidence, then
-  close. "Builds" is not "works"; an inference is not an executed fact.
+- **Merged is not done, and your own report is not evidence.** Map every
+  acceptance criterion to its evidence, then close. Check the target branch
+  itself — `gh api repos/.../contents/<path>?ref=develop` — not the local tree
+  and not what the last message said. "Builds" is not "works"; an inference is
+  not an executed fact.
 - **Router output is not repository evidence.** A summary is navigation. Read the
   named source and cite the file, the test and the CI run.
 - **Security raises the evidence bar, not the issue count.** Record precondition,

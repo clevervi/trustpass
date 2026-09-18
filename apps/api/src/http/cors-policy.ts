@@ -9,11 +9,24 @@
  * user's browser from another origin using *their* credentials. There are no
  * credentials: no authentication, no cookies, no session. `curl` ignores CORS
  * entirely, so nothing about the current API is defended by it and nothing is
- * exposed by `*`. The day #141 lands, every page on the internet can make an
- * authenticated write on behalf of whoever is visiting it — and the change that
- * introduces that risk is the one least likely to remember this file.
+ * exposed by `*`.
  *
- * So it is decided now, while getting it wrong costs nothing.
+ * What changes with #141 depends on how the credential travels, and an earlier
+ * version of this comment overstated it. A wildcard does not hand a token to
+ * another origin:
+ *
+ *   Authorization: Bearer   the page has to already possess the token. CORS is
+ *                           not what keeps it from having one, and `*` does not
+ *                           give it one.
+ *   Cookie, or anything     the browser attaches the credential by itself, so
+ *   the browser attaches    any page that can reach the endpoint can act as the
+ *   automatically          visitor. Here `*` is the whole problem.
+ *
+ * So the accurate statement is narrower: **this policy is safe only while the
+ * API holds no browser-carried credential, and must not permit arbitrary
+ * origins for authenticated writes once it does.** Which credential #141
+ * chooses is exactly the decision least likely to come back and read this file,
+ * so it is decided now, while getting it wrong costs nothing.
  *
  * The three states follow `apps/web/lib/passport-origin.ts`, which learned the
  * same lesson about a different value: an unset variable is not a permissive
