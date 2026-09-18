@@ -27,8 +27,10 @@ export {
   type NewProduct,
   type Product,
   type ProductCategory,
+  type ProductOrigin,
   type ProductStatus,
   product,
   productCategory,
+  productOrigin,
   productStatus,
 } from "./product.js";

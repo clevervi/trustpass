@@ -43,6 +43,13 @@
       "when": 1789676840771,
       "tag": "0005_lifecycle_event_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789694205801,
+      "tag": "0006_add_product_origin",
+      "breakpoints": true
     }
   ]
 }

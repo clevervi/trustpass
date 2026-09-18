@@ -1,6 +1,6 @@
 {
-  "id": "58a5da80-3371-4c33-953e-7ea055c21356",
-  "prevId": "002d0e41-6493-47cb-9057-e02333dd3114",
+  "id": "099b519c-8b54-4391-b9d9-41f3f89d49b1",
+  "prevId": "58a5da80-3371-4c33-953e-7ea055c21356",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -388,6 +388,14 @@
           "notNull": true,
           "default": "'draft'"
         },
+        "origin": {
+          "name": "origin",
+          "type": "product_origin",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'supply_chain'"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -571,6 +579,15 @@
         "storage",
         "peripheral",
         "other"
+      ]
+    },
+    "public.product_origin": {
+      "name": "product_origin",
+      "schema": "public",
+      "values": [
+        "manufacturer",
+        "supply_chain",
+        "holder"
       ]
     },
     "public.product_status": {
