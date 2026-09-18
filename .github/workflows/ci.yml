@@ -137,6 +137,26 @@ jobs:
             pnpm db:provision
           echo "RUNTIME_DATABASE_URL=postgresql://trustpass_runtime:${RUNTIME_PASSWORD}@localhost:5432/trustpass_test" >> "$GITHUB_ENV"
 
+      # TP-166 gave the startup guard an escape hatch so a developer can run
+      # against a superuser without provisioning roles first. That hatch turns
+      # fail-closed into fail-open, and the only thing keeping it honest is that
+      # nobody sets it where it matters. "Nobody sets it" is the class of claim
+      # this repository keeps replacing with a check.
+      #
+      # Here is one of them. It cannot speak for production — a deploy this
+      # workflow never sees can still set the variable — which is why the
+      # decision belongs in deployment policy and this is the part of that
+      # policy CI is able to enforce.
+      - name: The privileged-database escape hatch is not available here
+        run: |
+          if [ -n "${TRUSTPASS_ALLOW_PRIVILEGED_DATABASE:-}" ]; then
+            echo "::error::TRUSTPASS_ALLOW_PRIVILEGED_DATABASE is set in CI."
+            echo "It exists for local development against a superuser. Setting it here"
+            echo "would mean the suite never runs against the privilege boundary it tests."
+            exit 1
+          fi
+          echo "The escape hatch is not set. The suite runs against the real boundary."
+
       - name: Run test suites
         run: pnpm test
 

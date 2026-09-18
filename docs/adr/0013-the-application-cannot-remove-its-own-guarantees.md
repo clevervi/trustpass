@@ -151,15 +151,52 @@ Nothing prevents it.
   proposed in review — passes `trustpass_migration`, measured:
 
   ```
-  role                 attributes clear   owns directly   can become owner
-  trustpass_migration  yes                0               16
+  role                 attributes clear   owns directly   reachable
+  trustpass_migration  yes                0               25
   trustpass_runtime    yes                0               0
   ```
 
-  A role with nothing of its own and one `SET ROLE` to everything. The question
-  that separates them is not what the connection owns but **what it can become**,
-  which `pg_has_role(current_user, relowner, 'MEMBER')` answers in one clause
-  and which subsumes ownership, because a role is a member of itself.
+  A role with nothing of its own and the owner's rights over everything. The
+  question that separates them is not what the connection owns but **what it
+  holds the owner's rights over**, which `pg_has_role(..., 'MEMBER')` answers in
+  one clause and which subsumes ownership, because a role is a member of itself.
+
+  *Corrected by TP-167 (#128).* Two things in the paragraph above were wrong
+  when first written, and both were found by testing a review's objection
+  rather than accepting or dismissing it.
+
+  The inventory was incomplete. It counted `pg_class` in `public` — tables,
+  sequences, views — which is 16 objects and leaves out the seven trigger
+  functions, the `lifecycle_actor_kind` enum, and `drizzle.__drizzle_migrations`.
+  A role able to become the owner of a trigger function and nothing else scored
+  zero and the API started on it, while `CREATE OR REPLACE FUNCTION` on an
+  append-only guard is the attack this migration's own header names as the
+  quiet one. The count is 25 now, over `pg_class`, `pg_proc` and `pg_type` in
+  every non-system schema.
+
+  And the phrase "what it can become" was the wrong description. Review
+  proposed `pg_has_role(..., 'SET')` on the reading that `SET` is the privilege
+  meaning "can issue `SET ROLE`", which the documentation supports and which
+  would open a hole. Measured on Postgres 18:
+
+  ```
+  GRANT trustpass_owner TO probe WITH INHERIT TRUE, SET FALSE
+
+  role     MEMBER   SET   USAGE (inherits privileges)
+  probe    t        f     t
+  ```
+
+  Connected as that role, without ever issuing `SET ROLE`:
+
+  ```
+  ALTER TABLE lifecycle_event DISABLE TRIGGER lifecycle_event_no_update;
+  -> ALTER TABLE.  guard_on: 0.  still listed in pg_trigger: 1.
+  ```
+
+  A `SET`-based count reads zero for it. So the question is deliberately *not*
+  what the connection can become: **inheritance reaches the same privileges
+  without `SET ROLE` ever being called.** `MEMBER` is `USAGE OR SET` and covers
+  both paths.
 - The integration suite keeps running as the superuser, because it creates and
   cleans fixtures. Only the least-privilege suite connects as the runtime, which
   is correct: it is the only one asking what the application can do.
