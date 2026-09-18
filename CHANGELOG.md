@@ -16,6 +16,19 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ### Decided
 
+- **[ADR 0009](docs/adr/0009-a-capacity-is-granted-not-claimed.md) — a capacity
+  is granted, evidenced and revocable; it is not a role on a user.**
+  `recording-authority.ts` already decides what a capacity may assert and a
+  trigger enforces it; nothing decided who holds one, and `actor_kind` is
+  self-declared. Decided before `TP-141` builds anything to present an identity,
+  because events are permanent and each will point at whatever model existed the
+  day it was written. A capacity is held under a grant carrying scope, granting
+  actor, evidence reference, validity window and revocation, and an event
+  records the grant it acted under — without which a revoked warrant leaves what
+  it wrote unfindable. Revocation never invalidates past events: the passport
+  gains a qualifier, never an erasure. A holder's capacity is granted by nobody
+  and is recorded as self-asserted, because no registry of people who own things
+  exists and inventing a grant would fabricate an authority.
 - **[ADR 0008](docs/adr/0008-events-record-what-happened-claims-assert-what-is-true.md)
   — events record what happened; claims assert what is true.** Fixed before the
   first event row exists, because every milestone after v0.4.0 writes to the
@@ -58,8 +71,47 @@ A version's section lists only what that tag actually contains. Work merged to
   registered at the factory and must not be mistakable for it. Scheduled as
   `TP-046`…`TP-049` in v0.4.0.
 
+### Added
+
+- **Lifecycle events, and provenance as a database guarantee.** A product's
+  history is recorded in `lifecycle_event`, append-only, and rendered on its
+  passport. Nine triggers carry the rules rather than application code, because
+  a rule that lives only in TypeScript is bypassed by the first path that writes
+  without going through it: history cannot be edited, deleted or truncated
+  (`TP002`); each actor capacity may record only what it is entitled to
+  (`TP003`); and a product can neither exist nor change status without an event
+  explaining why, written in the same transaction (`TP004`).
+- **Holder enrolment.** A person can enrol hardware they hold, without a
+  national registration number. The record carries `origin` so a device enrolled
+  by whoever held it is never mistakable for one registered at the factory.
+
 ### Fixed
 
+- **`drizzle-kit` offered migrations that fail on every database**
+  ([#85](https://github.com/clevervi/trustpass/issues/85)). Its snapshot
+  refreshes only when `drizzle-kit` itself generates a migration, and every
+  migration since `0011` is hand-written — triggers and deferred constraints are
+  not things the generator can express — so the snapshot described a database
+  that stopped existing five migrations earlier. CI now fails when
+  `db:generate` produces anything, with the limit written down: a green result
+  means the part of the schema `drizzle-kit` can represent is not stale, and
+  nothing about the nine triggers, which no snapshot has ever contained.
+- **A concurrent transaction's event could explain your status change**
+  ([#82](https://github.com/clevervi/trustpass/issues/82)). The provenance
+  triggers scoped "this transaction" with `recorded_at >= transaction_timestamp()`,
+  which is a time **range**, not an identity — under READ COMMITTED anything
+  another transaction committed meanwhile fell inside it. Reproduced with two
+  connections: a product moved with no event written in its transaction at all.
+  Now `recorded_in_xact = pg_current_xact_id()`, the top-level transaction id,
+  so an event either was written by this transaction or was not.
+- **A planted `recorded_at` defeated the provenance guarantee**
+  ([#79](https://github.com/clevervi/trustpass/issues/79)). The column had a
+  default and a comment claiming the database set it; a default is what happens
+  when nobody supplies a value, and the triggers read exactly that column to
+  decide which transaction owned an event. An event planted ten years ahead, in
+  its own transaction, let a later status change commit having recorded nothing.
+  Both columns are now written by a trigger, for every writer including the
+  owner.
 - **A passport QR could encode a host this deployment does not own**
   ([#43](https://github.com/clevervi/trustpass/issues/43)). `passportUrl`
   defaulted to `http://localhost:3000` when `NEXT_PUBLIC_SITE_URL` was unset,

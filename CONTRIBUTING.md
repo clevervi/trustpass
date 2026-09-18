@@ -255,6 +255,31 @@ run, not merely built: `v0.1.0` was tagged once, found broken on first
 execution, and re-cut. That was free because it had not been pushed. After a
 push it is not free, because other people's checkouts already believe it.
 
+### The README's status block is a claim like any other
+
+`README.md` says what works and what does not. It is the first thing a reader
+sees and the last thing anyone remembers to update, and it has already been
+wrong: it listed lifecycle events under "not built yet" while they were
+recorded, enforced by nine triggers and rendered on the public passport (#87).
+
+So before cutting a release, and whenever a milestone's worth of work has
+merged:
+
+- Read the status block against the code rather than against memory. Every entry
+  on the "not built yet" list asserts that something is absent, and absence is
+  checkable — grep for it, look for the table, open the page.
+- Check the whole block, not the line somebody complained about. A fix that
+  corrects one sentence and leaves four unverified has not been done.
+- Move what shipped into `CHANGELOG.md`'s `Unreleased` in the same pass. The
+  rule that later work belongs there already exists; it is the following of it
+  that lapses.
+- Never write a number that rots. "`develop` is 36 commits ahead" is false by
+  the next merge. "`develop` is ahead of it" stays true.
+
+This project spends its credibility on saying what is known and what nobody has
+checked. Being wrong about what it has built is the cheapest available way to
+lose that, and it costs one reader.
+
 ## Migrations
 
 ```bash
