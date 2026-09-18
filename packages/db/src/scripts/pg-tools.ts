@@ -12,7 +12,73 @@
  * in a real recovery.
  */
 import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
+
+/**
+ * Where docker is, by absolute path.
+ *
+ * Spawning `"docker"` searches PATH, and PATH is a list of directories that
+ * something else may be able to write to — prepend a `docker` there and every
+ * command in this file runs somebody else's program with the operator's rights.
+ * The scanner rates that MINOR; the reason to fix it rather than wave it
+ * through is that these scripts hand a superuser database connection to
+ * whatever they spawn.
+ *
+ * TP_DOCKER overrides. Otherwise the standard install locations are probed and
+ * an absolute path is used, so what runs is decided here and not by the
+ * environment.
+ */
+const DOCKER_LOCATIONS = [
+  // Forward slashes, which Node accepts on Windows and which no escaping
+  // layer can quietly eat.
+  //
+  // The first version used backslashes and arrived as
+  // `C:Program FilesDockerDockeresourcesindocker.exe`, because a backslash
+  // followed by P, r or b is an escape sequence and the rest simply vanished.
+  // The result was a path that did not exist, reported as docker not found,
+  // and the fourth time a backslash has been eaten between a writer and a
+  // reader here. The comment explaining it was mangled by the same layer on
+  // the way in, which is the most honest evidence available that the answer
+  // is to stop writing them.
+  "C:/Program Files/Docker/Docker/resources/bin/docker.exe",
+  "/usr/local/bin/docker",
+  "/usr/bin/docker",
+  "/opt/homebrew/bin/docker",
+  "/snap/bin/docker",
+];
+
+let dockerPath: string | null = null;
+
+export function docker(): string {
+  if (dockerPath) {
+    return dockerPath;
+  }
+
+  const override = process.env.TP_DOCKER;
+
+  if (override) {
+    if (!isAbsolute(override) || !existsSync(override)) {
+      throw new Error(
+        `TP_DOCKER is set to "${override}", which is not an absolute path that exists.`,
+      );
+    }
+
+    dockerPath = override;
+    return dockerPath;
+  }
+
+  const found = DOCKER_LOCATIONS.find((candidate) => existsSync(candidate));
+
+  if (!found) {
+    throw new Error(
+      "Could not find docker at any standard location. Set TP_DOCKER to its absolute path.",
+    );
+  }
+
+  dockerPath = found;
+  return dockerPath;
+}
 
 export interface Cluster {
   /** The container running Postgres. */
@@ -30,7 +96,7 @@ export function cluster(): Cluster {
 
 /** Whether the container is there at all, answered before anything depends on it. */
 export function clusterIsReachable({ container }: Cluster): boolean {
-  const probe = spawnSync("docker", ["exec", container, "true"], { stdio: "ignore" });
+  const probe = spawnSync(docker(), ["exec", container, "true"], { stdio: "ignore" });
   return probe.status === 0;
 }
 
@@ -46,7 +112,7 @@ export function run(
   command: readonly string[],
   input?: Buffer,
 ): { stdout: Buffer; stderr: string; ok: boolean } {
-  const result = spawnSync("docker", ["exec", "-i", container, ...command], {
+  const result = spawnSync(docker(), ["exec", "-i", container, ...command], {
     input,
     maxBuffer: 256 * 1024 * 1024,
   });
@@ -89,7 +155,7 @@ export function copyIn(
   localPath: string,
   containerPath: string,
 ): { ok: boolean; stderr: string } {
-  const result = spawnSync("docker", ["cp", localPath, `${container}:${containerPath}`]);
+  const result = spawnSync(docker(), ["cp", localPath, `${container}:${containerPath}`]);
   return { ok: result.status === 0, stderr: (result.stderr ?? Buffer.alloc(0)).toString("utf8") };
 }
 
@@ -122,7 +188,7 @@ export function backupDestination(requested: string, repoRoot: string): string {
 
 export function dockerVersion(): string {
   try {
-    return execFileSync("docker", ["--version"], { encoding: "utf8" }).trim();
+    return execFileSync(docker(), ["--version"], { encoding: "utf8" }).trim();
   } catch {
     return "docker not available";
   }
