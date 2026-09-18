@@ -2,6 +2,10 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-18
+- **Amended:** 2026-09-18 — a third exit from `proposed`, and the evidence
+  provider separated from the proposer and the verifier. This **extends** the
+  decision rather than clarifying it: §6 and §7 now permit and forbid things the
+  original did not.
 
 ## Context
 
@@ -144,7 +148,9 @@ provenance out of a date.
 ```
 proposed ──▶ verified ──▶ withdrawn
     │
-    └──────▶ rejected
+    ├──────▶ rejected
+    │
+    └──────▶ unresolved ──▶ proposed
 ```
 
 Each transition is a lifecycle event (ADR 0008), append-only, with an actor
@@ -154,6 +160,43 @@ reversed or re-proposed without anything being deleted, and a passport can say
 
 *Rejected: a boolean, or a delete.* Both make the reversal invisible, and the
 reversal is the part somebody will later need to understand.
+
+#### `unresolved` asserts nothing, and that is the whole point
+
+**Amendment.** The original had two exits and a defect its own review named: §7
+requires the counterparty to confirm, and the counterparty is frequently not
+there. A manufacturer proposes against a card somebody enrolled two years ago
+and has since sold; nobody answers; the correspondence sits in `proposed`
+forever and the buyer scanning the code still sees two unconnected passports.
+
+A rule that is correct and unusable is still a design failure, and every escape
+considered was worse. A timeout that auto-verifies is self-verification with a
+delay. An administrator confirming on the holder's behalf is a person who can
+join any two records.
+
+So the third exit does not decide anything:
+
+> `unresolved` — the evidence this correspondence needed did not arrive within
+> the period allowed for it.
+
+It is **not** `rejected`. Rejected means somebody looked and said no; that is a
+judgement and it belongs to a party entitled to make it. Unresolved means nobody
+answered, and the honest record of nobody answering is *"nobody answered"* — not
+a decision inferred from silence.
+
+It is not a dead end either. New evidence returns a correspondence to `proposed`,
+because the reason it lapsed was an absence, and an absence can end. A rejection
+cannot be un-rejected the same way; it is withdrawn and re-proposed, which leaves
+a different trail on purpose.
+
+*Rejected: leaving `proposed` open indefinitely.* An unbounded pending state is
+indistinguishable from a system that is still working on it, and after a year it
+is a lie told by a status field.
+
+*Rejected: treating silence as rejection.* Cheaper, and it converts "we could
+not reach anyone" into "someone said no" — a verdict manufactured out of
+nothing, which is the failure ADR 0003 exists to prevent, reached through a
+state machine.
 
 ### 7. Who proposes, who decides
 
@@ -208,6 +251,7 @@ Raised in review as the bar for it being finished, and answered above:
 | Do both IDs still resolve? | Yes, forever, and each names the other once verified |
 | Is the unknown period preserved? | Yes. Bounded at one end, never erased |
 | Can it be reversed? | Yes, to `withdrawn`, as an event. Nothing is deleted |
+| What if the evidence never arrives? | `unresolved`. Neither true nor false, and reopenable if evidence appears later |
 | Two manufacturers, one serial? | Not a correspondence. A conflict, routed to [#89](https://github.com/clevervi/trustpass/issues/89) |
 
 ## What this ADR does not decide
