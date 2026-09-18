@@ -57,6 +57,74 @@ const EXPECTED: Record<string, readonly Grant[]> = {
 
 const ALL_GRANTS: readonly Grant[] = ["SELECT", "INSERT", "UPDATE"];
 
+/**
+ * Every statement here succeeds today with the credential the API holds.
+ *
+ * A table rather than fourteen near-identical blocks, because adding an attack
+ * should be adding a row — and because fourteen blocks differing only in a
+ * string is the shape a reader skims instead of reads.
+ */
+const ATTACKS: readonly { name: string; statement: string }[] = [
+  {
+    // The one that matters most, and the one missing from the `0023` rehearsal.
+    // No DROP, a single statement, and afterwards the trigger is still listed
+    // in `pg_trigger` looking entirely present — `tgenabled` is all that moved.
+    // Every check in this repository that asks "is the guard there" says yes.
+    name: "disable a trigger",
+    statement: "ALTER TABLE lifecycle_event DISABLE TRIGGER lifecycle_event_no_update",
+  },
+  {
+    // The quiet version of dropping one. CREATE OR REPLACE leaves the trigger
+    // attached, enabled, and firing a body that returns NEW without checking
+    // anything at all.
+    name: "redefine a trigger function",
+    statement:
+      "CREATE OR REPLACE FUNCTION lifecycle_event_append_only() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$",
+  },
+  {
+    name: "drop a trigger",
+    statement: "DROP TRIGGER lifecycle_event_no_update ON lifecycle_event",
+  },
+  { name: "drop a trigger function", statement: "DROP FUNCTION product_status_guard()" },
+  {
+    name: "create a function",
+    statement: "CREATE FUNCTION tp_probe() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$",
+  },
+  { name: "alter a table", statement: "ALTER TABLE product ADD COLUMN tp_probe text" },
+  {
+    // Cheaper than altering a column, and it removes a guarantee outright.
+    name: "drop a constraint",
+    statement: "ALTER TABLE product DROP CONSTRAINT product_serial_not_blank",
+  },
+  { name: "drop a table", statement: "DROP TABLE organization" },
+  { name: "create a table", statement: "CREATE TABLE tp_probe (id integer)" },
+  {
+    // Not a guarantee in itself, but the unique index on the TrustPass
+    // identifier is — dropping it lets two live products claim one identity.
+    name: "drop an index",
+    statement: "DROP INDEX product_trustpass_id_idx",
+  },
+  {
+    // TRUNCATE is not DELETE and fires no row triggers, so the append-only
+    // guard would never see it. The missing privilege is all that stands here.
+    name: "truncate history",
+    statement: "TRUNCATE lifecycle_event",
+  },
+  {
+    name: "delete history",
+    statement: "DELETE FROM lifecycle_event WHERE id = (SELECT min(id) FROM lifecycle_event)",
+  },
+  {
+    // The same attack #78 answered with TP002, now answered with 42501 —
+    // Postgres checks the privilege at execution start and no row is ever
+    // reached. Asserted by code, not by "it threw", so the day somebody grants
+    // UPDATE on this table the test goes red rather than quietly passing on the
+    // trigger's answer instead.
+    name: "edit history before the trigger is ever consulted",
+    statement: "UPDATE lifecycle_event SET reason = 'fraud_flag'",
+  },
+];
+
 describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the record", () => {
   let db: Database;
 
@@ -204,64 +272,8 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
   describe("the attacks the rehearsal could not run", () => {
     // Every one of these succeeds today with the credential the API holds.
 
-    it("cannot disable a trigger", async () => {
-      // The one that matters most, and the one missing from the rehearsal.
-      // It needs no DROP, it is a single statement, and afterwards the trigger
-      // is still listed in `pg_trigger` looking entirely present — `tgenabled`
-      // is the only thing that moved. Every check in this repository that asks
-      // "is the guard there" would answer yes.
-      await refused("ALTER TABLE lifecycle_event DISABLE TRIGGER lifecycle_event_no_update");
-    });
-
-    it("cannot redefine a trigger function", async () => {
-      // The quiet version of dropping one. CREATE OR REPLACE leaves the trigger
-      // attached, enabled, and firing a body that returns NEW without checking
-      // anything.
-      await refused(
-        "CREATE OR REPLACE FUNCTION lifecycle_event_append_only() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$",
-      );
-    });
-
-    it("cannot drop a trigger", async () => {
-      await refused("DROP TRIGGER lifecycle_event_no_update ON lifecycle_event");
-    });
-
-    it("cannot drop a trigger function", async () => {
-      await refused("DROP FUNCTION product_status_guard()");
-    });
-
-    it("cannot create a function", async () => {
-      await refused("CREATE FUNCTION tp_probe() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$");
-    });
-
-    it("cannot alter a table", async () => {
-      await refused("ALTER TABLE product ADD COLUMN tp_probe text");
-    });
-
-    it("cannot drop a constraint", async () => {
-      // Cheaper than altering a column and it removes a guarantee outright.
-      await refused("ALTER TABLE product DROP CONSTRAINT product_serial_not_blank");
-    });
-
-    it("cannot drop a table", async () => {
-      await refused("DROP TABLE organization");
-    });
-
-    it("cannot create a table", async () => {
-      await refused("CREATE TABLE tp_probe (id integer)");
-    });
-
-    it("cannot drop an index", async () => {
-      // Not a guarantee, but the unique index on the TrustPass identifier is —
-      // dropping it lets two live products claim one identity.
-      await refused("DROP INDEX product_trustpass_id_idx");
-    });
-
-    it("cannot truncate history", async () => {
-      // TRUNCATE is not DELETE and does not fire row triggers. The append-only
-      // guard would never see it. The missing privilege is the only thing
-      // standing here.
-      await refused("TRUNCATE lifecycle_event");
+    it.each(ATTACKS)("cannot $name", async ({ statement }) => {
+      await refused(statement);
     });
 
     it("gains nothing by granting itself a privilege", async () => {
@@ -286,19 +298,6 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
       );
 
       expect(row?.granted).toBe(false);
-    });
-
-    it("cannot delete history", async () => {
-      await refused("DELETE FROM lifecycle_event WHERE id = (SELECT min(id) FROM lifecycle_event)");
-    });
-
-    it("is refused an edit to history before the trigger is ever consulted", async () => {
-      // The same attack #78 answered with TP002, now answered with 42501 —
-      // because Postgres checks the privilege at execution start and no row is
-      // ever reached. Asserted by code, not by "it threw", so that the day
-      // somebody grants UPDATE on this table the test goes red rather than
-      // passing on the trigger's answer instead.
-      await refused("UPDATE lifecycle_event SET reason = 'fraud_flag'");
     });
   });
 

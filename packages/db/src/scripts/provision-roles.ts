@@ -20,14 +20,25 @@
  */
 import postgres from "postgres";
 
-const ROLES = ["trustpass_migration", "trustpass_runtime"] as const;
+/**
+ * Each role and the name of the environment variable that carries its
+ * password. One table rather than a list beside a parallel record: two
+ * structures that have to agree about the same two roles is one more thing to
+ * keep in step than this needs.
+ *
+ * The field is called `variable` and holds a *name*, never a value, and that
+ * distinction is worth leaving alone. The first version called this map
+ * `PASSWORD_VARIABLE`, and CodeQL read the error message below — which prints
+ * `TRUSTPASS_RUNTIME_PASSWORD` so an operator knows what to set — as
+ * `js/clear-text-logging`, high severity. It was wrong about the leak and right
+ * that the name did not say what the thing was.
+ */
+const ROLE_ENVIRONMENT = [
+  { role: "trustpass_migration", variable: "TRUSTPASS_MIGRATION_PASSWORD" },
+  { role: "trustpass_runtime", variable: "TRUSTPASS_RUNTIME_PASSWORD" },
+] as const;
 
-type Role = (typeof ROLES)[number];
-
-const PASSWORD_VARIABLE: Record<Role, string> = {
-  trustpass_migration: "TRUSTPASS_MIGRATION_PASSWORD",
-  trustpass_runtime: "TRUSTPASS_RUNTIME_PASSWORD",
-};
+type Role = (typeof ROLE_ENVIRONMENT)[number]["role"];
 
 /**
  * Postgres has no way to bind a parameter into DDL, and `ALTER ROLE ...
@@ -69,15 +80,15 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const missing = ROLES.filter((role) => !process.env[PASSWORD_VARIABLE[role]]);
+  const missing = ROLE_ENVIRONMENT.filter((entry) => !process.env[entry.variable]);
 
   if (missing.length > 0) {
     // Refusing beats generating one: a password this script invents has to be
     // printed to be usable, and a printed password is in the terminal
     // scrollback and in whatever captured the output.
     console.error("Missing password environment variables:");
-    for (const role of missing) {
-      console.error(`  ${PASSWORD_VARIABLE[role]}  (for ${role})`);
+    for (const entry of missing) {
+      console.error(`  ${entry.variable}  (for ${entry.role})`);
     }
     console.error("\nSet them and run again. Nothing was changed.");
     process.exit(1);
@@ -96,7 +107,7 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
-    for (const role of ROLES) {
+    for (const { role } of ROLE_ENVIRONMENT) {
       const [exists] = await sql<{ present: boolean }[]>`
         SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = ${role}) AS present
       `;
@@ -110,9 +121,9 @@ async function main(): Promise<void> {
     await sql.begin(async (tx) => {
       await tx.unsafe("SET LOCAL log_statement = 'none'");
 
-      for (const role of ROLES) {
+      for (const { role, variable } of ROLE_ENVIRONMENT) {
         // Non-null: the missing-variable check above already exited on absence.
-        await grantLogin(tx, role, process.env[PASSWORD_VARIABLE[role]] as string);
+        await grantLogin(tx, role, process.env[variable] as string);
         console.log(`  ${role}  can now log in`);
       }
     });
@@ -141,7 +152,9 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
+try {
+  await main();
+} catch (error) {
   console.error(error);
   process.exit(1);
-});
+}
