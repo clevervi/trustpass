@@ -1,8 +1,16 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Database } from "../client.js";
-import { twoConnections, whileHoldingATransaction } from "../testing/overlapping-transactions.js";
-import { holderProducts, transitionEventValues } from "../testing/provenance-fixtures.js";
+import {
+  type Transaction,
+  twoConnections,
+  whileHoldingATransaction,
+} from "../testing/overlapping-transactions.js";
+import {
+  holderProducts,
+  type MovableStatus,
+  transitionEventValues,
+} from "../testing/provenance-fixtures.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
 import { insertProductWithProvenance } from "../testing/with-provenance.js";
 import { lifecycleEvent } from "./lifecycle-event.js";
@@ -30,6 +38,24 @@ describe.skipIf(!databaseUrl)("provenance holds across concurrent transactions",
   let holder: Database;
   let other: Database;
 
+  /** A status change, as a step some transaction will run. */
+  const moves = (id: number, to: MovableStatus) => (tx: Transaction) =>
+    tx.update(product).set({ status: to }).where(eq(product.id, id));
+
+  /** The event explaining one, as a step some transaction will run. */
+  const records = (id: number, from: MovableStatus, to: MovableStatus) => (tx: Transaction) =>
+    tx.insert(lifecycleEvent).values(transitionEventValues(id, from, to));
+
+  /** Where the product actually ended up, read after everything committed. */
+  async function settledStatus(id: number): Promise<string | undefined> {
+    const [row] = await holder
+      .select({ status: product.status })
+      .from(product)
+      .where(eq(product.id, id));
+
+    return row?.status;
+  }
+
   beforeAll(() => {
     pool = twoConnections(databaseUrl as string);
     holder = pool.holder;
@@ -50,18 +76,13 @@ describe.skipIf(!databaseUrl)("provenance holds across concurrent transactions",
       whileHoldingATransaction({
         holder,
         other,
-        otherCommits: (b) =>
-          b
-            .insert(lifecycleEvent)
-            .values(transitionEventValues(created.id, "registered", "suspended")),
-        holderThen: (a) =>
-          a.update(product).set({ status: "suspended" }).where(eq(product.id, created.id)),
+        otherCommits: records(created.id, "registered", "suspended"),
+        holderThen: moves(created.id, "suspended"),
       }),
       SqlState.PROVENANCE_REQUIRED,
     );
 
-    const [row] = await holder.select().from(product).where(eq(product.id, created.id));
-    expect(row?.status).toBe("registered");
+    expect(await settledStatus(created.id)).toBe("registered");
   });
 
   it("accepts A's move when A recorded its own event, even while B commits one too", async () => {
@@ -73,20 +94,14 @@ describe.skipIf(!databaseUrl)("provenance holds across concurrent transactions",
     await whileHoldingATransaction({
       holder,
       other,
-      otherCommits: (b) =>
-        b
-          .insert(lifecycleEvent)
-          .values(transitionEventValues(created.id, "registered", "suspended")),
+      otherCommits: records(created.id, "registered", "suspended"),
       holderThen: async (a) => {
-        await a.update(product).set({ status: "suspended" }).where(eq(product.id, created.id));
-        await a
-          .insert(lifecycleEvent)
-          .values(transitionEventValues(created.id, "registered", "suspended"));
+        await moves(created.id, "suspended")(a);
+        await records(created.id, "registered", "suspended")(a);
       },
     });
 
-    const [row] = await holder.select().from(product).where(eq(product.id, created.id));
-    expect(row?.status).toBe("suspended");
+    expect(await settledStatus(created.id)).toBe("suspended");
   });
 
   it("does not let B's event break a chain A recorded correctly", async () => {
@@ -105,24 +120,16 @@ describe.skipIf(!databaseUrl)("provenance holds across concurrent transactions",
     await whileHoldingATransaction({
       holder,
       other,
-      otherCommits: (b) =>
-        b
-          .insert(lifecycleEvent)
-          .values(transitionEventValues(created.id, "registered", "suspended")),
+      otherCommits: records(created.id, "registered", "suspended"),
       holderThen: async (a) => {
-        await a.update(product).set({ status: "suspended" }).where(eq(product.id, created.id));
-        await a.update(product).set({ status: "registered" }).where(eq(product.id, created.id));
-        await a
-          .insert(lifecycleEvent)
-          .values(transitionEventValues(created.id, "registered", "suspended"));
-        await a
-          .insert(lifecycleEvent)
-          .values(transitionEventValues(created.id, "suspended", "registered"));
+        await moves(created.id, "suspended")(a);
+        await moves(created.id, "registered")(a);
+        await records(created.id, "registered", "suspended")(a);
+        await records(created.id, "suspended", "registered")(a);
       },
     });
 
-    const [row] = await holder.select().from(product).where(eq(product.id, created.id));
-    expect(row?.status).toBe("registered");
+    expect(await settledStatus(created.id)).toBe("registered");
   });
 
   it("counts an event written inside a savepoint as the transaction's own", async () => {
@@ -134,17 +141,11 @@ describe.skipIf(!databaseUrl)("provenance holds across concurrent transactions",
     // write path using a savepoint would suddenly be unable to explain itself —
     // and Drizzle implements a nested transaction as exactly that.
     await holder.transaction(async (a) => {
-      await a.update(product).set({ status: "suspended" }).where(eq(product.id, created.id));
-
-      await a.transaction(async (savepoint) => {
-        await savepoint
-          .insert(lifecycleEvent)
-          .values(transitionEventValues(created.id, "registered", "suspended"));
-      });
+      await moves(created.id, "suspended")(a);
+      await a.transaction(records(created.id, "registered", "suspended"));
     });
 
-    const [row] = await holder.select().from(product).where(eq(product.id, created.id));
-    expect(row?.status).toBe("suspended");
+    expect(await settledStatus(created.id)).toBe("suspended");
   });
 
   it("still refuses a move whose event was rolled back to a savepoint", async () => {
@@ -152,17 +153,15 @@ describe.skipIf(!databaseUrl)("provenance holds across concurrent transactions",
 
     // The other side of the same decision. The unit of provenance is the
     // commit, so an event undone before COMMIT never existed and cannot explain
-    // anything — which is the behaviour wanted, and it is worth pinning rather
-    // than inferring from the previous test.
+    // anything — the behaviour wanted, and worth pinning rather than inferring
+    // from the test above.
     await expectSqlState(
       holder.transaction(async (a) => {
-        await a.update(product).set({ status: "suspended" }).where(eq(product.id, created.id));
+        await moves(created.id, "suspended")(a);
 
         await a
           .transaction(async (savepoint) => {
-            await savepoint
-              .insert(lifecycleEvent)
-              .values(transitionEventValues(created.id, "registered", "suspended"));
+            await records(created.id, "registered", "suspended")(savepoint);
             throw new Error("roll this savepoint back");
           })
           .catch(() => undefined);
@@ -170,7 +169,6 @@ describe.skipIf(!databaseUrl)("provenance holds across concurrent transactions",
       SqlState.PROVENANCE_REQUIRED,
     );
 
-    const [row] = await holder.select().from(product).where(eq(product.id, created.id));
-    expect(row?.status).toBe("registered");
+    expect(await settledStatus(created.id)).toBe("registered");
   });
 });
