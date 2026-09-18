@@ -34,6 +34,12 @@ export {
   type TrustPassIdParseResult,
 } from "./identity/trustpass-id.js";
 export {
+  grantHistory,
+  grantsHeldAt,
+  type HeldGrant,
+  heldCapacityAt,
+} from "./repositories/authority-repository.js";
+export {
   type EnrolProductInput,
   type EnrolProductResult,
   enrolProduct,
