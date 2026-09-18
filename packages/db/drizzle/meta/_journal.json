@@ -113,6 +113,13 @@
       "when": 1789696071879,
       "tag": "0015_the_database_writes_recorded_at",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789696072879,
+      "tag": "0016_this_transaction_is_an_identity",
+      "breakpoints": true
     }
   ]
 }
