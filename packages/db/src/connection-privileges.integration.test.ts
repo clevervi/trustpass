@@ -114,6 +114,21 @@ describe.skipIf(!databaseUrl)("the connection describes itself honestly", () => 
    * migration for no reason anyone cares about. This asks the question the
    * guard exists to answer, and stays true whatever the schema becomes.
    */
+  // Every probe object below is a function or lives in its own schema, and
+  // every probe function has EXECUTE revoked from PUBLIC the moment it exists.
+  // Neither is fussiness.
+  //
+  // The first version created a probe TABLE in `public` and a probe function
+  // with the default ACL, which is EXECUTE to PUBLIC. Vitest runs test files in
+  // parallel, and `least-privilege.integration.test.ts` asserts two things over
+  // `public` at the same time: the exact list of tables, and that the runtime
+  // can execute no function. Both were true until this file created an object
+  // between them.
+  //
+  // It failed once in four full-suite runs and passed with the two files alone,
+  // every time — order-dependent, not flaky, which is the same distinction #78
+  // cost a morning to learn. A test that is wrong about *when* it is wrong is
+  // worse than one that is simply wrong.
   async function guardSeesOwnershipOf(
     create: string,
     drop: string,
@@ -162,6 +177,7 @@ describe.skipIf(!databaseUrl)("the connection describes itself honestly", () => 
     // scored 0 and the API started.
     const reachable = await guardSeesOwnershipOf(
       "CREATE FUNCTION tp_probe_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$;" +
+        " REVOKE EXECUTE ON FUNCTION tp_probe_fn() FROM PUBLIC;" +
         " ALTER FUNCTION tp_probe_fn() OWNER TO tp_probe_owner",
       "DROP FUNCTION IF EXISTS tp_probe_fn()",
     );
@@ -189,8 +205,10 @@ describe.skipIf(!databaseUrl)("the connection describes itself honestly", () => 
     // Inheritance reaches the owner's privileges without SET ROLE ever being
     // called, so a SET-based count reads 0 and the application starts on it.
     const reachable = await guardSeesOwnershipOf(
-      "CREATE TABLE tp_probe_inherited (id integer); ALTER TABLE tp_probe_inherited OWNER TO tp_probe_owner",
-      "DROP TABLE IF EXISTS tp_probe_inherited",
+      "CREATE FUNCTION tp_probe_inherited() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$;" +
+        " REVOKE EXECUTE ON FUNCTION tp_probe_inherited() FROM PUBLIC;" +
+        " ALTER FUNCTION tp_probe_inherited() OWNER TO tp_probe_owner",
+      "DROP FUNCTION IF EXISTS tp_probe_inherited()",
       "WITH INHERIT TRUE, SET FALSE",
     );
 
@@ -198,10 +216,15 @@ describe.skipIf(!databaseUrl)("the connection describes itself honestly", () => 
   });
 
   it("sees an enum it could reinterpret every past event with", async () => {
-    // `lifecycle_actor_kind` is an enum. Its owner can add, rename or drop a
-    // value, and dropping one silently changes what every event recorded under
-    // it means — 0023 already carries a test defending `'issuer'` from exactly
-    // that, and the startup guard should not be the layer that ignores it.
+    // `lifecycle_actor_kind` is an enum, and its owner can rewrite what the
+    // stored data means without touching any of it.
+    //
+    // Not by dropping a value — Postgres 18.6 answers ALTER TYPE ... DROP VALUE
+    // with "dropping an enum value is not implemented", which an earlier
+    // version of this comment got wrong. By renaming one, which is worse:
+    // renaming `'issuer'` restated 1,744 lifecycle events in a rolled-back
+    // transaction, and `lifecycle_event_no_update` never fired because no row
+    // was touched.
     const reachable = await guardSeesOwnershipOf(
       "CREATE TYPE tp_probe_enum AS ENUM ('a', 'b'); ALTER TYPE tp_probe_enum OWNER TO tp_probe_owner",
       "DROP TYPE IF EXISTS tp_probe_enum",
