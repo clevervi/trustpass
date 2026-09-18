@@ -6,6 +6,10 @@
   provider separated from the proposer and the verifier. This **extends** the
   decision rather than clarifying it: §6 and §7 now permit and forbid things the
   original did not.
+- **Amended:** 2026-09-18 — the state matrix in §6, the invariant that
+  `unresolved` is reachable only from `proposed`, and one correction: §6 said a
+  rejection "is withdrawn and re-proposed", which contradicts `withdrawn` being
+  defined as the exit from `verified`. Found by building the matrix.
 
 ## Context
 
@@ -165,6 +169,32 @@ proposed ──▶ verified ──▶ withdrawn
     └──────▶ unresolved ──▶ proposed
 ```
 
+**Amendment — the same rules as a table, because they are currently spread over
+three sections and nobody reconstructs those correctly from memory.** Nothing
+here is new; every cell is read back from §2, §6 and §8 rather than written from
+recollection.
+
+| State | Public | Can become | Produces a claim |
+| --- | --- | --- | --- |
+| `proposed` | No | `verified`, `rejected`, `unresolved` | No |
+| `verified` | **Yes** | `withdrawn` | **Yes** — each record names the other and says what it covers |
+| `rejected` | No | nothing; a **new** correspondence may be proposed | No |
+| `unresolved` | No | `proposed`, when evidence arrives | No |
+| `withdrawn` | **Yes** | nothing | States that a join existed and ended. It does **not** assert the records describe one object |
+
+`withdrawn` is public and `rejected` is not, which looks inconsistent and is not.
+A `verified` correspondence was already on both passports; removing it silently
+would be the dishonesty §6 exists to prevent, so the reversal is as visible as
+the join was. A `rejected` one was never public, so publishing the rejection
+would broadcast a proposal nobody was obliged to answer — the doubt-casting
+attack §2 refuses, arriving through the back door.
+
+**`unresolved` is reachable only from `proposed`.** Not a detail of the diagram:
+it is what separates *"a concrete question was raised and the evidence did not
+arrive"* from *"we do not know"*. A correspondence nobody proposed cannot be
+unresolved, because there was nothing to resolve, and a state that could mean
+either would mean neither.
+
 Each transition is a lifecycle event (ADR 0008), append-only, with an actor
 capacity, a reason and a recorded_at. So a correspondence can be disputed,
 reversed or re-proposed without anything being deleted, and a passport can say
@@ -197,9 +227,13 @@ answered, and the honest record of nobody answering is *"nobody answered"* — n
 a decision inferred from silence.
 
 It is not a dead end either. New evidence returns a correspondence to `proposed`,
-because the reason it lapsed was an absence, and an absence can end. A rejection
-cannot be un-rejected the same way; it is withdrawn and re-proposed, which leaves
-a different trail on purpose.
+because the reason it lapsed was an absence, and an absence can end.
+
+A rejection does not reopen that way, and the original wording here was wrong:
+it said a rejection "is withdrawn and re-proposed", while `withdrawn` is defined
+as the exit from `verified`. A rejection is **terminal for that correspondence**.
+Somebody may propose a **new** one, which leaves a different trail on purpose —
+the rejection stays where it is, because §8 keeps it as information.
 
 *Rejected: leaving `proposed` open indefinitely.* An unbounded pending state is
 indistinguishable from a system that is still working on it, and after a year it
