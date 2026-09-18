@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { createDatabase, type Database } from "../client.js";
 
 /** The transaction handle Drizzle hands a `db.transaction` callback. */
-type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
+export type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 /**
  * Two transactions, on two connections, overlapping in time.
