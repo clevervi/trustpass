@@ -94,6 +94,13 @@ function normalise(path) {
  * than the target is how a denylist gets walked around without breaking a
  * single rule. Returns null when the path cannot be resolved, which is itself a
  * reason not to delegate.
+ *
+ * ponytail: a POSIX-style path on Windows — `/c/Users/...`, the form Git Bash
+ * prints — does not resolve here, so the router silently does nothing for it.
+ * Found while probing the hook from a shell, never in normal use: Claude Code
+ * sends `C:/Users/...`. The failure is a pass through, so it costs tokens and
+ * nothing else, and the upgrade path is an MSYS-to-Windows normalisation in
+ * front of this call the day a real read arrives in that shape.
  */
 export function resolveReal(path) {
   try {

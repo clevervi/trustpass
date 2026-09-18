@@ -36,7 +36,7 @@ import {
   writeCache,
   writeContext,
 } from "../scripts/tp-context.mjs";
-import { analyse, DEFAULT_MODEL, PROMPT_VERSION } from "../scripts/tp-gemini.mjs";
+import { analyse, DEFAULT_MODEL, PROMPT_VERSION, THINKING_LEVELS } from "../scripts/tp-gemini.mjs";
 import { decideRoute, loadPolicy, ROUTER_VERSION } from "../scripts/tp-router.mjs";
 import {
   bump,
@@ -90,6 +90,17 @@ const CONFIG = {
   /** A repeat of the same delegated read inside this window is let through. */
   loopWindowMs: 60_000,
 };
+
+// A value outside the allowlist is dropped by tp-gemini, which is the safe
+// behaviour and a silent one: TP_GEMINI_THINKING_LEVEL=banana would look like
+// it took. stderr, because stdout carries the decision and nothing else.
+if (CONFIG.thinkingLevel && !THINKING_LEVELS.has(CONFIG.thinkingLevel)) {
+  process.stderr.write(
+    `tp-router: TP_GEMINI_THINKING_LEVEL="${CONFIG.thinkingLevel}" is not one of ` +
+      `${[...THINKING_LEVELS].join(", ")}. Ignoring it; the API default applies.
+`,
+  );
+}
 
 function passthrough() {
   // Silence and exit 0. Printing an explicit "allow" would be worse: it would
