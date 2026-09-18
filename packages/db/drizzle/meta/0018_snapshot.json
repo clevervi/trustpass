@@ -1,0 +1,1374 @@
+{
+  "id": "9f1227ec-e908-411d-800d-7fdc37c02742",
+  "prevId": "c265c323-d020-466c-af9b-3d8c9e055256",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.actor": {
+      "name": "actor",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "actor_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "kind": {
+          "name": "kind",
+          "type": "actor_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "actor_display_name_not_blank": {
+          "name": "actor_display_name_not_blank",
+          "value": "length(trim(\"actor\".\"display_name\")) >= 2"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.capacity_grant": {
+      "name": "capacity_grant",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "capacity_grant_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "capacity": {
+          "name": "capacity",
+          "type": "lifecycle_actor_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_kind": {
+          "name": "scope_kind",
+          "type": "grant_scope_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_country": {
+          "name": "scope_country",
+          "type": "varchar(2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "effective_from": {
+          "name": "effective_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "granted_by": {
+          "name": "granted_by",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "evidence_reference": {
+          "name": "evidence_reference",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "capacity_grant_actor_idx": {
+          "name": "capacity_grant_actor_idx",
+          "columns": [
+            {
+              "expression": "actor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "capacity_grant_organization_idx": {
+          "name": "capacity_grant_organization_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "capacity_grant_actor_id_actor_id_fk": {
+          "name": "capacity_grant_actor_id_actor_id_fk",
+          "tableFrom": "capacity_grant",
+          "tableTo": "actor",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "capacity_grant_organization_id_organization_id_fk": {
+          "name": "capacity_grant_organization_id_organization_id_fk",
+          "tableFrom": "capacity_grant",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "capacity_grant_granted_by_actor_id_fk": {
+          "name": "capacity_grant_granted_by_actor_id_fk",
+          "tableFrom": "capacity_grant",
+          "tableTo": "actor",
+          "columnsFrom": [
+            "granted_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "capacity_grant_holder_is_not_granted": {
+          "name": "capacity_grant_holder_is_not_granted",
+          "value": "\"capacity_grant\".\"capacity\" <> 'holder'"
+        },
+        "capacity_grant_country_scope_names_a_country": {
+          "name": "capacity_grant_country_scope_names_a_country",
+          "value": "(\"capacity_grant\".\"scope_kind\" = 'country') = (\"capacity_grant\".\"scope_country\" IS NOT NULL)"
+        },
+        "capacity_grant_scope_country_iso_alpha2": {
+          "name": "capacity_grant_scope_country_iso_alpha2",
+          "value": "\"capacity_grant\".\"scope_country\" IS NULL OR \"capacity_grant\".\"scope_country\" ~ '^[A-Z]{2}$'"
+        },
+        "capacity_grant_own_organization_scope_has_one": {
+          "name": "capacity_grant_own_organization_scope_has_one",
+          "value": "\"capacity_grant\".\"scope_kind\" <> 'own_organization' OR \"capacity_grant\".\"organization_id\" IS NOT NULL"
+        },
+        "capacity_grant_expires_after_it_starts": {
+          "name": "capacity_grant_expires_after_it_starts",
+          "value": "\"capacity_grant\".\"expires_at\" IS NULL OR \"capacity_grant\".\"expires_at\" > \"capacity_grant\".\"effective_from\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.capacity_grant_revocation": {
+      "name": "capacity_grant_revocation",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "capacity_grant_revocation_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "grant_id": {
+          "name": "grant_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked_by": {
+          "name": "revoked_by",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evidence_reference": {
+          "name": "evidence_reference",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "capacity_grant_revocation_grant_idx": {
+          "name": "capacity_grant_revocation_grant_idx",
+          "columns": [
+            {
+              "expression": "grant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "capacity_grant_revocation_grant_id_capacity_grant_id_fk": {
+          "name": "capacity_grant_revocation_grant_id_capacity_grant_id_fk",
+          "tableFrom": "capacity_grant_revocation",
+          "tableTo": "capacity_grant",
+          "columnsFrom": [
+            "grant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "capacity_grant_revocation_revoked_by_actor_id_fk": {
+          "name": "capacity_grant_revocation_revoked_by_actor_id_fk",
+          "tableFrom": "capacity_grant_revocation",
+          "tableTo": "actor",
+          "columnsFrom": [
+            "revoked_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "capacity_grant_revocation_reason_not_blank": {
+          "name": "capacity_grant_revocation_reason_not_blank",
+          "value": "length(trim(\"capacity_grant_revocation\".\"reason\")) >= 2"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.credential": {
+      "name": "credential",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "credential_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "credential_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "credential_actor_idx": {
+          "name": "credential_actor_idx",
+          "columns": [
+            {
+              "expression": "actor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "credential_actor_id_actor_id_fk": {
+          "name": "credential_actor_id_actor_id_fk",
+          "tableFrom": "credential",
+          "tableTo": "actor",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "credential_expires_after_issue": {
+          "name": "credential_expires_after_issue",
+          "value": "\"credential\".\"expires_at\" IS NULL OR \"credential\".\"expires_at\" > \"credential\".\"issued_at\""
+        },
+        "credential_revoked_after_issue": {
+          "name": "credential_revoked_after_issue",
+          "value": "\"credential\".\"revoked_at\" IS NULL OR \"credential\".\"revoked_at\" >= \"credential\".\"issued_at\""
+        },
+        "credential_label_not_blank": {
+          "name": "credential_label_not_blank",
+          "value": "length(trim(\"credential\".\"label\")) >= 2"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.issuer": {
+      "name": "issuer",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "issuer_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "company_name": {
+          "name": "company_name",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "legal_name": {
+          "name": "legal_name",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "registration_number": {
+          "name": "registration_number",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "country": {
+          "name": "country",
+          "type": "varchar(2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verification_status": {
+          "name": "verification_status",
+          "type": "issuer_verification_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unverified'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "issuer_country_registration_number_idx": {
+          "name": "issuer_country_registration_number_idx",
+          "columns": [
+            {
+              "expression": "country",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "registration_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "issuer_legal_name_idx": {
+          "name": "issuer_legal_name_idx",
+          "columns": [
+            {
+              "expression": "lower(\"legal_name\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "issuer_registration_number_format": {
+          "name": "issuer_registration_number_format",
+          "value": "\"issuer\".\"registration_number\" ~ '^[A-Z0-9-]{4,50}$'"
+        },
+        "issuer_country_iso_alpha2": {
+          "name": "issuer_country_iso_alpha2",
+          "value": "\"issuer\".\"country\" ~ '^[A-Z]{2}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.lifecycle_event": {
+      "name": "lifecycle_event",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "lifecycle_event_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "product_id": {
+          "name": "product_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "lifecycle_event_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_kind": {
+          "name": "actor_kind",
+          "type": "lifecycle_actor_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issuer_id": {
+          "name": "issuer_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "grant_id": {
+          "name": "grant_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "recorded_in_xact": {
+          "name": "recorded_in_xact",
+          "type": "xid8",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "reason": {
+          "name": "reason",
+          "type": "lifecycle_event_reason",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_reference": {
+          "name": "source_reference",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "previous_state": {
+          "name": "previous_state",
+          "type": "product_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resulting_state": {
+          "name": "resulting_state",
+          "type": "product_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "corrects_event_id": {
+          "name": "corrects_event_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "lifecycle_event_product_idx": {
+          "name": "lifecycle_event_product_idx",
+          "columns": [
+            {
+              "expression": "product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lifecycle_event_issuer_idx": {
+          "name": "lifecycle_event_issuer_idx",
+          "columns": [
+            {
+              "expression": "issuer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "lifecycle_event_product_id_product_id_fk": {
+          "name": "lifecycle_event_product_id_product_id_fk",
+          "tableFrom": "lifecycle_event",
+          "tableTo": "product",
+          "columnsFrom": [
+            "product_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "lifecycle_event_issuer_id_issuer_id_fk": {
+          "name": "lifecycle_event_issuer_id_issuer_id_fk",
+          "tableFrom": "lifecycle_event",
+          "tableTo": "issuer",
+          "columnsFrom": [
+            "issuer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "lifecycle_event_grant_id_capacity_grant_id_fk": {
+          "name": "lifecycle_event_grant_id_capacity_grant_id_fk",
+          "tableFrom": "lifecycle_event",
+          "tableTo": "capacity_grant",
+          "columnsFrom": [
+            "grant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "lifecycle_event_corrects_event_id_lifecycle_event_id_fk": {
+          "name": "lifecycle_event_corrects_event_id_lifecycle_event_id_fk",
+          "tableFrom": "lifecycle_event",
+          "tableTo": "lifecycle_event",
+          "columnsFrom": [
+            "corrects_event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "lifecycle_event_not_in_future": {
+          "name": "lifecycle_event_not_in_future",
+          "value": "\"lifecycle_event\".\"occurred_at\" <= \"lifecycle_event\".\"recorded_at\""
+        },
+        "lifecycle_event_issuer_matches_actor": {
+          "name": "lifecycle_event_issuer_matches_actor",
+          "value": "(\"lifecycle_event\".\"actor_kind\" = 'issuer') = (\"lifecycle_event\".\"issuer_id\" IS NOT NULL)"
+        },
+        "lifecycle_event_correction_targets": {
+          "name": "lifecycle_event_correction_targets",
+          "value": "(\"lifecycle_event\".\"type\" = 'record_corrected') = (\"lifecycle_event\".\"corrects_event_id\" IS NOT NULL)"
+        },
+        "lifecycle_event_transition_complete": {
+          "name": "lifecycle_event_transition_complete",
+          "value": "(\"lifecycle_event\".\"previous_state\" IS NULL) = (\"lifecycle_event\".\"resulting_state\" IS NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.membership": {
+      "name": "membership",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "membership_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "began_at": {
+          "name": "began_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "membership_actor_idx": {
+          "name": "membership_actor_idx",
+          "columns": [
+            {
+              "expression": "actor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "membership_organization_idx": {
+          "name": "membership_organization_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "membership_actor_id_actor_id_fk": {
+          "name": "membership_actor_id_actor_id_fk",
+          "tableFrom": "membership",
+          "tableTo": "actor",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "membership_organization_id_organization_id_fk": {
+          "name": "membership_organization_id_organization_id_fk",
+          "tableFrom": "membership",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "membership_ends_after_it_begins": {
+          "name": "membership_ends_after_it_begins",
+          "value": "\"membership\".\"ended_at\" IS NULL OR \"membership\".\"ended_at\" > \"membership\".\"began_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.organization": {
+      "name": "organization",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "organization_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "legal_name": {
+          "name": "legal_name",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "registration_number": {
+          "name": "registration_number",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "country": {
+          "name": "country",
+          "type": "varchar(2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "organization_country_registration_idx": {
+          "name": "organization_country_registration_idx",
+          "columns": [
+            {
+              "expression": "country",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "registration_number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "organization_country_iso_alpha2": {
+          "name": "organization_country_iso_alpha2",
+          "value": "\"organization\".\"country\" ~ '^[A-Z]{2}$'"
+        },
+        "organization_registration_number_format": {
+          "name": "organization_registration_number_format",
+          "value": "\"organization\".\"registration_number\" ~ '^[A-Z0-9-]{4,50}$'"
+        },
+        "organization_legal_name_not_blank": {
+          "name": "organization_legal_name_not_blank",
+          "value": "length(trim(\"organization\".\"legal_name\")) >= 2"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.product": {
+      "name": "product",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "product_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "trustpass_id": {
+          "name": "trustpass_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issuer_id": {
+          "name": "issuer_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "brand": {
+          "name": "brand",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "serial": {
+          "name": "serial",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "product_category",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "product_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "origin": {
+          "name": "origin",
+          "type": "product_origin",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'supply_chain'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "product_trustpass_id_idx": {
+          "name": "product_trustpass_id_idx",
+          "columns": [
+            {
+              "expression": "trustpass_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "product_issuer_id_idx": {
+          "name": "product_issuer_id_idx",
+          "columns": [
+            {
+              "expression": "issuer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "product_serial_idx": {
+          "name": "product_serial_idx",
+          "columns": [
+            {
+              "expression": "lower(\"serial\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "product_live_issuer_serial_idx": {
+          "name": "product_live_issuer_serial_idx",
+          "columns": [
+            {
+              "expression": "issuer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"serial\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"product\".\"status\" <> 'retired'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "product_live_holder_serial_idx": {
+          "name": "product_live_holder_serial_idx",
+          "columns": [
+            {
+              "expression": "lower(\"serial\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"product\".\"issuer_id\" IS NULL AND \"product\".\"status\" <> 'retired'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "product_issuer_id_issuer_id_fk": {
+          "name": "product_issuer_id_issuer_id_fk",
+          "tableFrom": "product",
+          "tableTo": "issuer",
+          "columnsFrom": [
+            "issuer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "product_holder_has_no_issuer": {
+          "name": "product_holder_has_no_issuer",
+          "value": "(\"product\".\"origin\" = 'holder') = (\"product\".\"issuer_id\" IS NULL)"
+        },
+        "product_trustpass_id_shape": {
+          "name": "product_trustpass_id_shape",
+          "value": "\"product\".\"trustpass_id\" ~ '^TP[0-9]'"
+        },
+        "product_serial_not_blank": {
+          "name": "product_serial_not_blank",
+          "value": "length(trim(\"product\".\"serial\")) >= 2"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.actor_kind": {
+      "name": "actor_kind",
+      "schema": "public",
+      "values": [
+        "person",
+        "service",
+        "system"
+      ]
+    },
+    "public.credential_kind": {
+      "name": "credential_kind",
+      "schema": "public",
+      "values": [
+        "api_key",
+        "public_key",
+        "federated"
+      ]
+    },
+    "public.grant_scope_kind": {
+      "name": "grant_scope_kind",
+      "schema": "public",
+      "values": [
+        "own_organization",
+        "country"
+      ]
+    },
+    "public.issuer_verification_status": {
+      "name": "issuer_verification_status",
+      "schema": "public",
+      "values": [
+        "unverified",
+        "pending",
+        "verified",
+        "suspended"
+      ]
+    },
+    "public.lifecycle_actor_kind": {
+      "name": "lifecycle_actor_kind",
+      "schema": "public",
+      "values": [
+        "issuer",
+        "holder",
+        "authority",
+        "system"
+      ]
+    },
+    "public.lifecycle_event_reason": {
+      "name": "lifecycle_event_reason",
+      "schema": "public",
+      "values": [
+        "theft_report",
+        "fraud_flag",
+        "counterfeit_report",
+        "ownership_dispute",
+        "warranty_dispute",
+        "investigation_closed",
+        "dispute_resolved",
+        "issuer_request",
+        "holder_request",
+        "warranty_replacement",
+        "end_of_life",
+        "recording_error"
+      ]
+    },
+    "public.lifecycle_event_type": {
+      "name": "lifecycle_event_type",
+      "schema": "public",
+      "values": [
+        "record_enrolled",
+        "product_registered",
+        "product_suspended",
+        "product_reinstated",
+        "product_activated",
+        "product_retired",
+        "record_corrected"
+      ]
+    },
+    "public.product_category": {
+      "name": "product_category",
+      "schema": "public",
+      "values": [
+        "gpu",
+        "cpu",
+        "motherboard",
+        "laptop",
+        "desktop",
+        "smartphone",
+        "tablet",
+        "monitor",
+        "camera",
+        "console",
+        "storage",
+        "peripheral",
+        "other"
+      ]
+    },
+    "public.product_origin": {
+      "name": "product_origin",
+      "schema": "public",
+      "values": [
+        "manufacturer",
+        "supply_chain",
+        "holder"
+      ]
+    },
+    "public.product_status": {
+      "name": "product_status",
+      "schema": "public",
+      "values": [
+        "draft",
+        "registered",
+        "active",
+        "suspended",
+        "retired"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

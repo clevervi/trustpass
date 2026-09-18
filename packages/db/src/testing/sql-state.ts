@@ -48,6 +48,21 @@ export const SqlState = {
    * than as unexplained. See drizzle/0010_provenance_is_guaranteed.sql.
    */
   PROVENANCE_REQUIRED: "TP004",
+
+  /**
+   * Authority cannot be rewritten.
+   *
+   * A grant, its revocation and a membership's bindings are facts about what
+   * was true at a moment, and every event recorded under one points at it.
+   * Editing a grant would make those events say something their author never
+   * said, without a single event being touched — which is why ADR 0011 keeps
+   * grants append-only and gives a revocation its own row.
+   *
+   * Distinct from TP002, which is about the history of a product. A caller
+   * needs to tell "the past cannot be edited" from "the authority for the past
+   * cannot be edited" without parsing a message.
+   */
+  AUTHORITY_IS_APPEND_ONLY: "TP005",
 } as const;
 
 export type SqlStateCode = (typeof SqlState)[keyof typeof SqlState];
