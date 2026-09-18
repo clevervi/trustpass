@@ -46,6 +46,8 @@ const DETAILS: Readonly<Record<string, string>> = {
     "TrustPass has withdrawn its trust in this company. Treat what it registered with caution.",
   "serial:recorded":
     "The issuer supplied this serial. Nothing has compared it to the object in front of you — compare the last characters with the label yourself.",
+  "issuer:not_present":
+    "No business registered this product. Somebody who had it opened the record, so there is no company to check — which is not the same as a company nobody has checked yet.",
   "secure_tag:not_present":
     "This product has no cryptographic tag. A QR code can be copied onto any object, so it proves only that someone had the code.",
   "warranty:not_recorded": "No warranty has been recorded for this product.",

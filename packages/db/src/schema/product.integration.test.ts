@@ -208,13 +208,18 @@ describe.skipIf(!databaseUrl)("product table", () => {
       );
     });
 
-    it("requires an issuer", async () => {
+    it("requires an issuer unless the record was enrolled by a holder", async () => {
+      // The column stopped being NOT NULL in TP-047 so a holder enrolment can
+      // exist. The rule did not weaken, it moved: a check constraint now ties
+      // the absence of an issuer to a holder origin, so an issuer-origin record
+      // with no issuer is still refused — and a holder record with one is too,
+      // which the NOT NULL never caught.
       await expectSqlState(
         db
           .insert(product)
           .values({ ...build(), issuerId: null as never })
           .returning(),
-        SqlState.NOT_NULL_VIOLATION,
+        SqlState.CHECK_VIOLATION,
       );
     });
   });
@@ -317,16 +322,145 @@ describe.skipIf(!databaseUrl)("where a record began", () => {
     expect(created?.origin).toBe("supply_chain");
   });
 
-  it.each(["manufacturer", "supply_chain", "holder"] as const)("accepts %s", async (origin) => {
+  it.each(["manufacturer", "supply_chain"] as const)("accepts %s", async (origin) => {
     const [created] = await db.insert(product).values(row({ origin })).returning();
 
     expect(created?.origin).toBe(origin);
+  });
+
+  it("accepts holder, but only without an issuer", async () => {
+    // Since TP-047 a holder origin and an issuer are mutually exclusive: a
+    // person cannot carry a company's standing.
+    const [created] = await db
+      .insert(product)
+      .values(row({ origin: "holder", issuerId: null }))
+      .returning();
+
+    expect(created?.origin).toBe("holder");
+    expect(created?.issuerId).toBeNull();
   });
 
   it("refuses an origin outside the closed set", async () => {
     await expectSqlState(
       db.insert(product).values(row({ origin: "imported_somehow" as never })),
       SqlState.INVALID_TEXT_REPRESENTATION,
+    );
+  });
+});
+
+describe.skipIf(!databaseUrl)("a product enrolled by whoever held it", () => {
+  const run = Math.random().toString(36).slice(2, 8).toUpperCase();
+  let db: Database;
+  let issuerId: number;
+  let n = 0;
+
+  function holder(serial: string): NewProduct {
+    return {
+      trustpassId: generateTrustPassId(),
+      issuerId: null,
+      brand: "ASUS",
+      model: "ROG Strix RTX 5070 Ti",
+      serial,
+      category: "gpu",
+      status: "registered",
+      origin: "holder",
+    };
+  }
+
+  beforeAll(async () => {
+    db = createDatabase(databaseUrl as string);
+    const [created] = await db
+      .insert(issuer)
+      .values({
+        companyName: `Enrol ${run}`,
+        legalName: `Enrol ${run} SAS`,
+        registrationNumber: `${run}-EN`,
+        country: "CO",
+      })
+      .returning({ id: issuer.id });
+    issuerId = created?.id as number;
+  });
+
+  afterAll(async () => {
+    await db.delete(product).where(like(product.serial, `${run}%`));
+    await db.delete(issuer).where(like(issuer.registrationNumber, `${run}%`));
+    await db.$client.end();
+  });
+
+  it("exists with no issuer at all", async () => {
+    const [created] = await db
+      .insert(product)
+      .values(holder(`${run}-H1`))
+      .returning();
+
+    expect(created?.issuerId).toBeNull();
+    expect(created?.origin).toBe("holder");
+  });
+
+  it("cannot be born active, because entering a serial is not owning a product", async () => {
+    // ADR 0008. Somebody typed a serial; that establishes nothing about who
+    // holds the object, and `active` means ownership was established.
+    await expectSqlState(
+      db.insert(product).values({ ...holder(`${run}-H2`), status: "active" }),
+      SqlState.ILLEGAL_STATUS_TRANSITION,
+    );
+  });
+
+  it("refuses a second live holder record for the same serial", async () => {
+    n += 1;
+    const serial = `${run}-DUP-${n}`;
+    await db.insert(product).values(holder(serial));
+
+    // Without this, anyone could enrol a device, have something unwelcome
+    // recorded against it, enrol it again and show the clean passport.
+    await expectSqlState(
+      db.insert(product).values(holder(serial.toLowerCase())),
+      SqlState.UNIQUE_VIOLATION,
+    );
+  });
+
+  it("lets an issuer register a product whose serial a holder already enrolled", async () => {
+    n += 1;
+    const serial = `${run}-SHARE-${n}`;
+    await db.insert(product).values(holder(serial));
+
+    // Serials are only unique inside a manufacturer's own numbering, so a
+    // collision across these two is legitimate rather than a duplicate.
+    const [alsoRegistered] = await db
+      .insert(product)
+      .values({ ...holder(serial), issuerId, origin: "supply_chain" })
+      .returning();
+
+    expect(alsoRegistered?.issuerId).toBe(issuerId);
+  });
+
+  it("releases the serial when the holder record is retired", async () => {
+    n += 1;
+    const serial = `${run}-REL-${n}`;
+    const [first] = await db.insert(product).values(holder(serial)).returning();
+    await db
+      .update(product)
+      .set({ status: "retired" })
+      .where(eq(product.id, first?.id as number));
+
+    const [second] = await db.insert(product).values(holder(serial)).returning();
+
+    expect(second?.id).not.toBe(first?.id);
+  });
+
+  it("refuses a holder record that names an issuer", async () => {
+    // A person claiming a company's standing.
+    await expectSqlState(
+      db.insert(product).values({ ...holder(`${run}-H5`), issuerId }),
+      SqlState.CHECK_VIOLATION,
+    );
+  });
+
+  it("refuses an issuer-origin record with no issuer", async () => {
+    // An orphan: it claims a supply chain nobody can be asked about.
+    await expectSqlState(
+      db.insert(product).values({ ...holder(`${run}-H6`), origin: "supply_chain" }),
+      SqlState.CHECK_VIOLATION,
     );
   });
 });

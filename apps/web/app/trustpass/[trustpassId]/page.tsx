@@ -178,7 +178,16 @@ function Warnings({ passport }: { passport: PassportView }) {
     );
   }
 
-  if (passport.issuer.verificationStatus === "unverified") {
+  if (passport.issuer === null) {
+    warnings.push(
+      <Banner key="no-issuer" tone="caution" title="No business registered this product">
+        Somebody who had the product opened this record. Nothing here comes from a manufacturer, a
+        distributor or a shop, and nobody has vouched for it.
+      </Banner>,
+    );
+  }
+
+  if (passport.issuer?.verificationStatus === "unverified") {
     warnings.push(
       <Banner key="issuer-unverified" tone="caution" title="Nobody has verified this issuer">
         Everything below is the issuer&apos;s own word. TrustPass has not confirmed the company
@@ -187,7 +196,7 @@ function Warnings({ passport }: { passport: PassportView }) {
     );
   }
 
-  if (passport.issuer.verificationStatus === "suspended") {
+  if (passport.issuer?.verificationStatus === "suspended") {
     warnings.push(
       <Banner
         key="issuer-suspended"
@@ -247,18 +256,26 @@ function Passport({ passport }: { passport: PassportView }) {
         </dl>
       </Card>
 
-      <Card title="Issuer" id="issuer">
-        <dl>
-          <Row label="Company">{passport.issuer.companyName}</Row>
-          <Row label="Country">{countryName(passport.issuer.country)}</Row>
-          <Row
-            label="Registration number"
-            note="You can check this yourself in the national business registry."
-          >
-            <span className="font-mono">{passport.issuer.registrationNumber}</span>
-          </Row>
-        </dl>
-      </Card>
+      {/*
+        No panel at all when there is no issuer, rather than one with blanks in
+        it. An empty Issuer card reads as an issuer whose details are missing,
+        which is a different claim from there being none — and the warning above
+        has already said which.
+      */}
+      {passport.issuer ? (
+        <Card title="Issuer" id="issuer">
+          <dl>
+            <Row label="Company">{passport.issuer.companyName}</Row>
+            <Row label="Country">{countryName(passport.issuer.country)}</Row>
+            <Row
+              label="Registration number"
+              note="You can check this yourself in the national business registry."
+            >
+              <span className="font-mono">{passport.issuer.registrationNumber}</span>
+            </Row>
+          </dl>
+        </Card>
+      ) : null}
 
       <Card title="What has been checked" id="checks">
         <ol className="flex flex-col">

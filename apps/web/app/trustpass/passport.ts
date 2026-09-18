@@ -15,12 +15,13 @@ export interface PassportView {
   readonly origin?: string;
   readonly serial: { readonly suffix: string; readonly hiddenCharacters: number } | null;
   readonly registeredOn: string;
+  /** Null for a holder-enrolled record: there is no issuer, which is not the same as an unverified one. */
   readonly issuer: {
     readonly companyName: string;
     readonly country: string;
     readonly registrationNumber: string;
     readonly verificationStatus: string;
-  };
+  } | null;
   readonly claims: readonly { readonly claim: string; readonly state: string }[];
   /**
    * What was recorded about this product, newest first.
@@ -66,6 +67,10 @@ function isSerial(value: unknown): boolean {
 }
 
 function isIssuer(value: unknown): boolean {
+  // Null is a valid issuer: a holder-enrolled record has none. Undefined is
+  // not — that would be a field the API failed to send.
+  if (value === null) return true;
+
   return (
     isRecord(value) &&
     typeof value.companyName === "string" &&
