@@ -4,48 +4,52 @@ description: "Trigger: file an issue, open an issue, close an issue, new finding
 license: Apache-2.0
 metadata:
   author: "clevervi"
-  version: "1.0"
+  version: "1.1"
 ---
 
 # TrustPass issue discipline
 
 Complements `trustpass-workflow`, which covers branching, commits, the merge bar
-and releases. This covers only the backlog: what becomes an issue, what does
-not, and what closing one requires.
+and releases.
 
 ## Activation Contract
 
-Load when a finding appears mid-implementation, before creating an issue, before
-closing one, or when a change is growing past what its issue described.
+Load when a finding appears mid-implementation, before creating or closing an
+issue, or when a change is growing past what its issue described.
 
 ## Hard Rules
 
 - **Search before creating.** By error text, domain concept, security boundary
   and `TP-` identifier. A duplicate issue splits the evidence for one problem
   across two places.
-- **Never close an issue because its pull request merged.** Merged means the
-  code is on `develop`. Map each acceptance criterion to the evidence that
-  satisfies it, and close only when every one is met.
+- **Merged is not done.** Map every acceptance criterion to the evidence that
+  satisfies it, and close only then.
 - **Never report a stronger result than the evidence supports.** "Builds" is not
   "works", "tests pass" is not "the criterion is met", and an inference is never
   an executed fact.
-- **A Gemini finding is not an issue.** It becomes one after Claude reads the
-  named source and confirms the behaviour independently.
-- **Security findings are not downgraded for needing an unusual configuration.**
-  Record the precondition, the attacker capability, the boundary crossed, a
-  reproduction, and the regression test that now fails without the fix.
+- **Router output is not repository evidence.** A summary is navigation. Neither
+  opening nor closing an issue rests on it — read the named source, and cite the
+  file, the test and the CI run instead.
+- **Security findings raise the evidence bar, not the issue count.** Record the
+  precondition, the attacker capability, the boundary crossed, a reproduction,
+  and the test that fails without the fix. Never downgrade one for needing an
+  unusual configuration. Whether it becomes its own issue is decided by the
+  gates below, like anything else.
+- **A suspected live secret is a containment event, not a backlog event.** Stop
+  the third-party transmission, contain and rotate, *then* verify and write it
+  up. Searching for a duplicate issue while a credential is still being sent is
+  the wrong order.
 
 ## Decision Gates
 
 | A finding appears mid-work | Action |
 |---|---|
-| Same root cause **and** same acceptance criteria | Update the current issue; extend criteria only if needed |
-| Independently actionable, or would materially enlarge the pull request | New issue, linked; current pull request keeps its scope |
+| Same root cause, same outcome **and** same acceptance criteria | Update the current issue; extend criteria only if needed |
+| Independent outcome, or would materially enlarge the pull request | New issue, linked; current pull request keeps its scope |
 | Typo, local cleanup, or a detail of the current issue | Just fix it. No issue |
-| Changes a security boundary or domain semantics | New issue, always, however small the fix |
 
-Absorbing unrelated work because "we are already here" is how one pull request
-ends up closing three issues badly.
+One gate, applied to everything, security included. Absorbing unrelated work
+because "we are already here" is how one pull request closes three issues badly.
 
 ## Execution Steps
 
@@ -55,8 +59,6 @@ ends up closing three issues badly.
 3. When deferring a finding, record it in the pull request in this shape:
    `Found during TP-XXX: <finding> / Not fixed because: <scope reason> /
    Follow-up: #YYY`
-4. Before closing: run the tests, map criterion to evidence, state any
-   limitation, then close.
 
 ## Output Contract
 
