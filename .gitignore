@@ -47,6 +47,7 @@ Thumbs.db
 !.claude/context/
 !.claude/hooks/
 !.claude/scripts/
+!.claude/skills/
 !.claude/tests/
 .claude/cache/
 .claude/.state/
