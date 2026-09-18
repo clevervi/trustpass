@@ -26,15 +26,21 @@ Buying second-hand means answering questions you have no way to answer:
 
 TrustPass exists to narrow that uncertainty without pretending to remove it.
 
-> **Status: v0.3.0, nothing deployed.** Identity and the public passport work
-> end to end: a TrustPass ID resolves to a page stating what has been checked
-> and what has not, with claims listed separately, the serial masked, and a QR
-> that points at it.
+> **Status: `v0.3.0` is the last tag, `develop` is ahead of it, nothing is
+> deployed.** Identity and the public passport work end to end: a TrustPass ID
+> resolves to a page stating what has been checked and what has not, with claims
+> listed separately, the serial masked, and a QR that points at it.
 >
-> **Not built yet:** warranty, lifecycle events, ownership transfer, condition,
-> evidence from outside sources, blockchain anchoring, NFC. The verified resale
-> flow is the destination, not the current state. There is also no
-> authentication, so the API must not be exposed publicly yet. See
+> **Merged since that tag, on `develop`:** lifecycle events. A product's history
+> is recorded, append-only, and rendered on its passport — and a product cannot
+> change status without an event explaining why, written in the same transaction
+> and enforced by the database rather than by whichever code happens to be
+> writing.
+>
+> **Not built yet:** warranty, ownership transfer, condition, evidence from
+> outside sources, blockchain anchoring, NFC. The verified resale flow is the
+> destination, not the current state. There is also no authentication, so the
+> API must not be exposed publicly yet. See
 > [`docs/ROADMAP.md`](docs/ROADMAP.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
 ## What this is not
