@@ -6,7 +6,6 @@ import { issuer } from "../schema/issuer.js";
 import { lifecycleEvent } from "../schema/lifecycle-event.js";
 import { type NewProduct, product } from "../schema/product.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
-import { insertProductWithProvenance, moveProductStatus } from "../testing/with-provenance.js";
 import { findHistoryByTrustPassId, findProductHistory } from "./lifecycle-event-repository.js";
 import { insertProduct } from "./product-repository.js";
 import { changeProductStatus } from "./product-status-repository.js";

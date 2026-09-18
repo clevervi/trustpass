@@ -1,4 +1,4 @@
-import { eq, like } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";

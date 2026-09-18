@@ -76,7 +76,9 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
         type: "product_suspended",
         actorKind: "authority",
         issuerId: null,
-        occurredAt: sql`now()`,
+        // now(), not a Date: recorded_at defaults to the transaction
+        // timestamp, and a Date read afterwards is later than it.
+        occurredAt: sql`now()` as unknown as Date,
         reason: "theft_report",
         previousState: "registered",
         resultingState: "suspended",
@@ -97,7 +99,9 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
         type: "product_suspended",
         actorKind: "authority",
         issuerId: null,
-        occurredAt: sql`now()`,
+        // now(), not a Date: recorded_at defaults to the transaction
+        // timestamp, and a Date read afterwards is later than it.
+        occurredAt: sql`now()` as unknown as Date,
         reason: "theft_report",
         previousState: "registered",
         resultingState: "suspended",
@@ -111,7 +115,9 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
         type: "product_reinstated",
         actorKind: "authority",
         issuerId: null,
-        occurredAt: sql`now()`,
+        // now(), not a Date: recorded_at defaults to the transaction
+        // timestamp, and a Date read afterwards is later than it.
+        occurredAt: sql`now()` as unknown as Date,
         reason: "dispute_resolved",
         previousState: "suspended",
         resultingState: "registered",
