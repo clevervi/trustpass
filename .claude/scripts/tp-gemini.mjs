@@ -8,7 +8,16 @@
  */
 import { FAILURE_PERMANENT, FAILURE_TRANSIENT } from "./tp-state.mjs";
 
-export const PROMPT_VERSION = "1";
+export const PROMPT_VERSION = "2";
+
+/**
+ * What Gemini 3.8 Flash accepts. `minimal` is documented as **not supported for
+ * this model, returning an error** — which is worth an allowlist rather than a
+ * comment, because the value arrives from an environment variable and the
+ * failure mode is a 400 on every single request with nothing else wrong with
+ * it. An unsupported value is dropped and the API's own default applies.
+ */
+const THINKING_LEVELS = new Set(["low", "medium", "high"]);
 export const DEFAULT_MODEL = "gemini-3.8-flash";
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -188,7 +197,7 @@ export async function analyse({
       // temperature, topP and topK are deliberately absent: they are deprecated
       // for this model generation, and a deprecated parameter is a 400 waiting
       // to happen on a request that had nothing else wrong with it.
-      ...(thinkingLevel ? { thinkingLevel } : {}),
+      ...(THINKING_LEVELS.has(thinkingLevel) ? { thinkingLevel } : {}),
     },
   };
 

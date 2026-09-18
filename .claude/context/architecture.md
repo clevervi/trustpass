@@ -89,7 +89,7 @@ symlink pointing at a secret with no network, no key, and no Gemini.
 | `TP_GEMINI_TIMEOUT_SECONDS` | `8` | |
 | `TP_GEMINI_MAX_RETRIES` | `1` | Transient failures only |
 | `TP_GEMINI_FAILURE_COOLDOWN_SECONDS` | `300` | How long the circuit stays open |
-| `TP_GEMINI_THINKING_LEVEL` | unset | The review asked for `low`; the documentation for this model shows `minimal`. Neither was verifiable without spending a live call, and a wrong value is a 400 on every request, so nothing is sent |
+| `TP_GEMINI_THINKING_LEVEL` | `low` | Gemini 3.8 Flash supports `low`, `medium` (default) and `high`. **`minimal` is not supported and returns an error.** `low` because this is extraction, not reasoning |
 | `TP_STATE_DIR`, `TP_CACHE_DIR` | under `.claude/` | For the tests. Deliberately **not** a repository-root override, because a variable that moves the repository boundary moves what counts as "outside the repository" |
 
 ## Running the tests
