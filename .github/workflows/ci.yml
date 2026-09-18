@@ -46,6 +46,38 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # Migrations in this repository are hand-written, because triggers,
+      # deferred constraint triggers and partial indexes are not things
+      # drizzle-kit can express. But drizzle-kit keeps its own snapshot of the
+      # schema and refreshes it only when drizzle-kit generates a migration, so
+      # a hand-written one leaves that snapshot describing a database that no
+      # longer exists. It drifted silently from 0011 to 0016 and surfaced as a
+      # generated migration that fails on every database (#85).
+      #
+      # A green result here means: the part of the schema drizzle-kit can
+      # represent is not stale. It does NOT mean Postgres matches the schema.
+      # Nine triggers and two deferrable constraints carry the guarantees in
+      # 0005, 0008, 0010, 0014, 0015 and 0016, and no snapshot has ever
+      # contained one of them. Those are covered by the integration suite
+      # against a real Postgres, which is a different job for a reason.
+      - name: Migrations describe the schema drizzle-kit can see
+        env:
+          # `generate` diffs the schema against its snapshot and never opens a
+          # connection — verified — but the config demands a URL regardless.
+          # This one is deliberately unreachable, so a future change that does
+          # start connecting fails here instead of quietly reading a database.
+          DATABASE_URL: postgresql://unused:unused@127.0.0.1:1/unused
+        run: |
+          pnpm db:generate
+          if [ -n "$(git status --porcelain packages/db/drizzle)" ]; then
+            echo "::error::drizzle-kit generated a migration, so the schema and the migrations disagree."
+            echo "Either the change belongs in a migration that was never written, or a hand-written"
+            echo "migration left the snapshot behind. See packages/db/drizzle/0017 and issue #85."
+            git status --porcelain packages/db/drizzle
+            git --no-pager diff -- packages/db/drizzle
+            exit 1
+          fi
+
   test:
     name: Test against Postgres
     runs-on: ubuntu-latest
