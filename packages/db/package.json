@@ -15,7 +15,8 @@
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:preflight": "tsx src/scripts/issuer-preflight.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
