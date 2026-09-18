@@ -14,7 +14,18 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ## [Unreleased]
 
-Nothing yet.
+### Decided
+
+- **[ADR 0010](docs/adr/0010-two-records-one-object.md) amended: the state rules
+  as a table, and one contradiction they surfaced.** The semantics were spread
+  across three sections, and the likely misreading was the expensive one —
+  `unresolved` taken for `rejected`, which turns an absence of evidence into
+  somebody's verdict. Building the table found that §6 said a rejection "is
+  withdrawn and re-proposed" while `withdrawn` is the exit from `verified`; a
+  rejection is terminal for that correspondence and a new one may be proposed
+  instead. Also states the invariant that `unresolved` is reachable only from
+  `proposed`, and records as open the question the binary visibility rule
+  leaves: a buyer cannot see a conflict that is real but unanswered.
 
 ## [0.4.0] — 2026-09-18
 

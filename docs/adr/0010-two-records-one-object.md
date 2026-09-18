@@ -328,6 +328,30 @@ Raised in review as the bar for it being finished, and answered above:
 | What if the evidence never arrives? | `unresolved`. Neither true nor false, and reopenable if evidence appears later |
 | Two manufacturers, one serial? | Not a correspondence. A conflict, routed to [#89](https://github.com/clevervi/trustpass/issues/89) |
 
+### An open question this deliberately does not answer
+
+Visibility is binary: `verified` and `withdrawn` are public, everything else is
+not. That is right against the doubt-casting attack §2 describes, and it leaves
+a real question unanswered — raised in review and worth recording rather than
+discovering later:
+
+> What happens when a buyer needs to know about a relevant conflict that is
+> still open?
+
+A `proposed` correspondence backed by real evidence, against a record whose
+holder simply has not replied, is invisible to exactly the person it would help.
+That is a cost the binary pays to stop the attack, not a case the attack covers.
+
+Levels a future decision might use:
+
+```
+public  ·  party-visible  ·  authority-visible  ·  internal
+```
+
+**Not decided here, and not to be built into `TP-141`.** It is written down so
+the binary reads as a choice with a known cost rather than as an assumption, and
+so nothing implementing this ADR forecloses it.
+
 ## What this ADR does not decide
 
 - The schema. Table, columns and constraints belong to the implementation issue,
