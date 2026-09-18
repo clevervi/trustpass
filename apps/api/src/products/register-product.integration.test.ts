@@ -146,9 +146,16 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
 
       const conflict = (await second.json()) as { error: string; message: string };
       expect(conflict.error).toBe("duplicate_serial");
-      // The existing identifier is the recovery path for a client that timed
-      // out mid-registration and retried.
-      expect(conflict.message).toContain(created.trustpassId);
+
+      // This assertion used to be its opposite: the conflict named the existing
+      // identifier, as the recovery path for a client that timed out mid-
+      // registration and retried. A good reason, and it made a serial printed
+      // on the object into a lookup key for the identity ADR 0004 spends its
+      // whole Context keeping unguessable.
+      expect(conflict.message).not.toContain(created.trustpassId);
+      // Nor the serial. Echoing it back confirms which one was asked about,
+      // which is most of what a sweep gets to look at.
+      expect(conflict.message).not.toContain(serial);
       expect(conflict.message).not.toMatch(/constraint|violates|relation|SQLSTATE|index/i);
     });
 

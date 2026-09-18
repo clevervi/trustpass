@@ -1,7 +1,6 @@
 import {
   type Database,
   enrolProduct as enrolInDatabase,
-  findLiveHolderEnrolment,
   generateTrustPassId,
   type schema,
 } from "@trustpass/db";
@@ -37,13 +36,22 @@ export type EnrolProductResult =
   | {
       readonly ok: false;
       readonly reason: "duplicate_serial";
-      /**
-       * The enrolment this serial already has. Returned so a client that timed
-       * out and retried learns the identifier it already created, rather than
-       * being told to try again with something different.
-       */
-      readonly existingTrustpassId: string | null;
     };
+
+/*
+ * What used to be here: `existingTrustpassId`, returned so a client that timed
+ * out and retried learned the identifier it had already created.
+ *
+ * A good reason, and it made a serial printed on the outside of an object into
+ * a lookup key for the identifier ADR 0004 spent its entire Context keeping
+ * unguessable. Anyone holding a photograph of a label could ask for the
+ * passport identity of the thing in it.
+ *
+ * The retry it existed for comes back under #141, and not as "you are
+ * authenticated, here is the identifier" — being the same actor does not prove
+ * this actor created that enrolment. It needs proof of entitlement to that
+ * enrolment: a key its creator holds, or a credential issued when it was made.
+ */
 
 /**
  * Enrols a product nobody registered.
@@ -67,16 +75,9 @@ export async function enrolProduct(
   });
 
   if (!result.ok) {
-    const existing = await findLiveHolderEnrolment(db, input.serial);
-
-    return {
-      ok: false,
-      reason: "duplicate_serial",
-      // Null rather than a throw: the row can be retired between the failed
-      // insert and this lookup, and a caller learning "already enrolled" with
-      // no identifier is still better served than one getting a 500.
-      existingTrustpassId: existing?.trustpassId ?? null,
-    };
+    // No second lookup. It existed only to name the identifier, and a query
+    // that produces nothing a caller may see is a query that should not run.
+    return { ok: false, reason: "duplicate_serial" };
   }
 
   const { trustpassId, brand, model, serial, category, status, origin, createdAt } = result.product;

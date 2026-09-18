@@ -1,6 +1,5 @@
 import {
   type Database,
-  findLiveProductBySerial,
   findOrganizationByRegistration,
   generateTrustPassId,
   insertProduct,
@@ -55,13 +54,15 @@ export type RegisterProductResult =
   | {
       readonly ok: false;
       readonly reason: "duplicate_serial";
-      /**
-       * The identity this serial already holds. Returned so a client that timed
-       * out and retried learns the identifier it already created, rather than
-       * only being told no.
-       */
-      readonly existingTrustpassId: string;
     };
+
+/*
+ * `existingTrustpassId` used to be here too, for the same reason and with the
+ * same consequence: a serial is printed on the object, so returning the
+ * identity it already holds turns a photograph of a label into a passport
+ * lookup. Removed with the one in enrol-product.ts — fixing one endpoint and
+ * leaving its sibling is how a defect comes back wearing a different name.
+ */
 
 /**
  * Registers a product against an existing issuer.
@@ -105,16 +106,7 @@ export async function registerProduct(
   });
 
   if (!inserted.ok) {
-    const existing = await findLiveProductBySerial(db, party.id, input.serial);
-
-    return {
-      ok: false,
-      reason: "duplicate_serial",
-      // The lookup can only miss if the winning row was retired between the
-      // rejection and this read. Reporting the conflict without an identifier
-      // is still the honest answer; inventing one would not be.
-      existingTrustpassId: existing?.trustpassId ?? "unknown",
-    };
+    return { ok: false, reason: "duplicate_serial" };
   }
 
   const created = inserted.product;
