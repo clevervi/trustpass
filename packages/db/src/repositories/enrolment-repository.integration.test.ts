@@ -76,10 +76,19 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
     const result = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values() });
     if (!result.ok) throw new Error("expected success");
 
-    const [event] = await db
+    // Asserting the length is what makes the `[0]` below valid, and it is the
+    // assertion rather than ceremony: an enrolment writes exactly one event,
+    // and `product_id` is not unique on `lifecycle_event`. If a second event
+    // ever joins this path, this fails loudly here instead of silently picking
+    // whichever row Postgres returned first — which is how a test in this suite
+    // passed for years while asserting about the wrong row.
+    const events = await db
       .select()
       .from(lifecycleEvent)
       .where(eq(lifecycleEvent.productId, result.product.id));
+
+    expect(events).toHaveLength(1);
+    const [event] = events;
 
     expect(event?.issuerId).toBeNull();
   });
