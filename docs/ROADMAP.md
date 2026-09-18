@@ -150,7 +150,36 @@ and every feature after it either copies that or retrofits.
 So the event spine comes first, and warranty becomes its first serious consumer
 rather than its accidental author.
 
-### v0.5.0 — Ownership
+### v0.5.0 — Identity and authority
+
+**Who may speak, and why that authority was still valid when they spoke.** Not
+planned as a milestone: it grew out of `TP-141` being unbuildable until the
+model behind it was decided, and it took four ADRs to decide.
+
+[ADR 0009](adr/0009-a-capacity-is-granted-not-claimed.md) — a capacity is
+granted, scoped, evidenced and revocable, never a role on a user.
+[ADR 0010](adr/0010-two-records-one-object.md) — two records for one object are
+joined by evidence, and neither is destroyed.
+[ADR 0011](adr/0011-authority-is-pinned-to-the-moment-it-was-used.md) — grants
+are append-only, so *"what could this actor do in August"* is a query rather
+than a belief. [ADR 0012](adr/0012-one-party-one-record.md) — one party has one
+record, and `issuer` becomes a role an organization plays.
+
+Shipped: `actor`, `organization`, `membership`, `credential`, `capacity_grant`
+and its revocations; `grant_id` on every event; and the migration that made
+`organization` the canonical identity and removed `issuer` entirely.
+
+**Not shipped: authentication.** `actor_kind` is still self-declared. The model
+now says exactly what `TP-141` has to build, which it did not before.
+
+### v0.6.0 — Ownership
+
+**Moved from v0.5.0.** The order changed because identity did, and the reason is
+the same one that moved lifecycle events ahead of warranty: an ownership
+transfer needs to say *who* transferred it, and until this milestone the system
+could not name a party or prove one held any capacity at all. Building ownership
+first would have meant modelling a transfer between two things the system could
+not identify.
 
 Ownership as its own object with its own events, not a column on the product.
 Transfer requires acceptance by the receiver, and the history of who held a
@@ -171,7 +200,7 @@ hands" while ownership does not exist, so today it is a button. It must become a
 consequence: a product is `active` because ownership was established, not
 because somebody set it.
 
-### v0.6.0 — Warranty
+### v0.7.0 — Warranty
 
 Warranty creation, activation, coverage calculation and claims with a real state
 machine — recorded as evidence and events against the product, not as three
@@ -180,14 +209,14 @@ there.
 
 `TP-040` … `TP-045`
 
-### v0.7.0 — Verification and security hardening
+### v0.8.0 — Verification and security hardening
 
 Verification service, public verification endpoint, threat model, RBAC, audit
 log, rate limiting, emergency procedures.
 
 `TP-070` … `TP-074`, `TP-100` … `TP-105`
 
-### v0.8.0 — Blockchain anchoring
+### v0.9.0 — Blockchain anchoring
 
 On-chain/off-chain boundary documented first, then `ProductRegistry`,
 `LifecycleRegistry` and `OwnershipRegistry` with unit, fuzz and invariant tests
