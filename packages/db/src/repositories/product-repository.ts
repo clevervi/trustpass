@@ -7,6 +7,7 @@ import {
   type NewProduct,
   type Product,
   type ProductCategory,
+  type ProductOrigin,
   type ProductStatus,
   product,
 } from "../schema/product.js";
@@ -160,6 +161,7 @@ export interface ProductWithIssuer {
   readonly serial: string;
   readonly category: ProductCategory;
   readonly status: ProductStatus;
+  readonly origin: ProductOrigin;
   readonly createdAt: Date;
   readonly issuer: {
     readonly companyName: string;
@@ -202,6 +204,7 @@ export async function findProductByTrustPassId(
       serial: product.serial,
       category: product.category,
       status: product.status,
+      origin: product.origin,
       createdAt: product.createdAt,
       issuer: {
         companyName: issuer.companyName,

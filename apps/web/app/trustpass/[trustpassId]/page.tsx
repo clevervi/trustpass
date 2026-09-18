@@ -9,6 +9,7 @@ import {
   describeCategory,
   describeClaim,
   describeHistoryEntry,
+  describeOrigin,
   describeStatus,
   type Tone,
 } from "../claim-wording";
@@ -238,6 +239,11 @@ function Passport({ passport }: { passport: PassportView }) {
             </Row>
           )}
           <Row label="Registered on">{formatDate(passport.registeredOn)}</Row>
+          {passport.origin ? (
+            <Row label="Record started" note={describeOrigin(passport.origin).detail}>
+              {describeOrigin(passport.origin).label}
+            </Row>
+          ) : null}
         </dl>
       </Card>
 

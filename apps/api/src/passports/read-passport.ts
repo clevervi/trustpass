@@ -25,6 +25,16 @@ export interface PublicPassport {
   readonly model: string;
   readonly category: schema.ProductCategory;
   readonly status: PublishedStatus;
+  /**
+   * Where this record started, per ADR 0007 as amended.
+   *
+   * Crosses the boundary because a machine consumer has to be able to tell a
+   * factory registration from a record somebody started later. If only the page
+   * knew, every marketplace reading this would treat them as equivalent.
+   *
+   * It says nothing about whether the object is genuine.
+   */
+  readonly origin: schema.ProductOrigin;
   /** The last four characters and how many are withheld, or null when none can be shown safely. */
   readonly serial: { readonly suffix: string; readonly hiddenCharacters: number } | null;
   /**
@@ -108,6 +118,7 @@ export async function readPassport(
       model: record.model,
       category: record.category,
       status: record.status,
+      origin: record.origin,
       serial: disclosure.disclosed
         ? { suffix: disclosure.suffix, hiddenCharacters: disclosure.hiddenCharacters }
         : null,

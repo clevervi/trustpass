@@ -14,6 +14,7 @@ function passportFor(trustpassId: string): PublicPassport {
     model: "ROG Strix RTX 5070 Ti",
     category: "gpu",
     status: "registered",
+    origin: "supply_chain",
     serial: { suffix: "4896", hiddenCharacters: 8 },
     registeredOn: "2026-09-17",
     issuer: {

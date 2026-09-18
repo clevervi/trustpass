@@ -67,6 +67,30 @@ export const productStatus = pgEnum("product_status", [
   "retired",
 ]);
 
+/**
+ * Where a product's TrustPass record started.
+ *
+ * Per ADR 0007 as amended this is the origin of the **record**, not of the
+ * product: a graphics card has had an identity since it was made, and what
+ * begins here is this system's knowledge of it.
+ *
+ * Per ADR 0008 it is a property of the record, set once, and is **not** the
+ * actor capacity of any one event. A `supply_chain` record can later carry an
+ * event whose actor is an authority, and nothing about that is contradictory.
+ *
+ * None of these values says anything about whether the object is genuine.
+ * `manufacturer` means a maker started the record; ADR 0003 is why that is not
+ * the same as the object being what the record describes.
+ */
+export const productOrigin = pgEnum("product_origin", [
+  /** The maker started the record. */
+  "manufacturer",
+  /** A distributor or retailer did, somewhere between factory and buyer. */
+  "supply_chain",
+  /** Whoever had the object did, at some point after it was made. */
+  "holder",
+]);
+
 export const product = pgTable(
   "product",
   {
@@ -110,6 +134,17 @@ export const product = pgTable(
     category: productCategory("category").notNull(),
 
     status: productStatus("status").notNull().default("draft"),
+
+    /**
+     * Where this record started. See `productOrigin`.
+     *
+     * Defaulted to `supply_chain` rather than `manufacturer`, and the default is
+     * a claim like any other: every product registered before this column
+     * existed came through `POST /products` from a business whose relationship
+     * to the factory nobody recorded. Calling those `manufacturer` would assert
+     * something no row supports.
+     */
+    origin: productOrigin("origin").notNull().default("supply_chain"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 
@@ -176,3 +211,4 @@ export type Product = typeof product.$inferSelect;
 export type NewProduct = typeof product.$inferInsert;
 export type ProductCategory = (typeof productCategory.enumValues)[number];
 export type ProductStatus = (typeof productStatus.enumValues)[number];
+export type ProductOrigin = (typeof productOrigin.enumValues)[number];
