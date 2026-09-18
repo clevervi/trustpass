@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { sql } from "drizzle-orm";
 import { createDatabase } from "../client.js";
@@ -89,20 +89,28 @@ function filesDependingOnTheIssuerTable(root: string): {
   const skip = new Set(["node_modules", "dist", ".next", "drizzle", "scripts"]);
   const allowed = /[\\/]schema[\\/]/;
 
+  // `withFileTypes` rather than a separate `statSync`.
+  //
+  // CodeQL flagged the original as a file system race: the directory check and
+  // the read were two calls, and what was a directory when it was checked need
+  // not be one when it is used. Low stakes for a script walking its own
+  // repository, and the rule is right — the answer is not to suppress it but to
+  // stop needing the pattern, which one call with the entry's type already
+  // avoids.
   function walk(dir: string): void {
-    for (const entry of readdirSync(dir)) {
-      if (skip.has(entry)) continue;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (skip.has(entry.name)) continue;
 
-      const full = join(dir, entry);
-      if (statSync(full).isDirectory()) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
         walk(full);
         continue;
       }
 
-      if (!entry.endsWith(".ts") && !entry.endsWith(".tsx")) continue;
+      if (!entry.name.endsWith(".ts") && !entry.name.endsWith(".tsx")) continue;
       // Tests follow the code they test; they are not an independent
       // dependency, and counting them would report the same work twice.
-      if (entry.includes(".test.")) continue;
+      if (entry.name.includes(".test.")) continue;
       if (allowed.test(full)) continue;
 
       scanned += 1;
@@ -113,7 +121,10 @@ function filesDependingOnTheIssuerTable(root: string): {
   }
 
   walk(root);
-  return { offenders: offenders.sort(), scanned };
+  // toSorted, and with a comparator. A bare sort() mutates the array it was
+  // given and orders by UTF-16 code unit — fine for ASCII paths and not what
+  // "alphabetical" means to the person reading this list.
+  return { offenders: offenders.toSorted((a, b) => a.localeCompare(b)), scanned };
 }
 
 /**
