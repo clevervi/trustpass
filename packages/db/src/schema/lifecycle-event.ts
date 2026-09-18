@@ -3,6 +3,7 @@ import {
   type AnyPgColumn,
   bigint,
   check,
+  customType,
   index,
   pgEnum,
   pgTable,
@@ -11,6 +12,20 @@ import {
 } from "drizzle-orm/pg-core";
 import { issuer } from "./issuer.js";
 import { product, productStatus } from "./product.js";
+
+/**
+ * Postgres's 64-bit transaction identifier.
+ *
+ * Declared here because Drizzle has no built-in for it. Read as a string: it is
+ * 64-bit and a JavaScript number cannot hold the whole range, and nothing in
+ * this codebase does arithmetic on it — the only operation is equality, and the
+ * database performs that.
+ */
+const xid8 = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return "xid8";
+  },
+});
 
 /**
  * What happened to a product.
@@ -194,6 +209,29 @@ export const lifecycleEvent = pgTable(
      */
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
 
+    /**
+     * Which write produced this row — the top-level transaction that inserted
+     * it. Never read outside the database.
+     *
+     * Separate from `recordedAt`, and the separation is the point. "When did
+     * TrustPass learn of this" is a fact the passport publishes; "which write
+     * produced this" is an integrity question nobody outside ever asks. The
+     * provenance triggers were using the first column to answer the second, and
+     * it answered badly: `recorded_at >= transaction_timestamp()` is a time
+     * **range**, so any event another transaction committed while this one was
+     * open fell inside it and could account for a move this transaction never
+     * explained. Reproduced with two connections; see 0016.
+     *
+     * Equality against `pg_current_xact_id()` has no range to fall into.
+     *
+     * Defaulted to `'0'`, which Postgres reserves and never hands out, so the
+     * default **fails closed**: if the trigger that sets this were dropped, new
+     * rows would match no transaction and every provenance check would refuse
+     * loudly. `recordedAt`'s `defaultNow()` fails open, which is why it needed a
+     * trigger to be trustworthy at all.
+     */
+    recordedInXact: xid8("recorded_in_xact").notNull().default(sql`'0'`),
+
     /** Why. Nullable: `product_registered` needs no reason beyond itself. */
     reason: lifecycleEventReason("reason"),
 
@@ -269,12 +307,16 @@ export const lifecycleEvent = pgTable(
 
 export type LifecycleEvent = typeof lifecycleEvent.$inferSelect;
 /**
- * `recordedAt` is omitted deliberately: the database overwrites it on insert
- * (0015), so a value supplied here is discarded. Refusing it at the type makes
- * that visible when the code is written, rather than when somebody reads the
- * row back and finds a timestamp they did not write.
+ * `recordedAt` and `recordedInXact` are omitted deliberately: the database
+ * overwrites both on insert (0015, 0016), so a value supplied here is
+ * discarded. Refusing them at the type makes that visible when the code is
+ * written, rather than when somebody reads the row back and finds values they
+ * did not write.
  */
-export type NewLifecycleEvent = Omit<typeof lifecycleEvent.$inferInsert, "recordedAt">;
+export type NewLifecycleEvent = Omit<
+  typeof lifecycleEvent.$inferInsert,
+  "recordedAt" | "recordedInXact"
+>;
 export type LifecycleEventType = (typeof lifecycleEventType.enumValues)[number];
 export type LifecycleEventReason = (typeof lifecycleEventReason.enumValues)[number];
 export type LifecycleActorKind = (typeof lifecycleActorKind.enumValues)[number];
