@@ -102,7 +102,7 @@ asserts far less than one registered at the factory and must not be mistakable
 for it. A passport whose identity began at enrolment declares its unknown period
 explicitly rather than showing an empty history that reads as a clean one.
 
-`TP-046` … `TP-049`
+`TP-046` … `TP-048`
 
 Enrolment and events ship together because they are the same statement. "The
 TrustPass **record** starts here, and everything before it is outside TrustPass"

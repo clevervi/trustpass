@@ -14,6 +14,24 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.4.0] — 2026-09-18
+
+**Lifecycle events and enrolment.** A product's history is recorded, append-only,
+and rendered on its passport, and the record can now begin with whoever holds
+the object rather than only with a business holding a national registration
+number.
+
+The milestone's own argument, from `docs/ROADMAP.md`: a status change that
+leaves no record of why it happened is not a smaller problem than a missing
+feature. Products could already be suspended, and a passport could already say
+`Suspended` while being unable to say whether that was a theft report, a fraud
+flag or a disputed claim — which mean very different things to somebody deciding
+whether to buy.
+
+`TP-034`, `TP-046` … `TP-048`, `TP-050` … `TP-053`.
+
 ### Decided
 
 - **[ADR 0010](docs/adr/0010-two-records-one-object.md) amended: `unresolved` is
