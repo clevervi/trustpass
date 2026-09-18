@@ -220,9 +220,40 @@ describe("analyse", () => {
       assert.equal(parameter in body.generationConfig, false, parameter);
     }
 
-    // And thinkingLevel is absent unless asked for, because the review said
-    // "low" and the documentation for this model shows "minimal", and neither
-    // could be checked without spending a live call.
+    // thinkingLevel is asserted separately below.
+  });
+
+  it("asks for low thinking, because this is extraction and not reasoning", async () => {
+    let body;
+
+    await analyse({
+      ...BASE,
+      thinkingLevel: "low",
+      fetchImpl: async (_url, init) => {
+        body = JSON.parse(init.body);
+        return await respondWith(GOOD_ANALYSIS)();
+      },
+    });
+
+    assert.equal(body.generationConfig.thinkingLevel, "low");
+  });
+
+  it("drops a thinking level this model does not support", async () => {
+    // `minimal` is documented as unsupported for Gemini 3.8 Flash and returns
+    // an error. It arrives from an environment variable, so the failure mode
+    // without this guard is a 400 on every request with nothing else wrong
+    // with it — and a circuit that opens for a reason nobody would guess.
+    let body;
+
+    await analyse({
+      ...BASE,
+      thinkingLevel: "minimal",
+      fetchImpl: async (_url, init) => {
+        body = JSON.parse(init.body);
+        return await respondWith(GOOD_ANALYSIS)();
+      },
+    });
+
     assert.equal("thinkingLevel" in body.generationConfig, false);
   });
 });

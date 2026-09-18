@@ -73,11 +73,20 @@ const CONFIG = {
   timeoutMs: Number(process.env.TP_GEMINI_TIMEOUT_SECONDS || 8) * 1000,
   maxRetries: Number(process.env.TP_GEMINI_MAX_RETRIES || 1),
   cooldownSeconds: Number(process.env.TP_GEMINI_FAILURE_COOLDOWN_SECONDS || 300),
-  // Not sent unless asked for. The review specified "low"; the documentation
-  // for this model generation shows "minimal". Neither could be checked without
-  // spending a live call, and a wrong value is a 400 on every request — so the
-  // default is to send nothing and let the API's own default apply.
-  thinkingLevel: process.env.TP_GEMINI_THINKING_LEVEL || null,
+  // `low`, because this is an extraction job and not a reasoning one.
+  //
+  // #133 shipped this unset, with a comment saying the documentation showed
+  // `minimal` and that neither value could be checked. The comment was wrong:
+  // it came from an example on another page. The model's own documentation
+  // says `low`, `medium` (the default) and `high` are supported, and that
+  // **`minimal` is not supported for Gemini 3.8 Flash and will return an
+  // error** — so the review that asked for `low` was right, and the
+  // uncertainty that justified sending nothing did not exist.
+  //
+  // `low` is documented for latency-critical work. Reading a file and listing
+  // what is in it is that; `medium` would buy reasoning this deliberately does
+  // not want the model doing.
+  thinkingLevel: process.env.TP_GEMINI_THINKING_LEVEL || "low",
   /** A repeat of the same delegated read inside this window is let through. */
   loopWindowMs: 60_000,
 };
