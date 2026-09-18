@@ -36,21 +36,13 @@ Thumbs.db
 # Agent tooling (not part of the product)
 .atl/
 
-# The context router IS tracked. A hook that decides what leaves this machine
-# is a security control, and the rule here is that security controls are
-# written down, reviewed and tested -- an untracked one is the "trust me" that
-# TP-161 spent a day deleting. What it produces at runtime is not tracked:
-# summaries derived from source, and a state file with quota counters.
-.claude/*
-!.claude/CLAUDE.md
-!.claude/settings.json
-!.claude/context/
-!.claude/hooks/
-!.claude/scripts/
-!.claude/skills/
-!.claude/tests/
-.claude/cache/
-.claude/.state/
+# Agent tooling. Not part of the product, and not published with it.
+#
+# It was tracked for a while, on the argument that a hook deciding what leaves
+# this machine is a security control and belongs under review. The owner's call
+# is that development tooling stays on the machine it runs on. Nothing is
+# deleted locally — this only stops it being uploaded.
+.claude/
 apps/web/AGENTS.md
 apps/web/CLAUDE.md
 
