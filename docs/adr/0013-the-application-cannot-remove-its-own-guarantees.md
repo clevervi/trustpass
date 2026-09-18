@@ -138,6 +138,28 @@ Nothing prevents it.
   migration cannot edit an environment file. Until an operator makes that
   change, this is a model with nobody standing in it, and the provisioning
   script says so in its own output rather than letting anyone believe otherwise.
+
+  *Amended by TP-166 (#126).* That sentence described a guarantee whose
+  enforcement was a person remembering one line, which is not a guarantee. The
+  API now asks Postgres what it is connected as and refuses to start on a
+  connection that can dismantle its own protections — see
+  `packages/db/src/connection-privileges.ts`. Forgetting the line is now a
+  failed deploy rather than a silent loss of every guarantee above.
+
+  Writing that check produced one correction to this ADR's own reasoning. The
+  five role attributes plus "owns nothing" — the obvious test, and the one
+  proposed in review — passes `trustpass_migration`, measured:
+
+  ```
+  role                 attributes clear   owns directly   can become owner
+  trustpass_migration  yes                0               16
+  trustpass_runtime    yes                0               0
+  ```
+
+  A role with nothing of its own and one `SET ROLE` to everything. The question
+  that separates them is not what the connection owns but **what it can become**,
+  which `pg_has_role(current_user, relowner, 'MEMBER')` answers in one clause
+  and which subsumes ownership, because a role is a member of itself.
 - The integration suite keeps running as the superuser, because it creates and
   cleans fixtures. Only the least-privilege suite connects as the runtime, which
   is correct: it is the only one asking what the application can do.
