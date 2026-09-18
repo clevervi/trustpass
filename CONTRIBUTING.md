@@ -147,6 +147,30 @@ check proves a test can fail; it cannot prove the author tested the right thing.
 The bar makes the author's reasoning inspectable, which is the most a single
 author can honestly offer.
 
+### Every guard ships with a test that dies without it
+
+**Adding a check, a constraint, a type guard or a trigger means adding a test
+whose failure depends on that specific condition.** Not a test that happens to
+exercise the code around it — one that goes red when the guard is removed and
+green when it is restored.
+
+This is written down because it is the mistake that keeps recurring here, three
+times in one week:
+
+| Guard | How it was caught |
+| --- | --- |
+| The QR quiet zone | The test derived its bound from the value under test, so it passed with no margin at all (#40) |
+| `FOR UPDATE` on a status change | Removing the lock left every test green; the calls serialise on their own (#57) |
+| `isHistory` in the passport fetch | Guard added, no test written; removing it changed nothing (#61) |
+
+Each was found by breaking the guard on purpose, never by the suite. **The
+protection kept arriving before the proof of the protection**, and a guard with
+no test that can fail is indistinguishable from no guard at all — except that it
+reads like safety, which is worse.
+
+The order that avoids it: write the failing case first, add the guard, watch it
+pass, then remove the guard and watch it fail again.
+
 ## Break-glass
 
 `main` and `develop` are protected, and the protection applies to
