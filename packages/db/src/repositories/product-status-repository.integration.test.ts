@@ -428,4 +428,57 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
       expect(result).toMatchObject({ ok: false, reason: "unauthorised_actor" });
     });
   });
+
+  describe("the laundering sequence, end to end", () => {
+    it("cannot turn a stolen product into a clean passport", async () => {
+      const id = await aProduct();
+
+      // 1. an authority suspends it over a theft report
+      const suspension = await changeProductStatus(db, {
+        productId: id,
+        to: "suspended",
+        actorKind: "authority",
+        reason: "theft_report",
+        sourceReference: "POL-2026-8891",
+      });
+      expect(suspension).toMatchObject({ ok: true });
+
+      // 2. the holder tries to retire it, which would free the serial
+      const retirement = await changeProductStatus(db, {
+        productId: id,
+        to: "retired",
+        actorKind: "holder",
+        reason: "end_of_life",
+      });
+
+      // This is where the sequence has to stop. Everything after it — the serial
+      // being released, a fresh enrolment, a passport with no history — follows
+      // from this one step succeeding.
+      expect(retirement).toEqual({ ok: false, reason: "unauthorised_actor", actorKind: "holder" });
+
+      const [row] = await db.select().from(product).where(eq(product.id, id));
+      expect(row?.status).toBe("suspended");
+    });
+
+    it("lets an authority end it, and records who did", async () => {
+      const id = await aProduct();
+      await changeProductStatus(db, {
+        productId: id,
+        to: "suspended",
+        actorKind: "authority",
+        reason: "theft_report",
+      });
+
+      const result = await changeProductStatus(db, {
+        productId: id,
+        to: "retired",
+        actorKind: "authority",
+        reason: "end_of_life",
+      });
+
+      expect(result).toMatchObject({ ok: true });
+      const history = await findProductHistory(db, id);
+      expect(history[0]).toMatchObject({ type: "product_retired", actorKind: "authority" });
+    });
+  });
 });
