@@ -9,6 +9,9 @@ export function buildDependencies(overrides: Partial<AppDependencies> = {}): App
   return {
     version: "0.0.0-test",
     checkDatabase: async () => true,
+    enrolProduct: async () => {
+      throw new Error("enrolProduct was called without being stubbed for this test.");
+    },
     registerProduct: async () => {
       throw new Error("registerProduct was called but this test did not provide one.");
     },

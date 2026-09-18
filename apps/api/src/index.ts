@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 import { createDatabase, isDatabaseReachable } from "@trustpass/db";
 import { createApp } from "./app.js";
+import { enrolProduct } from "./enrolments/enrol-product.js";
 import { loadEnv } from "./env.js";
 import { logger } from "./logger.js";
 import { readPassport } from "./passports/read-passport.js";
@@ -17,6 +18,7 @@ const app = createApp({
   version,
   checkDatabase: () => isDatabaseReachable(db),
   registerProduct: (input) => registerProduct(db, input),
+  enrolProduct: (input) => enrolProduct(db, input),
   readPassport: (trustpassId) => readPassport(db, trustpassId),
 });
 
