@@ -32,7 +32,9 @@ export async function insertProductWithProvenance(
   // the check, so the helper settles it rather than making every caller think
   // about a rule their test is not about.
   const coherent: NewProduct =
-    values.origin || values.issuerId ? values : { ...values, origin: "holder", issuerId: null };
+    values.origin || values.organizationId
+      ? values
+      : { ...values, origin: "holder", organizationId: null };
 
   return await db.transaction(async (tx) => {
     const [created] = await tx.insert(product).values(coherent).returning();
@@ -46,11 +48,11 @@ export async function insertProductWithProvenance(
       // Matches what the real write paths record for the same shapes, so a
       // fixture cannot drift into a pairing the authority rules forbid.
       type:
-        created.status === "registered" && created.issuerId
+        created.status === "registered" && created.organizationId
           ? "product_registered"
           : "record_enrolled",
-      actorKind: created.issuerId ? "issuer" : "holder",
-      issuerId: created.issuerId ?? null,
+      actorKind: created.organizationId ? "issuer" : "holder",
+      organizationId: created.organizationId ?? null,
       occurredAt: created.createdAt,
     });
 
@@ -94,7 +96,7 @@ export async function moveProductStatus(
       // cannot reinstate, only the system activates. A fixture that guessed
       // would trip the authority trigger and report the wrong rule.
       actorKind: ACTOR_FOR[to],
-      issuerId: null,
+      organizationId: null,
       // now(), not a JavaScript Date. recorded_at defaults to the transaction
       // timestamp, and a Date taken after the transaction opened is later than
       // it — so the event would claim to have happened after it was recorded.

@@ -44,7 +44,7 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
     db = createDatabase(databaseUrl as string, { maxConnections: 4 });
     app = createApp(buildDependencies({ registerProduct: (input) => registerProduct(db, input) }));
 
-    await db.insert(schema.issuer).values({
+    await db.insert(schema.organization).values({
       companyName: "Andes Tech Imports",
       legalName: `ANDES REGISTER ${run} SAS`,
       registrationNumber: issuerReference.registrationNumber,
@@ -105,8 +105,8 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
 
     const [issuer] = await db
       .select()
-      .from(schema.issuer)
-      .where(eq(schema.issuer.id, stored?.issuerId as number));
+      .from(schema.organization)
+      .where(eq(schema.organization.id, stored?.organizationId as number));
 
     expect(issuer?.registrationNumber).toBe(issuerReference.registrationNumber);
   });
@@ -216,7 +216,7 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
       expect((await post(body({ serial }))).status).toBe(201);
 
       const other = { country: "CO", registrationNumber: `${run}-9002` };
-      await db.insert(schema.issuer).values({
+      await db.insert(schema.organization).values({
         companyName: "Sierra Distribution",
         legalName: `SIERRA REGISTER ${run} SAS`,
         registrationNumber: other.registrationNumber,

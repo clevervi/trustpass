@@ -31,7 +31,7 @@ describe.skipIf(!databaseUrl)("what a capacity may record", () => {
     db = createDatabase(databaseUrl as string);
     const created = await insertProductWithProvenance(db, {
       trustpassId: generateTrustPassId(),
-      issuerId: null,
+      organizationId: null,
       brand: "ASUS",
       model: "ROG Strix RTX 5070 Ti",
       serial: `${run}-AUTH`,
@@ -51,7 +51,7 @@ describe.skipIf(!databaseUrl)("what a capacity may record", () => {
       productId,
       type,
       actorKind,
-      issuerId: null,
+      organizationId: null,
       // now(), not a Date: recorded_at defaults to the transaction
       // timestamp, and a Date read afterwards is later than it.
       occurredAt: sql`now()` as unknown as Date,
@@ -114,7 +114,7 @@ describe.skipIf(!databaseUrl)("what a capacity may record", () => {
     async function suspended(): Promise<number> {
       const created = await insertProductWithProvenance(db, {
         trustpassId: generateTrustPassId(),
-        issuerId: null,
+        organizationId: null,
         brand: "ASUS",
         model: "RTX 5070",
         serial: `${run}-SUSP-${Math.random().toString(36).slice(2, 8)}`,
@@ -128,7 +128,7 @@ describe.skipIf(!databaseUrl)("what a capacity may record", () => {
         productId: id,
         type: "product_suspended",
         actorKind: "authority",
-        issuerId: null,
+        organizationId: null,
         // now(), not a Date: recorded_at defaults to the transaction
         // timestamp, and a Date read afterwards is later than it.
         occurredAt: sql`now()` as unknown as Date,
@@ -149,7 +149,7 @@ describe.skipIf(!databaseUrl)("what a capacity may record", () => {
         productId,
         type: "product_retired",
         actorKind,
-        issuerId: null,
+        organizationId: null,
         // now(), not a Date: recorded_at defaults to the transaction
         // timestamp, and a Date read afterwards is later than it.
         occurredAt: sql`now()` as unknown as Date,

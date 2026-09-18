@@ -66,7 +66,7 @@ describe("POST /products — success", () => {
     const body = (await (await post(app, VALID_BODY)).json()) as Record<string, unknown>;
 
     expect(body).not.toHaveProperty("id");
-    expect(body).not.toHaveProperty("issuerId");
+    expect(body).not.toHaveProperty("organizationId");
     expect(body.issuer).not.toHaveProperty("id");
   });
 
