@@ -278,6 +278,43 @@ migration — a down script would imply an undo that does not exist. Consequentl
   diff that drops data is the whole diff.
 - Never edit a migration that has been merged. It has already run somewhere.
 
+### The snapshot has to keep up, and CI checks that it does
+
+`drizzle-kit` keeps its own picture of the schema in
+`packages/db/drizzle/meta/NNNN_snapshot.json`, and refreshes it **only when
+drizzle-kit itself generates a migration**. A hand-written one — which is most
+of them here, because triggers, deferred constraint triggers and partial indexes
+are not things the generator can express — leaves that picture describing a
+database that no longer exists.
+
+It drifted unnoticed from `0011` to `0016` and surfaced as a generated migration
+that fails against *every* database, a freshly reset one included, because it
+offered to re-add what earlier migrations already create.
+
+So after hand-writing a migration:
+
+```bash
+pnpm db:generate     # expect: No schema changes, nothing to migrate
+```
+
+If it produces a file, the schema and the migrations disagree: either a change
+never got a migration, or the hand-written one left the snapshot behind. The fix
+for the second is to let `generate` write the migration, then replace its body
+with an explanation of why it is empty — `0017` is the worked example.
+`--custom` looks like the right tool and is not; it copies the previous snapshot
+forward and the drift survives.
+
+CI runs the same check, so this is caught in the pull request that causes it.
+
+**What a green check means, and what it does not.** The generator only sees what
+it can express. Nine triggers, five trigger functions and two deferrable
+constraints carry every guarantee this database makes, and **no snapshot has
+ever contained one of them** — measured, not assumed. A green drift check means
+*the part of the schema drizzle-kit can represent is not stale*. It says nothing
+about the triggers in `0005`, `0008`, `0010`, `0014`, `0015` and `0016`. Those
+are covered by the integration suite against a real Postgres, which is a
+separate job for exactly this reason.
+
 **`DROP SCHEMA public CASCADE` is not a reset.** Drizzle records applied
 migrations in a separate `drizzle` schema, which survives, so the next
 `db:migrate` skips everything and leaves an empty database that believes it is
