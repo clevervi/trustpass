@@ -69,11 +69,26 @@ function read() {
 }
 
 const text = read();
-const lines = text.split(/\r?\n/);
+
+/**
+ * A line may say the forbidden phrase when the point is that it was removed.
+ *
+ * Found by this check failing on the commit that introduced it: a sentence
+ * reporting that eight descriptions carried the attribution is a sentence about
+ * deleting it, and matching that is the check being right about the letter and
+ * wrong about the work.
+ *
+ * A marker rather than a cleverer pattern. Quoting, negation and past tense are
+ * not things to ask a regular expression to understand, and an explicit opt-out
+ * is a decision visible in the diff — the shape gitleaks uses.
+ */
+const ALLOW = /tp-attribution:allow/i;
+const lines = text.split(/\r?\n/).map((line) => (ALLOW.test(line) ? "" : line));
+const scanned = lines.join("\n");
 const found = [];
 
 for (const { name, re } of PATTERNS) {
-  if (!re.test(text)) {
+  if (!re.test(scanned)) {
     continue;
   }
 
