@@ -17,7 +17,7 @@ export const PROMPT_VERSION = "2";
  * failure mode is a 400 on every single request with nothing else wrong with
  * it. An unsupported value is dropped and the API's own default applies.
  */
-const THINKING_LEVELS = new Set(["low", "medium", "high"]);
+export const THINKING_LEVELS = new Set(["low", "medium", "high"]);
 export const DEFAULT_MODEL = "gemini-3.8-flash";
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
