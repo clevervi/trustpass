@@ -214,6 +214,60 @@ async function main(): Promise<void> {
               AS verification_disagreeing`,
     );
 
+    // What Postgres still knows, which is a different question from what the
+    // repository still says. Raised in review: `grep repo = 0` does not
+    // demonstrate `catalog = 0`, and for a destructive migration both have to
+    // be true.
+    //
+    // The capacity is excluded deliberately. `lifecycle_event_organization_matches_actor`
+    // reads `actor_kind = 'issuer'::lifecycle_actor_kind` — an enum value that
+    // outlives the table entirely — and counting it would make this
+    // unsatisfiable, the same false positive the source scan already had to
+    // learn not to make.
+    //
+    // Written with ILIKE rather than a word-boundary regex, and that is a scar
+    // rather than a preference. The first version used `~* '\missuer\M'`,
+    // whose backslashes a TypeScript template literal eats before Postgres ever
+    // sees them — so the pattern arrived as `missuerM`, matched nothing, and
+    // reported zero functions while four read the table.
+    //
+    // That is the third time a pattern in this file has been silently mangled
+    // by an escaping layer, and all three times the failure was **permissive**.
+    // ILIKE needs no escapes at any layer, which is worth more here than the
+    // precision a boundary would buy.
+    const [catalogue] = await db.execute<Record<string, string>>(
+      sql`SELECT
+            (SELECT count(*) FROM pg_class
+               WHERE relname = 'issuer' AND relkind = 'r'
+                 AND relnamespace = 'public'::regnamespace)::text AS issuer_table,
+            (SELECT count(*) FROM information_schema.columns
+               WHERE table_schema = 'public' AND column_name = 'issuer_id')::text
+              AS issuer_id_columns,
+            (SELECT count(*) FROM pg_constraint
+               WHERE confrelid = to_regclass('public.issuer'))::text
+              AS foreign_keys_to_issuer,
+            (SELECT count(*) FROM pg_indexes
+               WHERE schemaname = 'public' AND tablename <> 'issuer'
+                 AND indexdef ILIKE '%issuer_id%')::text AS indexes_on_issuer_id,
+            (SELECT count(*) FROM pg_proc p
+               JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'public'
+                 AND (p.prosrc ILIKE '%from issuer%'
+                   OR p.prosrc ILIKE '%join issuer%'
+                   OR p.prosrc ILIKE '%update issuer%'
+                   OR p.prosrc ILIKE '%into issuer%'
+                   OR p.prosrc ILIKE '%issuer_id%'
+                   -- The 0021 functions exist only to keep the two identities
+                   -- in step. Their triggers vanish with the table; the
+                   -- functions do not, and a dead trigger function is a thing
+                   -- somebody later wires to something else.
+                   OR p.proname ILIKE '%issuer%'))::text
+              AS functions_reading_issuer`,
+    );
+
+    const c = (key: string): number => Number(catalogue?.[key] ?? "0");
+    const tableStillExists = c("issuer_table") > 0;
+
     const { offenders, scanned } = filesDependingOnTheIssuerTable(repoRoot);
 
     // A walk that found almost nothing has looked in the wrong place, and a
@@ -287,13 +341,74 @@ async function main(): Promise<void> {
       for (const file of offenders) console.log(`  ${file}`);
     }
 
-    const blocking = conditions.filter((c) => c.count !== c.mustBe);
+    const afterwards: readonly Condition[] = [
+      {
+        label: "the issuer table",
+        count: c("issuer_table"),
+        mustBe: 0,
+        ifNotZero: "it is still there",
+      },
+      {
+        label: "issuer_id columns",
+        count: c("issuer_id_columns"),
+        mustBe: 0,
+        ifNotZero: "a reference survives that nothing reads",
+      },
+      {
+        label: "foreign keys pointing at issuer",
+        count: c("foreign_keys_to_issuer"),
+        mustBe: 0,
+        ifNotZero: "the table cannot be dropped while they exist",
+      },
+      {
+        label: "indexes on issuer_id",
+        count: c("indexes_on_issuer_id"),
+        mustBe: 0,
+        ifNotZero: "storage and write cost for a column nobody reads",
+      },
+      {
+        label: "functions that read the issuer table or exist only for it",
+        count: c("functions_reading_issuer"),
+        mustBe: 0,
+        ifNotZero:
+          "a trigger would break on the first write, or a dead function outlives its table",
+      },
+    ];
 
     console.log("");
-    if (blocking.length === 0) {
-      console.log("READY FOR THE DESTRUCTIVE MIGRATION");
+    console.log(
+      tableStillExists
+        ? "Catalogue, which the destructive migration must drive to zero"
+        : "Catalogue, after the destructive migration",
+    );
+    for (const condition of afterwards) {
+      const ok = condition.count === condition.mustBe;
+      console.log(
+        `  ${ok ? "ok  " : "    "} ${String(condition.count).padStart(4)}  ${condition.label}`,
+      );
+    }
+
+    // Two phases, two questions. Before the migration the question is whether
+    // it may run; afterwards it is whether it finished. One command answers
+    // whichever is being asked, because a check that is only correct at one
+    // moment gets run at the other.
+    const blocking = tableStillExists
+      ? conditions.filter((c) => c.count !== c.mustBe)
+      : afterwards.filter((c) => c.count !== c.mustBe);
+
+    console.log("");
+    if (blocking.length > 0) {
+      console.log(
+        tableStillExists
+          ? `NOT READY: ${blocking.length} condition(s) unmet.`
+          : `INCOMPLETE: ${blocking.length} residual reference(s) to a table that no longer exists.`,
+      );
     } else {
-      console.log(`NOT READY: ${blocking.length} condition(s) unmet.`);
+      console.log(
+        tableStillExists
+          ? "READY FOR THE DESTRUCTIVE MIGRATION"
+          : "THE IDENTITY MIGRATION IS COMPLETE",
+      );
     }
 
     await db.$client.end();
