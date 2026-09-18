@@ -24,11 +24,36 @@ describe.skipIf(!databaseUrl)("authority is a record with a lifetime", () => {
   let orgId: number;
   let n = 0;
 
+  /**
+   * An actor with a membership covering every instant these tests ask about.
+   *
+   * The membership is not incidental: since ADR 0011 §2 as amended, a grant
+   * held through an organization applies only while a membership covers the
+   * moment. A fixture without one would make every grant in this file
+   * inapplicable, and the suite would be asserting the wrong thing while
+   * looking green.
+   */
   async function newActor(kind: "person" | "service" | "system" = "person"): Promise<number> {
     n += 1;
     const [created] = await db
       .insert(actor)
       .values({ kind, displayName: `${run} actor ${n}` })
+      .returning({ id: actor.id });
+
+    const actorId = created?.id as number;
+    await db
+      .insert(membership)
+      .values({ actorId, organizationId: orgId, beganAt: new Date("2025-01-01T00:00:00Z") });
+
+    return actorId;
+  }
+
+  /** An actor with no membership at all, for the cases that are about its absence. */
+  async function unaffiliatedActor(): Promise<number> {
+    n += 1;
+    const [created] = await db
+      .insert(actor)
+      .values({ kind: "system", displayName: `${run} unaffiliated ${n}` })
       .returning({ id: actor.id });
 
     return created?.id as number;
@@ -347,6 +372,81 @@ describe.skipIf(!databaseUrl)("authority is a record with a lifetime", () => {
         }),
         SqlState.CHECK_VIOLATION,
       );
+    });
+  });
+
+  describe("authority ends with the relationship it was held through", () => {
+    it("holds nothing after the membership ended", async () => {
+      // The hole this section exists for. grantsHeldAt consulted the grant and
+      // its revocation and nothing else, so an actor who left in June kept the
+      // organization's capacity in July — and would have kept it until the
+      // grant expired nineteen months later.
+      //
+      // The grant is not revoked. It simply stops applying, which is a
+      // different fact about a different thing.
+      const actorId = await unaffiliatedActor();
+      await db
+        .insert(membership)
+        .values({ actorId, organizationId: orgId, beganAt: JANUARY, endedAt: AUGUST });
+      await db.insert(capacityGrant).values(grantOver(actorId, JANUARY, null));
+
+      expect(await heldCapacityAt(db, actorId, "issuer", SEPTEMBER)).toBe(false);
+    });
+
+    it("still held it while the membership ran", async () => {
+      // The other half. A guard that refused everything would also pass the
+      // test above and would make the whole model useless.
+      const actorId = await unaffiliatedActor();
+      await db
+        .insert(membership)
+        .values({ actorId, organizationId: orgId, beganAt: JANUARY, endedAt: SEPTEMBER });
+      await db.insert(capacityGrant).values(grantOver(actorId, JANUARY, null));
+
+      expect(await heldCapacityAt(db, actorId, "issuer", AUGUST)).toBe(true);
+    });
+
+    it("does not need a membership for a grant held through no organization", async () => {
+      // A system capacity belongs to TrustPass rather than to any party, so a
+      // join would silently drop every one of them — the failure mode of
+      // fixing this with an inner join instead of a condition.
+      const actorId = await unaffiliatedActor();
+      await db.insert(capacityGrant).values({
+        actorId,
+        organizationId: null,
+        capacity: "system",
+        scopeKind: "country",
+        scopeCountry: "CO",
+        effectiveFrom: JANUARY,
+      });
+
+      expect(await heldCapacityAt(db, actorId, "system", AUGUST)).toBe(true);
+    });
+  });
+
+  describe("an actor is never its own grantor", () => {
+    it("refuses a grant an actor wrote to itself", async () => {
+      // Being permitted to record an event does not make you permitted to hand
+      // that permission to somebody else. Conflating them means the first
+      // compromised actor mints authority indefinitely, and every grant it
+      // writes is technically well-formed.
+      const actorId = await newActor();
+
+      await expectSqlState(
+        db
+          .insert(capacityGrant)
+          .values({ ...grantOver(actorId, JANUARY, null), grantedBy: actorId }),
+        SqlState.CHECK_VIOLATION,
+      );
+    });
+
+    it("allows the root grant, which nothing preceded", async () => {
+      const actorId = await newActor();
+      const [granted] = await db
+        .insert(capacityGrant)
+        .values({ ...grantOver(actorId, JANUARY, null), grantedBy: null })
+        .returning({ id: capacityGrant.id });
+
+      expect(granted?.id).toBeGreaterThan(0);
     });
   });
 

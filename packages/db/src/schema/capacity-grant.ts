@@ -164,6 +164,23 @@ export const capacityGrant = pgTable(
       "capacity_grant_expires_after_it_starts",
       sql`${table.expiresAt} IS NULL OR ${table.expiresAt} > ${table.effectiveFrom}`,
     ),
+
+    // An actor is never its own grantor. ADR 0011 §1 as amended: being
+    // permitted to record an event does not make you permitted to hand that
+    // permission to somebody else, and conflating them means the first
+    // compromised actor can mint authority indefinitely while every grant it
+    // writes is technically well-formed.
+    //
+    // NULL stays allowed, and only for the root grant — the first in a fresh
+    // database, which nothing preceded.
+    //
+    // The narrow half, and the only half a constraint can express. *Which*
+    // capacities may be granted by whom lands with the write path that issues
+    // them, where it can be tested against a real refusal.
+    check(
+      "capacity_grant_is_not_self_granted",
+      sql`${table.grantedBy} IS NULL OR ${table.grantedBy} <> ${table.actorId}`,
+    ),
   ],
 );
 

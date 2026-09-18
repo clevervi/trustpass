@@ -5,6 +5,10 @@
 - **Amended:** 2026-09-18 — §3 gains who writes `grant_id`, and §5 gains the
   authorisation chain as a sequence. Both **extend** the decision: the original
   said an event pins the grant and never said who chooses it.
+- **Amended:** 2026-09-18 — §2 gains what a membership ending does to the
+  authority derived from it, §1 gains who may issue a grant, and §3 gains a
+  decision not to pin the credential. All three were ambiguous, and the first
+  was a hole: an actor who left an organization kept its capacity.
 
 ## Context
 
@@ -69,6 +73,23 @@ carry who said so, over what, and until when.
 you are, and every event ever recorded points at an identity that no longer
 exists.
 
+#### Granting is a capacity of its own
+
+**Amendment.** `granted_by` existed and nothing said who may fill it, so nothing
+stopped an actor granting to itself.
+
+> **Being permitted to record an event does not make you permitted to hand that
+> permission to somebody else.** They are two capacities, and an actor is never
+> its own grantor.
+
+Conflating them means the first compromised actor can mint authority
+indefinitely, and every grant after that is technically well-formed.
+
+The narrow half is enforceable immediately and is: `granted_by` may not be the
+grantee. Which capacities may be granted by whom is a rule about capacities, and
+it lands with the write path that issues them — where it can be tested against a
+real refusal rather than asserted here.
+
 ### 2. Membership is itself time-bounded
 
 An actor acts **on behalf of** an organization through a membership, and a
@@ -82,6 +103,40 @@ already recorded changes at all.
 *Rejected: deleting the membership.* It makes the events that actor recorded
 unexplainable — they would reference a relationship the database says never
 existed.
+
+#### A membership ending ends the authority held through it
+
+**Amendment, and it closes a hole rather than clarifying one.** The original
+decided memberships are time-bounded and never said what that does to a grant.
+`grantsHeldAt` consulted the grant and its revocation, and nothing else:
+
+```
+membership   actor A -> Org X,  2026-01-01 .. 2026-06-01   (ended)
+grant        actor A,  Org X,  issuer,  2026-02-01 .. 2027-02-01
+
+what did A hold in July, after leaving?   ->  issuer, until 2027
+```
+
+An employee who left in June kept the organization's capacity for another
+nineteen months.
+
+> **A grant with an `organization_id` applies only while a membership covers the
+> instant being asked about.** A grant without one — a `system` capacity —
+> needs no membership.
+
+A grant held *through* an organization is authority **on behalf of** that party,
+and the relationship is what makes it that. When the relationship ends, the
+authority does. The grant is not revoked: it simply stops applying, which is a
+different fact about a different thing and stays a different fact.
+
+*Rejected: requiring the grant to be revoked when somebody leaves.* It is the
+obvious answer and it makes the guarantee depend on a person remembering, which
+is the kind of guarantee this repository has spent a week replacing. The first
+time an offboarding checklist misses a step, an ex-employee has an issuer's
+capacity and nothing anywhere is wrong.
+
+*Rejected: expiring the grant with the membership.* Editing the grant, which §4
+forbids for the reason §4 gives.
 
 ### 3. An event pins the grant it acted under
 
@@ -116,6 +171,18 @@ every guarantee in this ADR reduces to whatever the writer typed.
 > **`grant_id` is resolved by the server from the authenticated actor, written
 > by the database, and never changed afterwards.** No write path accepts it as
 > input.
+
+**Amendment — the event does not pin the credential, and that is a decision.**
+It pins the actor and the grant.
+
+§7 already decides that rotating a credential must not change historical
+authority. Pinning the credential invites precisely the opposite reading —
+attribution re-decided by which key was used — in exchange for an audit question
+nobody has asked. If one is ever asked, a credential's validity window is
+already recorded and the answer is reconstructible from it.
+
+Written down rather than left as an absence, so a future reader does not mistake
+a decision for an oversight.
 
 Its default follows the `recorded_in_xact` precedent and **fails closed**: a
 value no grant can hold, so removing whatever writes it makes every authorised
