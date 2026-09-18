@@ -9,9 +9,8 @@ import {
   lifecycleEvent,
   lifecycleEventType,
 } from "../schema/lifecycle-event.js";
-import { product } from "../schema/product.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
-import { insertProductWithProvenance, moveProductStatus } from "../testing/with-provenance.js";
+import { insertProductWithProvenance } from "../testing/with-provenance.js";
 import { mayRecord, mayRetireFrom, RECORDING_AUTHORITY } from "./recording-authority.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -53,7 +52,9 @@ describe.skipIf(!databaseUrl)("what a capacity may record", () => {
       type,
       actorKind,
       issuerId: null,
-      occurredAt: sql`now()`,
+      // now(), not a Date: recorded_at defaults to the transaction
+      // timestamp, and a Date read afterwards is later than it.
+      occurredAt: sql`now()` as unknown as Date,
       // A correction needs a target and the check constraint enforces it; for
       // the pairing sweep the authority trigger fires first, so an unauthorised
       // pairing is refused before the target is missed.
@@ -128,7 +129,9 @@ describe.skipIf(!databaseUrl)("what a capacity may record", () => {
         type: "product_suspended",
         actorKind: "authority",
         issuerId: null,
-        occurredAt: sql`now()`,
+        // now(), not a Date: recorded_at defaults to the transaction
+        // timestamp, and a Date read afterwards is later than it.
+        occurredAt: sql`now()` as unknown as Date,
         reason: "theft_report",
         previousState: "registered",
         resultingState: "suspended",
@@ -147,7 +150,9 @@ describe.skipIf(!databaseUrl)("what a capacity may record", () => {
         type: "product_retired",
         actorKind,
         issuerId: null,
-        occurredAt: sql`now()`,
+        // now(), not a Date: recorded_at defaults to the transaction
+        // timestamp, and a Date read afterwards is later than it.
+        occurredAt: sql`now()` as unknown as Date,
         reason: "end_of_life",
         previousState: from,
         resultingState: "retired",

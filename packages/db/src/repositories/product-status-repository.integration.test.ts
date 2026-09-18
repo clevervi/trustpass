@@ -5,7 +5,7 @@ import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { issuer } from "../schema/issuer.js";
 import { lifecycleEvent } from "../schema/lifecycle-event.js";
 import { product } from "../schema/product.js";
-import { insertProductWithProvenance, moveProductStatus } from "../testing/with-provenance.js";
+import { insertProductWithProvenance } from "../testing/with-provenance.js";
 import { findProductHistory } from "./lifecycle-event-repository.js";
 import { changeProductStatus } from "./product-status-repository.js";
 

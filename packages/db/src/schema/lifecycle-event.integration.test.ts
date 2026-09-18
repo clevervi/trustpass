@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
-import { insertProductWithProvenance, moveProductStatus } from "../testing/with-provenance.js";
+import { insertProductWithProvenance } from "../testing/with-provenance.js";
 import { issuer } from "./issuer.js";
 import { lifecycleEvent, type NewLifecycleEvent } from "./lifecycle-event.js";
 import { product } from "./product.js";
@@ -31,7 +31,9 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
       type: "product_registered",
       actorKind: "issuer",
       issuerId,
-      occurredAt: sql`now()`,
+      // now(), not a Date: recorded_at defaults to the transaction
+      // timestamp, and a Date read afterwards is later than it.
+      occurredAt: sql`now()` as unknown as Date,
       ...overrides,
     };
   }
