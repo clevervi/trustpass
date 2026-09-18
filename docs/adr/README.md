@@ -23,6 +23,7 @@ Write one when the answer to "why is it like this?" would otherwise be lost.
 | [0011](0011-authority-is-pinned-to-the-moment-it-was-used.md) | Authority is pinned to the moment it was used | Accepted |
 | [0012](0012-one-party-one-record.md) | One party, one record, and verification is a claim about it | Accepted |
 | [0013](0013-the-application-cannot-remove-its-own-guarantees.md) | The application cannot remove its own guarantees | Accepted |
+| [0014](0014-a-credential-says-who-not-what.md) | A credential says who, not what | Accepted |
 
 ## Template
 
