@@ -1,6 +1,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { AppDependencies } from "../dependencies.js";
 import { ApiErrorCode, ApiErrorSchema } from "../http/errors.js";
+import { ProductCategorySchema } from "./product-category.js";
 
 /**
  * Enrolling a product you hold.
@@ -31,23 +32,7 @@ const EnrolProductRequestSchema = z
           "the passport shows its last characters only.",
         example: "M1LMCS004896",
       }),
-    category: z
-      .enum([
-        "gpu",
-        "cpu",
-        "motherboard",
-        "laptop",
-        "desktop",
-        "smartphone",
-        "tablet",
-        "monitor",
-        "camera",
-        "console",
-        "storage",
-        "peripheral",
-        "other",
-      ])
-      .openapi({ example: "gpu" }),
+    category: ProductCategorySchema,
   })
   .openapi("EnrolProductRequest");
 

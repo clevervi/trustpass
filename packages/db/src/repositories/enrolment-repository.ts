@@ -2,9 +2,7 @@ import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import type { Database } from "../client.js";
 import { lifecycleEvent } from "../schema/lifecycle-event.js";
 import { type NewProduct, type Product, product } from "../schema/product.js";
-
-/** Postgres unique_violation. */
-const UNIQUE_VIOLATION = "23505";
+import { UNIQUE_VIOLATION, violatedConstraint } from "./constraint-violation.js";
 
 /** The partial unique index declared in `schema/product.ts`. */
 const LIVE_HOLDER_SERIAL_INDEX = "product_live_holder_serial_idx";
@@ -99,23 +97,4 @@ export async function findLiveHolderEnrolment(
     .limit(1);
 
   return found;
-}
-
-/** Drizzle wraps driver errors, so the SQLSTATE lives down the `cause` chain. */
-function violatedConstraint(error: unknown): { code?: string; constraint?: string } {
-  let current: unknown = error;
-
-  while (current !== null && current !== undefined) {
-    const candidate = current as { code?: unknown; constraint_name?: unknown };
-    if (typeof candidate.code === "string") {
-      return {
-        code: candidate.code,
-        constraint:
-          typeof candidate.constraint_name === "string" ? candidate.constraint_name : undefined,
-      };
-    }
-    current = (current as { cause?: unknown }).cause;
-  }
-
-  return {};
 }
