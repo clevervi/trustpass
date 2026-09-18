@@ -115,6 +115,36 @@ const ATTACKS: readonly { name: string; statement: string }[] = [
     statement: "DELETE FROM lifecycle_event WHERE id = (SELECT min(id) FROM lifecycle_event)",
   },
   {
+    // The attack that rewrites the past without an UPDATE, and the one this
+    // table had no case for until TP-168. A type owner cannot drop an enum
+    // value — Postgres answers DROP VALUE with "not implemented" — but it can
+    // rename one, and renaming is worse. Measured against the real type inside
+    // a rolled-back transaction:
+    //
+    //   ALTER TYPE lifecycle_actor_kind RENAME VALUE 'issuer' TO 'holder_verified';
+    //
+    //   issuer 1744  ->  holder_verified 1744
+    //
+    // 1,744 events restated. `lifecycle_event_no_update` never fires, because
+    // no row is touched — the append-only guard watches the text and this edits
+    // the dictionary. Nothing in TP001–TP005 sees it either.
+    //
+    // The value named here does not exist, deliberately, and the statement is
+    // still a real test of the boundary: Postgres checks ownership before it
+    // looks the value up, answering `42501: must be owner of type
+    // lifecycle_actor_kind`. So this asserts the privilege and stays harmless
+    // the day the privilege is gone — it would fail on the missing value
+    // instead of renaming a live one.
+    //
+    // Written that way after the mutation check renamed `'issuer'` for real and
+    // left 1,744 events reading `tp_probe_renamed` until it was put back. An
+    // attack test that does damage when it succeeds is a test nobody should run
+    // near anything that matters.
+    name: "rename an enum value out from under every event recorded with it",
+    statement:
+      "ALTER TYPE lifecycle_actor_kind RENAME VALUE 'tp_probe_absent' TO 'tp_probe_renamed'",
+  },
+  {
     // The same attack #78 answered with TP002, now answered with 42501 —
     // Postgres checks the privilege at execution start and no row is ever
     // reached. Asserted by code, not by "it threw", so the day somebody grants
