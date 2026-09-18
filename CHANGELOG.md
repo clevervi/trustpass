@@ -16,6 +16,18 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ### Decided
 
+- **[ADR 0011](docs/adr/0011-authority-is-pinned-to-the-moment-it-was-used.md)
+  amended: `grant_id` is not the caller's to choose.** §3 decided an event pins
+  the grant it acted under and never said who writes it — the third column of
+  that kind here, after `recorded_at` (which had a default and a comment
+  claiming the database set it, and let a planted event explain a status change)
+  and `recorded_in_xact` (forced by trigger from its first line). `grant_id` is
+  the most valuable of the three: a caller who chooses it attributes their
+  action to any grant they can name. Now server-resolved, server-written and
+  immutable, with a default that fails closed. Validating a supplied value is
+  rejected as the wrong shape — validation is a filter somebody forgets on the
+  next write path. §5 also gains the authorisation chain as a sequence, because
+  a paragraph is easier to shortcut than a diagram.
 - **[ADR 0011](docs/adr/0011-authority-is-pinned-to-the-moment-it-was-used.md) —
   authority is pinned to the moment it was used.** The logical model for
   `TP-141`, with no tables: the question is not how to log people in but who you
