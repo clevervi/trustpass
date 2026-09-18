@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
@@ -110,10 +110,19 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
         sourceReference: "POL-2026-8891",
       });
 
+      // Named rather than positional. The product has two events by now — the
+      // enrolment that created it and the suspension under test — and
+      // `[event]` from an unordered query takes whichever Postgres returns
+      // first. That is not a guarantee; it is a planner outcome, and it held
+      // until the database grew enough to change it.
+      //
+      // This test is about the suspension, so it says so. Ordering by id would
+      // also work and would still be an assertion about position rather than
+      // about the thing being asserted.
       const [event] = await db
         .select()
         .from(lifecycleEvent)
-        .where(eq(lifecycleEvent.productId, id));
+        .where(and(eq(lifecycleEvent.productId, id), eq(lifecycleEvent.type, "product_suspended")));
 
       expect(event?.sourceReference).toBe("POL-2026-8891");
     });
