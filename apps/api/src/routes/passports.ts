@@ -49,17 +49,26 @@ const PassportSchema = z
       description: "The registration date. Deliberately not a timestamp.",
       example: "2026-09-17",
     }),
-    issuer: z.object({
-      companyName: z.string().openapi({ example: "Andes Tech Imports" }),
-      country: z.string().openapi({ example: "CO" }),
-      registrationNumber: z.string().openapi({
+    issuer: z
+      .object({
+        companyName: z.string().openapi({ example: "Andes Tech Imports" }),
+        country: z.string().openapi({ example: "CO" }),
+        registrationNumber: z.string().openapi({
+          description:
+            "Public by design: national registries publish it, and it lets a reader verify " +
+            "the issuer independently instead of taking TrustPass's word.",
+          example: "900123456-7",
+        }),
+        verificationStatus: z.enum(schema.issuerVerificationStatus.enumValues),
+      })
+      .nullable()
+      .openapi({
         description:
-          "Public by design: national registries publish it, and it lets a reader verify " +
-          "the issuer independently instead of taking TrustPass's word.",
-        example: "900123456-7",
+          "Null when no business registered this product — a holder enrolment. " +
+          "Null and an unverified issuer are different facts: one says there is no " +
+          "company to check, the other says nobody has checked one that exists. A " +
+          "consumer that collapses them invents an issuer the record does not have.",
       }),
-      verificationStatus: z.enum(schema.issuerVerificationStatus.enumValues),
-    }),
     claims: z
       .array(z.object({ claim: z.enum(CLAIM_SUBJECTS), state: z.enum(CLAIM_STATES) }))
       .openapi({

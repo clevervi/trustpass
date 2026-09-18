@@ -163,12 +163,17 @@ export interface ProductWithIssuer {
   readonly status: ProductStatus;
   readonly origin: ProductOrigin;
   readonly createdAt: Date;
+  /**
+   * Null for a holder-enrolled record. Per ADR 0007 an individual is not an
+   * issuer, so there is nothing to name — which is a different fact from an
+   * issuer nobody has verified.
+   */
   readonly issuer: {
     readonly companyName: string;
     readonly country: string;
     readonly registrationNumber: string;
     readonly verificationStatus: IssuerVerificationStatus;
-  };
+  } | null;
 }
 
 /**
@@ -214,9 +219,18 @@ export async function findProductByTrustPassId(
       },
     })
     .from(product)
-    .innerJoin(issuer, eq(product.issuerId, issuer.id))
+    // Left, not inner. An inner join drops a holder-enrolled record entirely,
+    // which would report an existing product as not found — reaching the "we
+    // could not check" failure by way of a join.
+    .leftJoin(issuer, eq(product.issuerId, issuer.id))
     .where(eq(product.trustpassId, trustpassId))
     .limit(1);
 
-  return found;
+  if (!found) return undefined;
+
+  // Drizzle returns the nested object with every field null rather than a null
+  // object, so the absence has to be recognised rather than assumed.
+  return found.issuer?.companyName == null
+    ? { ...found, issuer: null }
+    : (found as ProductWithIssuer);
 }

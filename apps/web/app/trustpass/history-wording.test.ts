@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeHistoryEntry, describeOrigin } from "./claim-wording";
+import { describeClaim, describeHistoryEntry, describeOrigin } from "./claim-wording";
 
 /**
  * Every reason the API can send, so a new one cannot be added without this
@@ -146,5 +146,23 @@ describe("an origin says where a record began, never that a product is genuine",
 
     expect(label).toBe("Customs seizure");
     expect(detail).toBe("TrustPass does not have a description for this kind of record.");
+  });
+});
+
+describe("no issuer is not an unverified issuer", () => {
+  it("says there is no company rather than one nobody checked", () => {
+    const wording = describeClaim("issuer", "not_present");
+
+    expect(wording.detail).toContain("No business registered this product");
+    expect(wording.detail).toContain("not the same as a company nobody has checked");
+    expect(wording.tone).toBe("neutral");
+  });
+
+  it("does not reuse the unverified wording", () => {
+    // The unverified copy says "Nobody has checked this company", which asserts
+    // a company exists. For a holder enrolment none does.
+    expect(describeClaim("issuer", "not_present").detail).not.toBe(
+      describeClaim("issuer", "unverified").detail,
+    );
   });
 });

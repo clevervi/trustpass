@@ -44,12 +44,19 @@ export interface PublicPassport {
    * identifier for exactly that reason.
    */
   readonly registeredOn: string;
+  /**
+   * Null for a holder-enrolled record.
+   *
+   * Null and "unverified" are different facts and must stay different on the
+   * wire: one says nobody has checked this company, the other says there is no
+   * company. Collapsing them would invent an issuer the record does not have.
+   */
   readonly issuer: {
     readonly companyName: string;
     readonly country: string;
     readonly registrationNumber: string;
     readonly verificationStatus: schema.IssuerVerificationStatus;
-  };
+  } | null;
   readonly claims: readonly { readonly claim: ClaimSubject; readonly state: ClaimState }[];
   /**
    * What has been recorded about this product, newest first.
@@ -125,7 +132,7 @@ export async function readPassport(
       registeredOn: record.createdAt.toISOString().slice(0, 10),
       issuer: record.issuer,
       claims: computeVerificationClaims({
-        issuerVerificationStatus: record.issuer.verificationStatus,
+        issuerVerificationStatus: record.issuer?.verificationStatus ?? null,
       }),
       // Dates, not instants, for the reason `registeredOn` is one: a
       // millisecond republishes ordering and rate, and a reader needs the day.

@@ -65,3 +65,23 @@ describe("ADR 0003 — identity is not authenticity", () => {
     expect(claims.filter((claim) => claim.state === "verified")).toHaveLength(1);
   });
 });
+
+describe("a record with no issuer", () => {
+  // "Nobody has checked this company" and "there is no company" are different
+  // facts. Reporting the second as the first invents an issuer the record does
+  // not have, and an unverified issuer is something a reader can go and look up.
+
+  it("reports the issuer claim as not present, never as unverified", () => {
+    const claims = computeVerificationClaims({ issuerVerificationStatus: null });
+
+    expect(claims.find((c) => c.claim === "issuer")?.state).toBe("not_present");
+  });
+
+  it("still states every other claim", () => {
+    const claims = computeVerificationClaims({ issuerVerificationStatus: null });
+
+    expect(claims.map((c) => c.claim)).toEqual([...CLAIM_SUBJECTS]);
+    expect(claims.find((c) => c.claim === "serial")?.state).toBe("recorded");
+    expect(claims.find((c) => c.claim === "physical_authenticity")?.state).toBe("not_verifiable");
+  });
+});

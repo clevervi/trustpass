@@ -50,6 +50,13 @@
       "when": 1789694205801,
       "tag": "0006_add_product_origin",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789696063879,
+      "tag": "0007_enrol_without_issuer",
+      "breakpoints": true
     }
   ]
 }

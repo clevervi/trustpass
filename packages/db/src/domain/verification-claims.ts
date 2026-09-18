@@ -55,7 +55,8 @@ export interface VerificationClaim {
  * start reading real inputs later without every caller changing.
  */
 export interface VerificationClaimsInput {
-  readonly issuerVerificationStatus: IssuerVerificationStatus;
+  /** Null when the record has no issuer at all — a holder enrolment. */
+  readonly issuerVerificationStatus: IssuerVerificationStatus | null;
 }
 
 /**
@@ -92,7 +93,17 @@ export function computeVerificationClaims(
   input: VerificationClaimsInput,
 ): readonly VerificationClaim[] {
   return [
-    { claim: "issuer", state: ISSUER_CLAIM_STATE[input.issuerVerificationStatus] },
+    {
+      claim: "issuer",
+      // `not_present` rather than `unverified`, and the difference is the whole
+      // point: "nobody has checked this company" and "there is no company" are
+      // different facts, and reporting the second as the first invents an
+      // issuer the record does not have.
+      state:
+        input.issuerVerificationStatus === null
+          ? "not_present"
+          : ISSUER_CLAIM_STATE[input.issuerVerificationStatus],
+    },
     { claim: "serial", state: "recorded" },
     { claim: "secure_tag", state: "not_present" },
     { claim: "warranty", state: "not_recorded" },
