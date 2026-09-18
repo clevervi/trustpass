@@ -71,6 +71,27 @@
       "when": 1789696065879,
       "tag": "0009_retiring_a_suspended_product",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789696066879,
+      "tag": "0010_provenance_is_guaranteed",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789696067879,
+      "tag": "0011_product_activated_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789696068879,
+      "tag": "0012_activated_authority",
+      "breakpoints": true
     }
   ]
 }

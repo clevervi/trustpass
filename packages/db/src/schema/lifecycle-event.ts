@@ -48,6 +48,19 @@ export const lifecycleEventType = pgEnum("lifecycle_event_type", [
   "product_suspended",
   /** A suspension was cleared. Deliberately not the same as being activated. */
   "product_reinstated",
+  /**
+   * Ownership was established and the product entered an owner's hands.
+   *
+   * The status machine has always allowed `registered -> active`, and until now
+   * no event type could record it — so once provenance became a database
+   * guarantee, a legal transition became impossible to perform. Two rules that
+   * disagreed, found by the transition suite rather than by reading either.
+   *
+   * Only the system may record it. Per ADR 0008 `active` is a consequence of
+   * ownership being established, never a label an actor sets, and ownership
+   * arrives in v0.5.0.
+   */
+  "product_activated",
   /** End of life. The serial is released. */
   "product_retired",
   /**
