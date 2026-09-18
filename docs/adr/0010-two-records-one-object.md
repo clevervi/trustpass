@@ -95,6 +95,18 @@ anything.
 *Rejected: redirecting the holder record to the manufacturer's.* It reintroduces
 "the holder's ID died", slowly.
 
+**Amendment — only a `verified` correspondence is public, and the reason is an
+attack.** The original said a passport states a verified correspondence and left
+the rest to be inferred from the absence of a sentence. It should not be
+inferred.
+
+Anyone may propose, nobody is obliged to answer. If a `proposed` or `unresolved`
+correspondence appeared on a passport, **proposing one would become a way to put
+a permanent question mark on a record you do not own** — no evidence required,
+no response possible, and the doubt does the work. So `proposed`, `unresolved`
+and `rejected` are recorded, queryable by the parties involved, and invisible to
+a reader scanning a code.
+
 ### 3. Three things are established independently, and conflating any two is the failure
 
 | | Answers | Decided by |
@@ -198,20 +210,46 @@ not reach anyone" into "someone said no" — a verdict manufactured out of
 nothing, which is the failure ADR 0003 exists to prevent, reached through a
 state machine.
 
-### 7. Who proposes, who decides
+### 7. Three roles, not two
 
-**Propose:** an issuer with a granted capacity over its own products, a holder
-about a record they enrolled, or the system on a detected serial collision.
-Proposing is cheap and asserts nothing on its own.
+**Amendment.** The original named a proposer and a verifier. Raised in review:
+supplying evidence is a **separate position**, and folding it into either of the
+other two reintroduces circularity by a route the two-role version could not
+see.
 
-**Verify:** never the proposer alone. A correspondence reaches `verified` when
-the evidence requirement is met *and* the counterparty record's side has
-confirmed — the holder confirms a manufacturer's proposal, and an issuer
-confirms a holder's.
+```
+Manufacturer  → proposes:  serial X is unit Y
+Manufacturer  → supplies:  the evidence for its own proposal
+Manufacturer  → verifies:  its own proposal
+```
 
-*Rejected: a verified manufacturer verifying its own proposal.* That is the
-"manufacturer wins" rule wearing a process, and it lets anyone who obtains an
-issuer capacity absorb records they have never seen.
+Each step reads as reasonable. Together they are self-assertion with paperwork.
+
+| Role | Does | May be |
+| --- | --- | --- |
+| **Proposer** | asserts two records may describe one object | an issuer over its own products, a holder over their enrolment, or the system on a detected collision |
+| **Evidence provider** | supplies one of §4's enumerated kinds | any party able to produce that kind — a service centre inspecting the unit, a marketplace attesting the holder relationship, the holder confirming possession |
+| **Verifier** | decides the correspondence is verified | the counterparty record's side, or a party with a granted verification capacity |
+
+**The rule: the three roles are filled by at least two distinct actors, and the
+proposer is never the verifier.**
+
+Stated as a floor rather than as "all three must differ", because the floor is
+what today's system can actually meet. In the only case that exists now — a
+manufacturer proposes, the holder confirms possession and accepts — the holder
+is both evidence provider and verifier. Two actors, three roles, no loop. The
+parties that would split the third role further (an authorised service centre,
+an independent verifier) do not exist yet, and the model permits them rather
+than requiring them into existence.
+
+*Rejected: a verified manufacturer verifying its own proposal.* The
+"manufacturer wins" rule wearing a process, letting anyone who obtains an issuer
+capacity absorb records they have never seen.
+
+*Rejected: requiring three distinct actors.* Correct in principle and
+unimplementable today — it would make every correspondence impossible until a
+verifier ecosystem exists, which is a rule that forbids the feature rather than
+governing it.
 
 **Reject:** either side, at any time before verification, with a recorded reason.
 
@@ -246,7 +284,9 @@ Raised in review as the bar for it being finished, and answered above:
 | What does it mean that two IDs are candidates for one object? | A correspondence exists between them, in state `proposed` |
 | What evidence can join them? | §4's enumerated kinds. Serial match alone is not enough |
 | Who may propose? | An issuer over its own products, a holder over their enrolment, or the system on a collision |
-| Who may approve? | Never the proposer alone; the counterparty's side confirms |
+| Who may approve? | Never the proposer. The three roles need at least two distinct actors |
+| Who supplies the evidence? | A third role, which may coincide with the verifier but never with the proposer alone |
+| What does a reader see before it is verified? | Nothing. Otherwise proposing is a way to cast doubt on a record you do not own |
 | What if it is rejected? | Both records continue independently, unchanged, and the rejection is kept |
 | Do both IDs still resolve? | Yes, forever, and each names the other once verified |
 | Is the unknown period preserved? | Yes. Bounded at one end, never erased |

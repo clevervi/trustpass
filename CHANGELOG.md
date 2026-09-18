@@ -16,6 +16,18 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ### Decided
 
+- **[ADR 0010](docs/adr/0010-two-records-one-object.md) amended: `unresolved` is
+  an answer, and the evidence provider is a third role.** §7 required the
+  counterparty to confirm, and the counterparty is frequently not there — so a
+  correspondence nobody answers waited in `proposed` forever, a defect the
+  original pull request's own self-review named without solving. A third exit
+  now records that the evidence did not arrive, asserting neither truth nor
+  falsehood, and reopens if evidence appears later; treating silence as
+  rejection was refused because it manufactures a verdict out of an absence.
+  Supplying evidence is also separated from proposing and verifying, since one
+  actor filling all three is self-assertion with paperwork. And only a
+  **verified** correspondence is public: were `proposed` visible, proposing one
+  would be a way to put a permanent question mark on a record you do not own.
 - **[ADR 0010](docs/adr/0010-two-records-one-object.md) — two records for one
   object are joined by evidence, and neither is destroyed.** Settles
   [#49](https://github.com/clevervi/trustpass/issues/49): a holder enrolment and
