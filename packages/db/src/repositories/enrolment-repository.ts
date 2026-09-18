@@ -14,11 +14,14 @@ export type EnrolProductResult =
 /**
  * What a caller may set when enrolling a product they hold.
  *
- * `issuerId` and `origin` are absent on purpose rather than optional: an
+ * `organizationId` and `origin` are absent on purpose rather than optional: an
  * enrolment is a holder enrolment, and letting either be passed in would let a
  * caller claim a company's standing through this path.
  */
-export type EnrolProductInput = Omit<NewProduct, "issuerId" | "origin" | "status">;
+export type EnrolProductInput = Omit<
+  NewProduct,
+  "organizationId" | "organizationId" | "origin" | "status"
+>;
 
 /**
  * Enrols a product nobody registered.
@@ -39,7 +42,12 @@ export async function enrolProduct(
     return await db.transaction(async (tx) => {
       const [created] = await tx
         .insert(product)
-        .values({ ...values, issuerId: null, origin: "holder", status: "registered" })
+        .values({
+          ...values,
+          organizationId: null,
+          origin: "holder",
+          status: "registered",
+        })
         .returning();
 
       if (!created) {
@@ -52,7 +60,7 @@ export async function enrolProduct(
         // not the product. The object is older than this row.
         type: "record_enrolled",
         actorKind: "holder",
-        issuerId: null,
+        organizationId: null,
         reason: "holder_request",
         // `now()` rather than a JavaScript Date: `timestamptz` keeps
         // microseconds and a Date does not, so a round-tripped value lands
@@ -89,7 +97,7 @@ export async function findLiveHolderEnrolment(
     .from(product)
     .where(
       and(
-        isNull(product.issuerId),
+        isNull(product.organizationId),
         eq(sql`lower(${product.serial})`, serial.toLowerCase()),
         ne(product.status, "retired"),
       ),

@@ -9,6 +9,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
+import { verificationStatus } from "./organization.js";
 
 /**
  * What TrustPass has actually checked about an issuer.
@@ -19,16 +20,6 @@ import {
  * issuer is the root of the trust model: every claim a passport shows inherits
  * its credibility from this column.
  */
-export const issuerVerificationStatus = pgEnum("issuer_verification_status", [
-  /** Registered, nothing checked. The default, and the honest one. */
-  "unverified",
-  /** Documentation submitted, review in progress. */
-  "pending",
-  /** Legal existence confirmed against an authoritative source. */
-  "verified",
-  /** Previously trusted, trust withdrawn. Never silently returns to verified. */
-  "suspended",
-]);
 
 export const issuer = pgTable(
   "issuer",
@@ -55,9 +46,7 @@ export const issuer = pgTable(
     /** ISO 3166-1 alpha-2. */
     country: varchar("country", { length: 2 }).notNull(),
 
-    verificationStatus: issuerVerificationStatus("verification_status")
-      .notNull()
-      .default("unverified"),
+    verificationStatus: verificationStatus("verification_status").notNull().default("unverified"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 
@@ -97,4 +86,5 @@ export const issuer = pgTable(
 
 export type Issuer = typeof issuer.$inferSelect;
 export type NewIssuer = typeof issuer.$inferInsert;
-export type IssuerVerificationStatus = (typeof issuerVerificationStatus.enumValues)[number];
+
+export { type VerificationStatus, verificationStatus } from "./organization.js";

@@ -44,18 +44,18 @@ export {
   enrolProduct,
   findLiveHolderEnrolment,
 } from "./repositories/enrolment-repository.js";
-export { findIssuerByRegistration } from "./repositories/issuer-repository.js";
 export {
   findHistoryByTrustPassId,
   findProductHistory,
   type ProductHistoryEntry,
 } from "./repositories/lifecycle-event-repository.js";
+export { findOrganizationByRegistration } from "./repositories/organization-repository.js";
 export {
   findLiveProductBySerial,
   findProductByTrustPassId,
   type InsertProductResult,
   insertProduct,
-  type ProductWithIssuer,
+  type ProductWithOrganization,
 } from "./repositories/product-repository.js";
 export {
   type ChangeableStatus,

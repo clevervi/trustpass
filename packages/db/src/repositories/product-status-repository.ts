@@ -30,7 +30,7 @@ export interface ChangeProductStatusInput {
   /** In what capacity the actor acted. Not who they are — that is TP-141. */
   readonly actorKind: LifecycleActorKind;
   /** Required when `actorKind` is `issuer`, forbidden otherwise. */
-  readonly issuerId?: number | null;
+  readonly organizationId?: number | null;
   /**
    * Why.
    *
@@ -139,7 +139,7 @@ export async function changeProductStatus(
         productId: input.productId,
         type,
         actorKind: input.actorKind,
-        issuerId: input.issuerId ?? null,
+        organizationId: input.organizationId ?? null,
         // `now()` rather than a JavaScript Date, for the reason TP-051 found:
         // `timestamptz` keeps microseconds and a `Date` does not, so a value
         // round-tripped through the client lands slightly off.

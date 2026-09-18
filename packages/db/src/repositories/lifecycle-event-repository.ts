@@ -12,7 +12,7 @@ import { type ProductStatus, product } from "../schema/product.js";
 /**
  * One entry in a product's history, as anything outside this package may see it.
  *
- * Deliberately not the table row: `id`, `productId`, `issuerId` and
+ * Deliberately not the table row: `id`, `productId`, `organizationId` and
  * `correctsEventId` are internal keys and never cross the API boundary per ADR
  * 0005. What a reader needs is what happened, when, in what capacity and why —
  * not the numbers this system files it under.

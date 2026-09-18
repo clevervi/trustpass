@@ -45,7 +45,7 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
     const result = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values() });
     if (!result.ok) throw new Error("expected success");
 
-    expect(result.product.issuerId).toBeNull();
+    expect(result.product.organizationId).toBeNull();
     expect(result.product.origin).toBe("holder");
   });
 
@@ -90,7 +90,7 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
     expect(events).toHaveLength(1);
     const [event] = events;
 
-    expect(event?.issuerId).toBeNull();
+    expect(event?.organizationId).toBeNull();
   });
 
   it("reports a second live enrolment of the same serial as an outcome", async () => {

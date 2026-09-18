@@ -330,9 +330,19 @@ export const lifecycleEvent = pgTable(
     // An issuer reference without the issuer capacity, or the capacity without
     // the reference, is a half-recorded actor. Either the issuer is named or
     // the event was not theirs.
+    // Moved faithfully, not widened. The rule is the one it always was: an
+    // event acting in the issuer capacity names the party, and one that is not
+    // names none.
+    //
+    // ADR 0012 makes a *wider* rule possible for the first time — a police
+    // force is an organization too, so an authority event could finally name
+    // who reported a theft, which this constraint has structurally forbidden.
+    // That is new capability rather than a move, and moving and widening in one
+    // change would make it impossible to tell which of the two broke anything.
+    // It has its own issue.
     check(
-      "lifecycle_event_issuer_matches_actor",
-      sql`(${table.actorKind} = 'issuer') = (${table.issuerId} IS NOT NULL)`,
+      "lifecycle_event_organization_matches_actor",
+      sql`(${table.actorKind} = 'issuer') = (${table.organizationId} IS NOT NULL)`,
     ),
 
     // A correction points at what it corrects; nothing else may.

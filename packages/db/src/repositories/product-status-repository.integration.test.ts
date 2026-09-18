@@ -2,8 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
-import { issuer } from "../schema/issuer.js";
 import { lifecycleEvent } from "../schema/lifecycle-event.js";
+import { organization } from "../schema/organization.js";
 import { product } from "../schema/product.js";
 import { insertProductWithProvenance } from "../testing/with-provenance.js";
 import { findProductHistory } from "./lifecycle-event-repository.js";
@@ -21,14 +21,14 @@ const databaseUrl = process.env.DATABASE_URL;
 describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
-  let issuerId: number;
+  let organizationId: number;
   let sequence = 0;
 
   async function aProduct(status: "draft" | "registered" = "registered"): Promise<number> {
     sequence += 1;
     const created = await insertProductWithProvenance(db, {
       trustpassId: generateTrustPassId(),
-      issuerId,
+      organizationId,
       brand: "ASUS",
       model: "ROG Strix RTX 5070 Ti",
       serial: `${run}-ST-${sequence}`,
@@ -43,15 +43,15 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
     db = createDatabase(databaseUrl as string);
 
     const [created] = await db
-      .insert(issuer)
+      .insert(organization)
       .values({
         companyName: `Status ${run}`,
         legalName: `Status ${run} SAS`,
         registrationNumber: `${run}-ST`,
         country: "CO",
       })
-      .returning({ id: issuer.id });
-    issuerId = created?.id as number;
+      .returning({ id: organization.id });
+    organizationId = created?.id as number;
   });
 
   afterAll(async () => {
@@ -162,7 +162,7 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
         productId: id,
         to: "registered",
         actorKind: "issuer",
-        issuerId,
+        organizationId,
         reason: "issuer_request",
       });
 
@@ -206,7 +206,7 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
         productId: id,
         to: "retired",
         actorKind: "issuer",
-        issuerId,
+        organizationId,
         reason: "end_of_life",
       });
 
@@ -232,7 +232,7 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
         productId: id,
         to: "retired",
         actorKind: "issuer",
-        issuerId,
+        organizationId,
         reason: "end_of_life",
       });
 
@@ -316,7 +316,7 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
           productId: id,
           to: "retired",
           actorKind: "issuer",
-          issuerId,
+          organizationId,
           reason: "end_of_life",
         }),
       ]);
@@ -349,7 +349,7 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
         productId: id,
         to: "registered",
         actorKind: "issuer",
-        issuerId,
+        organizationId,
         reason: "issuer_request",
         occurredAt: new Date("2026-01-10T10:00:00Z"),
       });
@@ -371,7 +371,7 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
         productId: id,
         to: "retired",
         actorKind: "issuer",
-        issuerId,
+        organizationId,
         reason: "end_of_life",
         occurredAt: new Date("2026-09-01T10:00:00Z"),
       });
@@ -446,7 +446,7 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
         productId: id,
         to: "suspended",
         actorKind: "issuer",
-        issuerId,
+        organizationId,
         reason: "fraud_flag",
       });
 

@@ -131,7 +131,7 @@ describe.skipIf(!databaseUrl)("one party, one record", () => {
     // the test failed for the one reason that has nothing to do with the guard.
     const created = await insertProductWithProvenance(db, {
       trustpassId: generateTrustPassId(),
-      issuerId: null,
+      organizationId: null,
       brand: "ASUS",
       model: "ROG Strix RTX 5070 Ti",
       serial: `GUARD-${Math.random().toString(36).slice(2, 10).toUpperCase()}`,

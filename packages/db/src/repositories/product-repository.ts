@@ -1,8 +1,8 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 import type { Database } from "../client.js";
 import type { TrustPassId } from "../identity/trustpass-id.js";
-import { type IssuerVerificationStatus, issuer } from "../schema/issuer.js";
 import { lifecycleEvent } from "../schema/lifecycle-event.js";
+import { organization, type VerificationStatus } from "../schema/organization.js";
 import {
   type NewProduct,
   type Product,
@@ -14,7 +14,7 @@ import {
 import { UNIQUE_VIOLATION, violatedConstraint } from "./constraint-violation.js";
 
 /** The partial unique index declared in `schema/product.ts`. */
-const LIVE_SERIAL_INDEX = "product_live_issuer_serial_idx";
+const LIVE_SERIAL_INDEX = "product_live_organization_serial_idx";
 
 export type InsertProductResult =
   | { readonly ok: true; readonly product: Product }
@@ -60,9 +60,11 @@ export async function insertProduct(
         // claim nobody made.
         type: created.status === "registered" ? "product_registered" : "record_enrolled",
         // The capacity, not the person — identifying a person is TP-141. Today
-        // the only path here is an issuer registering through the API.
+        // the only path here is a party registering through the API in the
+        // issuer capacity, which is a role an organization plays (ADR 0012) and
+        // not the same thing as the party itself.
         actorKind: "issuer",
-        issuerId: created.issuerId,
+        organizationId: created.organizationId,
         // `now()` rather than the returned `created.createdAt`, and the
         // difference is not cosmetic. Postgres stores `timestamptz` to
         // microseconds; a JavaScript `Date` holds milliseconds, so passing the
@@ -89,7 +91,7 @@ export async function insertProduct(
 }
 
 /**
- * Finds the live identity an issuer already holds for a serial.
+ * Finds the live identity a party already holds for a serial.
  *
  * "Live" matches the partial unique index: every status except retired. Used to
  * tell a caller which TrustPass ID it collided with, which turns a duplicate
@@ -100,7 +102,7 @@ export async function insertProduct(
  */
 export async function findLiveProductBySerial(
   db: Database,
-  issuerId: number,
+  organizationId: number,
   serial: string,
 ): Promise<Product | undefined> {
   const [found] = await db
@@ -108,7 +110,7 @@ export async function findLiveProductBySerial(
     .from(product)
     .where(
       and(
-        eq(product.issuerId, issuerId),
+        eq(product.organizationId, organizationId),
         sql`lower(${product.serial}) = lower(${serial})`,
         ne(product.status, "retired"),
       ),
@@ -126,11 +128,11 @@ export async function findLiveProductBySerial(
  * says "record", not "passport", so nobody mistakes it for the public shape.
  *
  * What it does not carry matters as much: no `product.id`, no
- * `product.issuerId`, no `issuer.id`. Per ADR 0005 those never cross the API
+ * `product.organizationId`, no `organization.id`. Per ADR 0005 those never cross the API
  * boundary, and the surest way to keep them from leaking is to never select
  * them.
  */
-export interface ProductWithIssuer {
+export interface ProductWithOrganization {
   readonly trustpassId: TrustPassId;
   readonly brand: string;
   readonly model: string;
@@ -148,7 +150,7 @@ export interface ProductWithIssuer {
     readonly companyName: string;
     readonly country: string;
     readonly registrationNumber: string;
-    readonly verificationStatus: IssuerVerificationStatus;
+    readonly verificationStatus: VerificationStatus;
   } | null;
 }
 
@@ -161,8 +163,8 @@ export interface ProductWithIssuer {
  * the distinction ADR 0004's check symbol exists to make.
  *
  * One join rather than two queries. The passport always needs both rows; and a
- * second query would need `product.issuerId` in hand, which puts an internal
- * key into a value that travels back up to the API. `issuer_id` is not null
+ * second query would need `product.organizationId` in hand, which puts an internal
+ * key into a value that travels back up to the API. `organization_id` is not null
  * with a restricting foreign key, so an inner join cannot drop a row.
  *
  * The identifier is compared as-is, not lower-cased. `parseTrustPassId`
@@ -176,7 +178,7 @@ export interface ProductWithIssuer {
 export async function findProductByTrustPassId(
   db: Database,
   trustpassId: TrustPassId,
-): Promise<ProductWithIssuer | undefined> {
+): Promise<ProductWithOrganization | undefined> {
   const [found] = await db
     .select({
       trustpassId: product.trustpassId,
@@ -188,17 +190,17 @@ export async function findProductByTrustPassId(
       origin: product.origin,
       createdAt: product.createdAt,
       issuer: {
-        companyName: issuer.companyName,
-        country: issuer.country,
-        registrationNumber: issuer.registrationNumber,
-        verificationStatus: issuer.verificationStatus,
+        companyName: organization.companyName,
+        country: organization.country,
+        registrationNumber: organization.registrationNumber,
+        verificationStatus: organization.verificationStatus,
       },
     })
     .from(product)
     // Left, not inner. An inner join drops a holder-enrolled record entirely,
     // which would report an existing product as not found — reaching the "we
     // could not check" failure by way of a join.
-    .leftJoin(issuer, eq(product.issuerId, issuer.id))
+    .leftJoin(organization, eq(product.organizationId, organization.id))
     .where(eq(product.trustpassId, trustpassId))
     .limit(1);
 
@@ -208,5 +210,5 @@ export async function findProductByTrustPassId(
   // object, so the absence has to be recognised rather than assumed.
   return found.issuer?.companyName == null
     ? { ...found, issuer: null }
-    : (found as ProductWithIssuer);
+    : (found as ProductWithOrganization);
 }

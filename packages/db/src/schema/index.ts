@@ -25,10 +25,10 @@ export {
 } from "./credential.js";
 export {
   type Issuer,
-  type IssuerVerificationStatus,
   issuer,
-  issuerVerificationStatus,
   type NewIssuer,
+  type VerificationStatus,
+  verificationStatus,
 } from "./issuer.js";
 export {
   type LifecycleActorKind,

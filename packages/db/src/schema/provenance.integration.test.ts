@@ -38,7 +38,7 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
         productId,
         type: to === "suspended" ? "product_suspended" : "product_reinstated",
         actorKind: "authority",
-        issuerId: null,
+        organizationId: null,
         // now(), not a Date: recorded_at defaults to the transaction timestamp,
         // and a Date read afterwards is later than it.
         occurredAt: sql`now()` as unknown as Date,

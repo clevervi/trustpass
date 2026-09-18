@@ -2,8 +2,8 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
-import { issuer } from "../schema/issuer.js";
 import { lifecycleEvent } from "../schema/lifecycle-event.js";
+import { organization } from "../schema/organization.js";
 import { type NewProduct, product } from "../schema/product.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
 import { findHistoryByTrustPassId, findProductHistory } from "./lifecycle-event-repository.js";
@@ -21,7 +21,7 @@ const databaseUrl = process.env.DATABASE_URL;
 describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
-  let issuerId: number;
+  let organizationId: number;
   let sequence = 0;
 
   function build(overrides: Partial<NewProduct> = {}): NewProduct {
@@ -29,7 +29,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
 
     return {
       trustpassId: generateTrustPassId(),
-      issuerId,
+      organizationId,
       brand: "ASUS",
       model: "ROG Strix RTX 5070 Ti",
       serial: `${run}-PROV-${sequence}`,
@@ -43,15 +43,15 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
     db = createDatabase(databaseUrl as string);
 
     const [created] = await db
-      .insert(issuer)
+      .insert(organization)
       .values({
         companyName: `Prov ${run}`,
         legalName: `Prov ${run} SAS`,
         registrationNumber: `${run}-PV`,
         country: "CO",
       })
-      .returning({ id: issuer.id });
-    issuerId = created?.id as number;
+      .returning({ id: organization.id });
+    organizationId = created?.id as number;
   });
 
   afterAll(async () => {
@@ -92,7 +92,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
     // would have refused one without the other. Asserting it here is about the
     // repository supplying both, not about the constraint.
     expect(event?.actorKind).toBe("issuer");
-    expect(event?.issuerId).toBe(issuerId);
+    expect(event?.organizationId).toBe(organizationId);
   });
 
   it("dates the event to the product's own creation, not to a second clock", async () => {
@@ -207,7 +207,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
 
     // ADR 0005. The projection lists its columns, so a column added to the
     // table later cannot start appearing here on its own.
-    for (const key of ["id", "productId", "issuerId", "correctsEventId"]) {
+    for (const key of ["id", "productId", "organizationId", "correctsEventId"]) {
       expect(entry).not.toHaveProperty(key);
     }
   });
@@ -216,20 +216,20 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
 describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
-  let issuerId: number;
+  let organizationId: number;
 
   beforeAll(async () => {
     db = createDatabase(databaseUrl as string);
     const [created] = await db
-      .insert(issuer)
+      .insert(organization)
       .values({
         companyName: `ById ${run}`,
         legalName: `ById ${run} SAS`,
         registrationNumber: `${run}-BI`,
         country: "CO",
       })
-      .returning({ id: issuer.id });
-    issuerId = created?.id as number;
+      .returning({ id: organization.id });
+    organizationId = created?.id as number;
   });
 
   afterAll(async () => {
@@ -239,7 +239,7 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
   it("finds a product's history without the caller holding its internal key", async () => {
     const result = await insertProduct(db, {
       trustpassId: generateTrustPassId(),
-      issuerId,
+      organizationId,
       brand: "ASUS",
       model: "ROG Strix RTX 5070 Ti",
       serial: `${run}-BYID`,
@@ -264,7 +264,7 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
     const [one, two] = await Promise.all([
       insertProduct(db, {
         trustpassId: generateTrustPassId(),
-        issuerId,
+        organizationId,
         brand: "ASUS",
         model: "A",
         serial: `${run}-MIX-1`,
@@ -273,7 +273,7 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
       }),
       insertProduct(db, {
         trustpassId: generateTrustPassId(),
-        issuerId,
+        organizationId,
         brand: "ASUS",
         model: "B",
         serial: `${run}-MIX-2`,

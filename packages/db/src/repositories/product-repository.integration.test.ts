@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId, type TrustPassId } from "../identity/trustpass-id.js";
-import { issuer } from "../schema/issuer.js";
+import { organization } from "../schema/organization.js";
 import { type ProductStatus, product } from "../schema/product.js";
 import { insertProductWithProvenance, moveProductStatus } from "../testing/with-provenance.js";
 import { findProductByTrustPassId } from "./product-repository.js";
@@ -19,7 +19,7 @@ const databaseUrl = process.env.DATABASE_URL;
 describe.skipIf(!databaseUrl)("findProductByTrustPassId", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
-  let issuerId: number;
+  let organizationId: number;
   let sequence = 0;
 
   async function createProduct(status: ProductStatus = "registered"): Promise<TrustPassId> {
@@ -31,7 +31,7 @@ describe.skipIf(!databaseUrl)("findProductByTrustPassId", () => {
     const insertAs = status === "draft" ? "draft" : "registered";
     await insertProductWithProvenance(db, {
       trustpassId,
-      issuerId,
+      organizationId,
       brand: "ASUS",
       model: "ROG Strix RTX 5070 Ti",
       serial: `${run}-SERIAL-${sequence}`,
@@ -54,7 +54,7 @@ describe.skipIf(!databaseUrl)("findProductByTrustPassId", () => {
     db = createDatabase(databaseUrl as string, { maxConnections: 4 });
 
     const [created] = await db
-      .insert(issuer)
+      .insert(organization)
       .values({
         companyName: "Andes Tech Imports",
         legalName: `ANDES PASSPORT ${run} SAS`,
@@ -62,9 +62,9 @@ describe.skipIf(!databaseUrl)("findProductByTrustPassId", () => {
         country: "CO",
         verificationStatus: "verified",
       })
-      .returning({ id: issuer.id });
+      .returning({ id: organization.id });
 
-    issuerId = created?.id as number;
+    organizationId = created?.id as number;
   });
 
   afterAll(async () => {
@@ -106,7 +106,7 @@ describe.skipIf(!databaseUrl)("findProductByTrustPassId", () => {
 
     expect(found).toBeDefined();
     expect(Object.keys(found ?? {})).not.toContain("id");
-    expect(Object.keys(found ?? {})).not.toContain("issuerId");
+    expect(Object.keys(found ?? {})).not.toContain("organizationId");
     expect(Object.keys(found?.issuer ?? {})).not.toContain("id");
   });
 

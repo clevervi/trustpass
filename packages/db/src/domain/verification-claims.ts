@@ -1,4 +1,4 @@
-import type { IssuerVerificationStatus } from "../schema/issuer.js";
+import type { VerificationStatus } from "../schema/organization.js";
 
 /**
  * What a passport makes a statement about, in the order it should be read.
@@ -56,7 +56,7 @@ export interface VerificationClaim {
  */
 export interface VerificationClaimsInput {
   /** Null when the record has no issuer at all — a holder enrolment. */
-  readonly issuerVerificationStatus: IssuerVerificationStatus | null;
+  readonly verificationStatus: VerificationStatus | null;
 }
 
 /**
@@ -68,7 +68,7 @@ const ISSUER_CLAIM_STATE = {
   pending: "pending",
   verified: "verified",
   suspended: "suspended",
-} as const satisfies Record<IssuerVerificationStatus, ClaimState>;
+} as const satisfies Record<VerificationStatus, ClaimState>;
 
 /**
  * States what TrustPass has actually checked, claim by claim.
@@ -100,9 +100,9 @@ export function computeVerificationClaims(
       // different facts, and reporting the second as the first invents an
       // issuer the record does not have.
       state:
-        input.issuerVerificationStatus === null
+        input.verificationStatus === null
           ? "not_present"
-          : ISSUER_CLAIM_STATE[input.issuerVerificationStatus],
+          : ISSUER_CLAIM_STATE[input.verificationStatus],
     },
     { claim: "serial", state: "recorded" },
     { claim: "secure_tag", state: "not_present" },

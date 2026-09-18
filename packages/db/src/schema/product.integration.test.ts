@@ -4,7 +4,7 @@ import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
 import { insertProductWithProvenance, moveProductStatus } from "../testing/with-provenance.js";
-import { issuer } from "./issuer.js";
+import { organization } from "./organization.js";
 import { type NewProduct, product } from "./product.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -18,7 +18,7 @@ const databaseUrl = process.env.DATABASE_URL;
 describe.skipIf(!databaseUrl)("product table", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
-  let issuerId: number;
+  let organizationId: number;
   let otherIssuerId: number;
   let sequence = 0;
 
@@ -35,7 +35,7 @@ describe.skipIf(!databaseUrl)("product table", () => {
 
     return {
       trustpassId: generateTrustPassId(),
-      issuerId,
+      organizationId,
       brand: "ASUS",
       model: "ROG Strix RTX 5070 Ti",
       serial: `${run}-SERIAL-${sequence}`,
@@ -48,7 +48,7 @@ describe.skipIf(!databaseUrl)("product table", () => {
     db = createDatabase(databaseUrl as string, { maxConnections: 4 });
 
     const [primary] = await db
-      .insert(issuer)
+      .insert(organization)
       .values({
         companyName: "Andes Tech Imports",
         legalName: "ANDES TECH IMPORTS SAS",
@@ -58,7 +58,7 @@ describe.skipIf(!databaseUrl)("product table", () => {
       .returning();
 
     const [secondary] = await db
-      .insert(issuer)
+      .insert(organization)
       .values({
         companyName: "Sierra Distribution",
         legalName: "SIERRA DISTRIBUTION SAS",
@@ -67,7 +67,7 @@ describe.skipIf(!databaseUrl)("product table", () => {
       })
       .returning();
 
-    issuerId = primary?.id as number;
+    organizationId = primary?.id as number;
     otherIssuerId = secondary?.id as number;
   });
 
@@ -183,7 +183,7 @@ describe.skipIf(!databaseUrl)("product table", () => {
       await expectSqlState(
         db
           .insert(product)
-          .values(build({ issuerId: 9_999_999 }))
+          .values(build({ organizationId: 9_999_999 }))
           .returning(),
         SqlState.FOREIGN_KEY_VIOLATION,
       );
@@ -196,10 +196,10 @@ describe.skipIf(!databaseUrl)("product table", () => {
       // The code is 23001 restrict_violation, not 23503 foreign_key_violation.
       // Postgres raises RESTRICT immediately and NO ACTION at constraint-check
       // time, and the distinction is exactly what proves RESTRICT is in force.
-      await insertProductWithProvenance(db, build({ issuerId: otherIssuerId }));
+      await insertProductWithProvenance(db, build({ organizationId: otherIssuerId }));
 
       await expectSqlState(
-        db.delete(issuer).where(eq(issuer.id, otherIssuerId)),
+        db.delete(organization).where(eq(organization.id, otherIssuerId)),
         SqlState.RESTRICT_VIOLATION,
       );
     });
@@ -213,7 +213,7 @@ describe.skipIf(!databaseUrl)("product table", () => {
       await expectSqlState(
         db
           .insert(product)
-          .values({ ...build(), issuerId: null as never })
+          .values({ ...build(), organizationId: null as never })
           .returning(),
         SqlState.CHECK_VIOLATION,
       );
@@ -257,11 +257,11 @@ describe.skipIf(!databaseUrl)("product table", () => {
       // one issuer from registering the same serial twice is TP-024, and it is
       // a different rule from this one.
       const serial = `${run}-SHARED-SERIAL`;
-      await insertProductWithProvenance(db, build({ serial, issuerId }));
+      await insertProductWithProvenance(db, build({ serial, organizationId }));
 
       const second = await insertProductWithProvenance(
         db,
-        build({ serial, issuerId: otherIssuerId }),
+        build({ serial, organizationId: otherIssuerId }),
       );
 
       expect(second?.serial).toBe(serial);
@@ -279,15 +279,15 @@ describe.skipIf(!databaseUrl)("product table", () => {
 describe.skipIf(!databaseUrl)("where a record began", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
-  let issuerId: number;
+  let organizationId: number;
   let n = 0;
 
-  /** An issuer-registered row. Pass `issuerId: null, origin: "holder"` for the other kind. */
+  /** An issuer-registered row. Pass `organizationId: null, origin: "holder"` for the other kind. */
   function row(overrides: Partial<NewProduct> = {}): NewProduct {
     n += 1;
     return {
       trustpassId: generateTrustPassId(),
-      issuerId,
+      organizationId,
       brand: "ASUS",
       model: "ROG Strix RTX 5070 Ti",
       serial: `${run}-ORIGIN-${n}`,
@@ -297,21 +297,21 @@ describe.skipIf(!databaseUrl)("where a record began", () => {
   }
 
   function holder(serial: string): NewProduct {
-    return row({ serial, issuerId: null, status: "registered", origin: "holder" });
+    return row({ serial, organizationId: null, status: "registered", origin: "holder" });
   }
 
   beforeAll(async () => {
     db = createDatabase(databaseUrl as string);
     const [created] = await db
-      .insert(issuer)
+      .insert(organization)
       .values({
         companyName: `Origin ${run}`,
         legalName: `Origin ${run} SAS`,
         registrationNumber: `${run}-OR`,
         country: "CO",
       })
-      .returning({ id: issuer.id });
-    issuerId = created?.id as number;
+      .returning({ id: organization.id });
+    organizationId = created?.id as number;
   });
 
   afterAll(async () => {
@@ -343,11 +343,11 @@ describe.skipIf(!databaseUrl)("where a record began", () => {
     // person cannot carry a company's standing.
     const created = await insertProductWithProvenance(
       db,
-      row({ origin: "holder", issuerId: null }),
+      row({ origin: "holder", organizationId: null }),
     );
 
     expect(created?.origin).toBe("holder");
-    expect(created?.issuerId).toBeNull();
+    expect(created?.organizationId).toBeNull();
   });
 
   it("refuses an origin outside the closed set", async () => {
@@ -360,7 +360,7 @@ describe.skipIf(!databaseUrl)("where a record began", () => {
   it("exists with no issuer at all", async () => {
     const created = await insertProductWithProvenance(db, holder(`${run}-H1`));
 
-    expect(created?.issuerId).toBeNull();
+    expect(created?.organizationId).toBeNull();
     expect(created?.origin).toBe("holder");
   });
 
@@ -395,11 +395,11 @@ describe.skipIf(!databaseUrl)("where a record began", () => {
     // collision across these two is legitimate rather than a duplicate.
     const alsoRegistered = await insertProductWithProvenance(db, {
       ...holder(serial),
-      issuerId,
+      organizationId,
       origin: "supply_chain",
     });
 
-    expect(alsoRegistered.issuerId).toBe(issuerId);
+    expect(alsoRegistered.organizationId).toBe(organizationId);
   });
 
   it("releases the serial when the holder record is retired", async () => {
@@ -416,7 +416,7 @@ describe.skipIf(!databaseUrl)("where a record began", () => {
   it("refuses a holder record that names an issuer", async () => {
     // A person claiming a company's standing.
     await expectSqlState(
-      db.insert(product).values({ ...holder(`${run}-H5`), issuerId }),
+      db.insert(product).values({ ...holder(`${run}-H5`), organizationId }),
       SqlState.CHECK_VIOLATION,
     );
   });

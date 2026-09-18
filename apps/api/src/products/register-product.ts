@@ -1,7 +1,7 @@
 import {
   type Database,
-  findIssuerByRegistration,
   findLiveProductBySerial,
+  findOrganizationByRegistration,
   generateTrustPassId,
   insertProduct,
   type schema,
@@ -38,7 +38,7 @@ export interface RegisteredProduct {
     readonly companyName: string;
     readonly country: string;
     readonly registrationNumber: string;
-    readonly verificationStatus: schema.IssuerVerificationStatus;
+    readonly verificationStatus: schema.VerificationStatus;
   };
 }
 
@@ -84,19 +84,19 @@ export async function registerProduct(
   db: Database,
   input: RegisterProductInput,
 ): Promise<RegisterProductResult> {
-  const issuer = await findIssuerByRegistration(
+  const party = await findOrganizationByRegistration(
     db,
     input.issuer.country,
     input.issuer.registrationNumber,
   );
 
-  if (!issuer) {
+  if (!party) {
     return { ok: false, reason: "issuer_not_found" };
   }
 
   const inserted = await insertProduct(db, {
     trustpassId: generateTrustPassId(),
-    issuerId: issuer.id,
+    organizationId: party.id,
     brand: input.brand,
     model: input.model,
     serial: input.serial,
@@ -105,7 +105,7 @@ export async function registerProduct(
   });
 
   if (!inserted.ok) {
-    const existing = await findLiveProductBySerial(db, issuer.id, input.serial);
+    const existing = await findLiveProductBySerial(db, party.id, input.serial);
 
     return {
       ok: false,
@@ -130,10 +130,10 @@ export async function registerProduct(
       status: created.status,
       createdAt: created.createdAt,
       issuer: {
-        companyName: issuer.companyName,
-        country: issuer.country,
-        registrationNumber: issuer.registrationNumber,
-        verificationStatus: issuer.verificationStatus,
+        companyName: party.companyName,
+        country: party.country,
+        registrationNumber: party.registrationNumber,
+        verificationStatus: party.verificationStatus,
       },
     },
   };
