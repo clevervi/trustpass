@@ -59,6 +59,20 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
     });
   }
 
+  /** A transition event, for the cases that write one by hand. */
+  function transitionEvent(productId: number, from: "registered" | "suspended", to: string) {
+    return {
+      productId,
+      type: to === "suspended" ? ("product_suspended" as const) : ("product_reinstated" as const),
+      actorKind: "authority" as const,
+      issuerId: null,
+      occurredAt: sql`now()` as unknown as Date,
+      reason: to === "suspended" ? ("theft_report" as const) : ("dispute_resolved" as const),
+      previousState: from,
+      resultingState: to as "registered" | "suspended",
+    };
+  }
+
   beforeAll(() => {
     db = createDatabase(databaseUrl as string);
   });
@@ -111,6 +125,82 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
     // leave the third move unexplained while looking accounted for.
     await expectSqlState(
       db.update(product).set({ status: "suspended" }).where(eq(product.id, created.id)),
+      SqlState.PROVENANCE_REQUIRED,
+    );
+  });
+
+  it("refuses one event explaining two identical moves", async () => {
+    const created = await insertProductWithProvenance(db, values());
+
+    // The hole #54 left open. Moves 1 and 3 share a (previous, resulting) pair,
+    // so a check asking whether *some* matching event exists accepts the third
+    // move on the strength of the event that explained the first.
+    await expectSqlState(
+      db.transaction(async (tx) => {
+        await tx.update(product).set({ status: "suspended" }).where(eq(product.id, created.id));
+        await tx.update(product).set({ status: "registered" }).where(eq(product.id, created.id));
+        await tx.update(product).set({ status: "suspended" }).where(eq(product.id, created.id));
+        await tx
+          .insert(lifecycleEvent)
+          .values(transitionEvent(created.id, "registered", "suspended"));
+        await tx
+          .insert(lifecycleEvent)
+          .values(transitionEvent(created.id, "suspended", "registered"));
+      }),
+      SqlState.PROVENANCE_REQUIRED,
+    );
+  });
+
+  it("refuses two moves even when each has its own event", async () => {
+    const created = await insertProductWithProvenance(db, values());
+
+    // The rule is one move per transaction, not balanced bookkeeping. A
+    // transaction moving a product twice is doing two things, and counting
+    // firings from inside a row trigger is not possible — so the correspondence
+    // is made 1:1 by construction instead.
+    await expectSqlState(
+      db.transaction(async (tx) => {
+        await tx.update(product).set({ status: "suspended" }).where(eq(product.id, created.id));
+        await tx.update(product).set({ status: "registered" }).where(eq(product.id, created.id));
+        await tx
+          .insert(lifecycleEvent)
+          .values(transitionEvent(created.id, "registered", "suspended"));
+        await tx
+          .insert(lifecycleEvent)
+          .values(transitionEvent(created.id, "suspended", "registered"));
+      }),
+      SqlState.PROVENANCE_REQUIRED,
+    );
+  });
+
+  it("refuses an event that describes a different move", async () => {
+    const created = await insertProductWithProvenance(db, values());
+    await moveWithReason(created.id, "registered", "suspended");
+
+    // One event, one move, and they disagree. Counting alone would accept it.
+    await expectSqlState(
+      db.transaction(async (tx) => {
+        await tx.update(product).set({ status: "retired" }).where(eq(product.id, created.id));
+        await tx
+          .insert(lifecycleEvent)
+          .values(transitionEvent(created.id, "suspended", "registered"));
+      }),
+      SqlState.PROVENANCE_REQUIRED,
+    );
+  });
+
+  it("refuses a second product moved without its own event", async () => {
+    const a = await insertProductWithProvenance(db, values());
+    const b = await insertProductWithProvenance(db, values());
+
+    // Row-level, so each product's firing looks for its own event. Verified
+    // rather than assumed when review raised it.
+    await expectSqlState(
+      db.transaction(async (tx) => {
+        await tx.update(product).set({ status: "suspended" }).where(eq(product.id, a.id));
+        await tx.update(product).set({ status: "suspended" }).where(eq(product.id, b.id));
+        await tx.insert(lifecycleEvent).values(transitionEvent(a.id, "registered", "suspended"));
+      }),
       SqlState.PROVENANCE_REQUIRED,
     );
   });
