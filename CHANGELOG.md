@@ -16,6 +16,21 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ### Decided
 
+- **[ADR 0011](docs/adr/0011-authority-is-pinned-to-the-moment-it-was-used.md) —
+  authority is pinned to the moment it was used.** The logical model for
+  `TP-141`, with no tables: the question is not how to log people in but who you
+  are, what you may assert, and why that authority was still valid when you
+  asserted it. ADR 0009 promised that revoking a capacity does not invalidate
+  what was recorded under it; this makes the promise structural. **Grants are
+  append-only**, never updated to revoke, extend or rescope, so "what could this
+  actor do on 2 August" is a query rather than a belief. A `revoked_at` column
+  is rejected explicitly: the event still points at the grant and the grant
+  changes underneath it, rewriting history without an event being touched.
+  Actor, Organization, Credential and Grant stay four separate things, and an
+  event pins the grant it acted under rather than only the capacity. Also states
+  the limit this repository has about itself — ADR 0010 asks for two distinct
+  actors, and this repository is one person with two accounts, which no model
+  here can detect.
 - **[ADR 0010](docs/adr/0010-two-records-one-object.md) amended: the state rules
   as a table, and one contradiction they surfaced.** The semantics were spread
   across three sections, and the likely misreading was the expensive one —
