@@ -248,8 +248,15 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
       // Compared in SQL rather than in JavaScript: the host clock runs ahead of
       // the container's, so a Date taken here is not the same instant as now()
       // and a comparison between them measures the skew, not the guarantee.
+      //
+      // Bounded from below as well, and that is not padding. `recorded_at <=
+      // now()` alone would also accept 1970 — it would pass for a trigger that
+      // wrote any past constant, which is a different bug wearing this one's
+      // clothes. The requirement is that the column holds the time of the write,
+      // so the test says so, with a minute of room for the clock skew above.
       const [row] = await db.execute<{ server_written: boolean }>(
-        sql`SELECT recorded_at <= now() AS server_written
+        sql`SELECT recorded_at <= now()
+                   AND recorded_at > now() - interval '1 minute' AS server_written
             FROM lifecycle_event WHERE id = ${event?.id as number}`,
       );
 
