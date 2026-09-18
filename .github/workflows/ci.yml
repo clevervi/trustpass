@@ -60,13 +60,12 @@ jobs:
       # 0005, 0008, 0010, 0014, 0015 and 0016, and no snapshot has ever
       # contained one of them. Those are covered by the integration suite
       # against a real Postgres, which is a different job for a reason.
+      #
+      # No DATABASE_URL, and that is the point. `generate` needs no database, so
+      # drizzle.config.ts no longer demands a credential for it — the first
+      # version of this step invented one and a secret scanner objected to the
+      # credential-shaped string, correctly.
       - name: Migrations describe the schema drizzle-kit can see
-        env:
-          # `generate` diffs the schema against its snapshot and never opens a
-          # connection — verified — but the config demands a URL regardless.
-          # This one is deliberately unreachable, so a future change that does
-          # start connecting fails here instead of quietly reading a database.
-          DATABASE_URL: postgresql://unused:unused@127.0.0.1:1/unused
         run: |
           pnpm db:generate
           if [ -n "$(git status --porcelain packages/db/drizzle)" ]; then
