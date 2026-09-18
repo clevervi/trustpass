@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import { createDatabase, isDatabaseReachable } from "@trustpass/db";
+import { assertConnectionIsUnprivileged, createDatabase, isDatabaseReachable } from "@trustpass/db";
 import { createApp } from "./app.js";
 import { enrolProduct } from "./enrolments/enrol-product.js";
 import { loadEnv } from "./env.js";
@@ -14,6 +14,22 @@ import { version } from "./version.js";
 const env = loadEnv();
 const db = createDatabase(env.DATABASE_URL);
 
+// Before anything is served. #119 moved every guarantee behind a role that
+// cannot remove it, and could not finish the job: a migration cannot edit an
+// environment file, so until this line existed the whole thing rested on a
+// deploy remembering to point DATABASE_URL somewhere. Forget it and the API
+// came up as a superuser owning every table, with no signal of any kind —
+// health green, passports resolving, and the append-only history one statement
+// from editable.
+//
+// Throws rather than warns, and the throw is unhandled on purpose: the process
+// exits non-zero and the deploy fails, which is the only outcome anybody acts
+// on. A warning in a log is a warning somebody reads after the incident.
+const privileges = await assertConnectionIsUnprivileged(db, {
+  allowPrivileged: env.TRUSTPASS_ALLOW_PRIVILEGED_DATABASE,
+  warn: (message) => logger.warn("api.database.privileged", { message }),
+});
+
 const app = createApp({
   version,
   checkDatabase: () => isDatabaseReachable(db),
@@ -27,5 +43,8 @@ serve({ fetch: app.fetch, port: env.API_PORT }, (info) => {
     port: info.port,
     environment: env.NODE_ENV,
     version,
+    // Which role actually got through, so a log answers the question without
+    // anyone having to reason about which DATABASE_URL was deployed.
+    databaseRole: privileges.role,
   });
 });

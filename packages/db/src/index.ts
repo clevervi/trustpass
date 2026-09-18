@@ -1,5 +1,12 @@
 export { createDatabase, type Database, type DatabaseOptions } from "./client.js";
 export {
+  assertConnectionIsUnprivileged,
+  type ConnectionPrivileges,
+  privilegeFailures,
+  readConnectionPrivileges,
+  type UnprivilegedConnectionOptions,
+} from "./connection-privileges.js";
+export {
   assertTransition,
   canTransition,
   IllegalProductStatusTransition,
