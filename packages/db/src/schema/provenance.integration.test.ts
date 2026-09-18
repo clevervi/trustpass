@@ -144,59 +144,47 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
     );
   });
 
-  it("refuses one event explaining two identical moves", async () => {
+  it.each([
+    {
+      name: "one event explaining two identical moves",
+      moves: ["suspended", "registered", "suspended"],
+      events: [
+        ["registered", "suspended"],
+        ["suspended", "registered"],
+      ],
+    },
+    {
+      name: "two moves even when each has its own event",
+      moves: ["suspended", "registered"],
+      events: [
+        ["registered", "suspended"],
+        ["suspended", "registered"],
+      ],
+    },
+    {
+      name: "an event that describes a different move",
+      moves: ["retired"],
+      events: [["suspended", "registered"]],
+    },
+  ] as const)("refuses $name", async ({ moves, events }) => {
+    // The first case is the hole #54 left open: moves one and three share a
+    // (previous, resulting) pair, so a check asking whether *some* matching
+    // event exists accepts the third on the strength of the first's event.
+    //
+    // The second shows the rule is one move per transaction rather than
+    // balanced bookkeeping — counting a trigger's own firings from inside a row
+    // trigger is not possible, so the correspondence is made 1:1 by
+    // construction instead.
+    //
+    // The third shows counting alone is not enough: one event, one move, and
+    // they describe different transitions.
     const created = await insertProductWithProvenance(db, values());
+    if (moves[0] === "retired") await moveWithReason(created.id, "registered", "suspended");
 
-    // The hole #54 left open. Moves 1 and 3 share a (previous, resulting) pair,
-    // so a check asking whether *some* matching event exists accepts the third
-    // move on the strength of the event that explained the first.
     await expectSqlState(
       inOneTransaction(
-        [
-          { id: created.id, to: "suspended" },
-          { id: created.id, to: "registered" },
-          { id: created.id, to: "suspended" },
-        ],
-        [
-          { id: created.id, from: "registered", to: "suspended" },
-          { id: created.id, from: "suspended", to: "registered" },
-        ],
-      ),
-      SqlState.PROVENANCE_REQUIRED,
-    );
-  });
-
-  it("refuses two moves even when each has its own event", async () => {
-    const created = await insertProductWithProvenance(db, values());
-
-    // The rule is one move per transaction, not balanced bookkeeping. A
-    // transaction moving a product twice is doing two things, and counting
-    // firings from inside a row trigger is not possible — so the correspondence
-    // is made 1:1 by construction instead.
-    await expectSqlState(
-      inOneTransaction(
-        [
-          { id: created.id, to: "suspended" },
-          { id: created.id, to: "registered" },
-        ],
-        [
-          { id: created.id, from: "registered", to: "suspended" },
-          { id: created.id, from: "suspended", to: "registered" },
-        ],
-      ),
-      SqlState.PROVENANCE_REQUIRED,
-    );
-  });
-
-  it("refuses an event that describes a different move", async () => {
-    const created = await insertProductWithProvenance(db, values());
-    await moveWithReason(created.id, "registered", "suspended");
-
-    // One event, one move, and they disagree. Counting alone would accept it.
-    await expectSqlState(
-      inOneTransaction(
-        [{ id: created.id, to: "retired" }],
-        [{ id: created.id, from: "suspended", to: "registered" }],
+        moves.map((to) => ({ id: created.id, to })),
+        events.map(([from, to]) => ({ id: created.id, from, to })),
       ),
       SqlState.PROVENANCE_REQUIRED,
     );
