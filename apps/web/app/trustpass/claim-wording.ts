@@ -44,8 +44,12 @@ const DETAILS: Readonly<Record<string, string>> = {
   "issuer:unverified": "Nobody has checked this company. Everything on this page is its own word.",
   "issuer:suspended":
     "TrustPass has withdrawn its trust in this company. Treat what it registered with caution.",
+  // Not "the issuer supplied this serial": since TP-047 a record may have no
+  // issuer at all, and that sentence invented one on every holder enrolment.
+  // Found by reading the rendered page rather than by a test, which is why the
+  // one below exists now.
   "serial:recorded":
-    "The issuer supplied this serial. Nothing has compared it to the object in front of you — compare the last characters with the label yourself.",
+    "This serial was supplied with the record and nothing has compared it to the object in front of you — compare the last characters with the label yourself.",
   "issuer:not_present":
     "No business registered this product. Somebody who had it opened the record, so there is no company to check — which is not the same as a company nobody has checked yet.",
   "secure_tag:not_present":

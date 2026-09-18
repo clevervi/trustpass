@@ -11,9 +11,7 @@ import {
   type ProductStatus,
   product,
 } from "../schema/product.js";
-
-/** Postgres unique_violation. */
-const UNIQUE_VIOLATION = "23505";
+import { UNIQUE_VIOLATION, violatedConstraint } from "./constraint-violation.js";
 
 /** The partial unique index declared in `schema/product.ts`. */
 const LIVE_SERIAL_INDEX = "product_live_issuer_serial_idx";
@@ -21,28 +19,6 @@ const LIVE_SERIAL_INDEX = "product_live_issuer_serial_idx";
 export type InsertProductResult =
   | { readonly ok: true; readonly product: Product }
   | { readonly ok: false; readonly reason: "duplicate_live_serial" };
-
-/**
- * Drizzle wraps driver failures, so the SQLSTATE and the constraint name live
- * somewhere down the `cause` chain rather than on the error that surfaces.
- */
-function violatedConstraint(error: unknown): { code?: string; constraint?: string } {
-  let current: unknown = error;
-
-  while (current !== null && current !== undefined) {
-    const candidate = current as { code?: unknown; constraint_name?: unknown };
-    if (typeof candidate.code === "string") {
-      return {
-        code: candidate.code,
-        constraint:
-          typeof candidate.constraint_name === "string" ? candidate.constraint_name : undefined,
-      };
-    }
-    current = (current as { cause?: unknown }).cause;
-  }
-
-  return {};
-}
 
 /**
  * Inserts a product, reporting a duplicate live serial as an outcome rather

@@ -1,0 +1,142 @@
+import { eq } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createDatabase, type Database } from "../client.js";
+import { generateTrustPassId } from "../identity/trustpass-id.js";
+import { lifecycleEvent } from "../schema/lifecycle-event.js";
+import { product } from "../schema/product.js";
+import { enrolProduct, findLiveHolderEnrolment } from "./enrolment-repository.js";
+import { findProductHistory } from "./lifecycle-event-repository.js";
+
+const databaseUrl = process.env.DATABASE_URL;
+
+/**
+ * Enrolling a product nobody registered, against real Postgres.
+ *
+ * What this path records is narrow, and every test here is about keeping it
+ * narrow: somebody entered a serial. Not that they own the product, not that it
+ * is genuine, not that anything was checked.
+ */
+describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
+  const run = Math.random().toString(36).slice(2, 8).toUpperCase();
+  let db: Database;
+  let n = 0;
+
+  function values(serial?: string) {
+    n += 1;
+    return {
+      brand: "ASUS",
+      model: "ROG Strix RTX 5070 Ti",
+      serial: serial ?? `${run}-ENR-${n}`,
+      category: "gpu" as const,
+    };
+  }
+
+  beforeAll(() => {
+    db = createDatabase(databaseUrl as string);
+  });
+
+  afterAll(async () => {
+    // Enrolled products carry events, and events cannot be deleted. The rows
+    // stay, which is the append-only guarantee working.
+    await db.$client.end();
+  });
+
+  it("creates a record with no issuer and a holder origin", async () => {
+    const result = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values() });
+    if (!result.ok) throw new Error("expected success");
+
+    expect(result.product.issuerId).toBeNull();
+    expect(result.product.origin).toBe("holder");
+  });
+
+  it("never produces active, because entering a serial is not owning a product", async () => {
+    const result = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values() });
+    if (!result.ok) throw new Error("expected success");
+
+    // ADR 0008. `active` means ownership was established, and nothing here
+    // established anything about who holds the object.
+    expect(result.product.status).toBe("registered");
+  });
+
+  it("writes the enrolment as the record's first event, by a holder", async () => {
+    const result = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values() });
+    if (!result.ok) throw new Error("expected success");
+
+    const history = await findProductHistory(db, result.product.id);
+
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({
+      type: "record_enrolled",
+      actorKind: "holder",
+      reason: "holder_request",
+    });
+  });
+
+  it("records no issuer on the event either", async () => {
+    const result = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values() });
+    if (!result.ok) throw new Error("expected success");
+
+    const [event] = await db
+      .select()
+      .from(lifecycleEvent)
+      .where(eq(lifecycleEvent.productId, result.product.id));
+
+    expect(event?.issuerId).toBeNull();
+  });
+
+  it("reports a second live enrolment of the same serial as an outcome", async () => {
+    const shared = `${run}-DUPE`;
+    const first = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values(shared) });
+    if (!first.ok) throw new Error("expected the first to succeed");
+
+    const second = await enrolProduct(db, {
+      trustpassId: generateTrustPassId(),
+      ...values(shared),
+    });
+
+    // An outcome rather than an exception: a client that timed out and retried
+    // is asking a reasonable question, not making a mistake.
+    expect(second).toEqual({ ok: false, reason: "duplicate_live_serial" });
+  });
+
+  it("leaves no product behind when the serial was already enrolled", async () => {
+    const shared = `${run}-NOORPHAN`;
+    await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values(shared) });
+    await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values(shared) });
+
+    const rows = await db
+      .select({ id: product.id })
+      .from(product)
+      .where(eq(product.serial, shared));
+
+    expect(rows).toHaveLength(1);
+  });
+
+  it("does not report an unrelated unique violation as a duplicate serial", async () => {
+    const shared = generateTrustPassId();
+    const first = await enrolProduct(db, { trustpassId: shared, ...values() });
+    if (!first.ok) throw new Error("expected the first to succeed");
+
+    // Same identifier, different serial. That violates the TrustPass ID index,
+    // not the serial one — and reporting it as "already enrolled" would tell a
+    // caller their serial is taken when it is not, sending them to change the
+    // one thing that was correct.
+    await expect(enrolProduct(db, { trustpassId: shared, ...values() })).rejects.toThrow();
+  });
+
+  it("finds the enrolment a serial already has, case insensitively", async () => {
+    const shared = `${run}-FIND`;
+    const first = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values(shared) });
+    if (!first.ok) throw new Error("expected success");
+
+    const found = await findLiveHolderEnrolment(db, shared.toLowerCase());
+
+    // The index is on lower(serial), so a lookup that was case sensitive would
+    // miss the very row that caused the collision.
+    expect(found?.trustpassId).toBe(first.product.trustpassId);
+  });
+
+  it("does not find an enrolment for a serial nobody enrolled", async () => {
+    expect(await findLiveHolderEnrolment(db, `${run}-ABSENT`)).toBeUndefined();
+  });
+});

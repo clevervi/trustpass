@@ -166,3 +166,19 @@ describe("no issuer is not an unverified issuer", () => {
     );
   });
 });
+
+describe("wording that must hold for a record with no issuer", () => {
+  it("does not say an issuer supplied the serial", () => {
+    // A holder-enrolled record has no issuer, so attributing the serial to one
+    // invents a party the record does not have — the same mistake as reporting
+    // a missing issuer as an unverified one.
+    expect(describeClaim("serial", "recorded").detail).not.toMatch(/\bthe issuer\b/i);
+  });
+
+  it("still says nothing has compared the serial to the object", () => {
+    // The part that must survive any rewording.
+    expect(describeClaim("serial", "recorded").detail).toContain(
+      "nothing has compared it to the object",
+    );
+  });
+});
