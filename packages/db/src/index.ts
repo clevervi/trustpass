@@ -9,6 +9,7 @@ export {
 } from "./domain/product-status.js";
 export {
   mayRecord,
+  mayRetireFrom,
   RECORDING_AUTHORITY,
   recordingAuthorityPairs,
   UnauthorisedRecording,

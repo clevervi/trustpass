@@ -10,7 +10,7 @@ import {
 } from "../schema/lifecycle-event.js";
 import { product } from "../schema/product.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
-import { mayRecord, RECORDING_AUTHORITY } from "./recording-authority.js";
+import { mayRecord, mayRetireFrom, RECORDING_AUTHORITY } from "./recording-authority.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -108,5 +108,85 @@ describe.skipIf(!databaseUrl)("what a capacity may record", () => {
     for (const actorKind of lifecycleActorKind.enumValues) {
       expect(mayRecord(actorKind, "record_corrected")).toBe(actorKind === "system");
     }
+  });
+
+  describe("ending the life of a product under suspension", () => {
+    async function suspended(): Promise<number> {
+      const [created] = await db
+        .insert(product)
+        .values({
+          trustpassId: generateTrustPassId(),
+          issuerId: null,
+          brand: "ASUS",
+          model: "RTX 5070",
+          serial: `${run}-SUSP-${Math.random().toString(36).slice(2, 8)}`,
+          category: "gpu",
+          status: "registered",
+          origin: "holder",
+        })
+        .returning({ id: product.id });
+      const id = created?.id as number;
+
+      await db.insert(lifecycleEvent).values({
+        productId: id,
+        type: "product_suspended",
+        actorKind: "authority",
+        issuerId: null,
+        occurredAt: new Date(),
+        reason: "theft_report",
+        previousState: "registered",
+        resultingState: "suspended",
+      });
+
+      return id;
+    }
+
+    function retire(
+      productId: number,
+      actorKind: LifecycleActorKind,
+      from: "registered" | "suspended",
+    ) {
+      return db.insert(lifecycleEvent).values({
+        productId,
+        type: "product_retired",
+        actorKind,
+        issuerId: null,
+        occurredAt: new Date(),
+        reason: "end_of_life",
+        previousState: from,
+        resultingState: "retired",
+      });
+    }
+
+    it.each(["holder", "issuer"] as const)(
+      "refuses a %s retiring a suspended product",
+      async (actorKind) => {
+        // The laundering path: retirement frees the serial, so retiring a
+        // suspended product and re-enrolling it produces a passport with no
+        // history of the report.
+        await expectSqlState(
+          retire(await suspended(), actorKind, "suspended"),
+          SqlState.UNAUTHORISED_RECORDING,
+        );
+      },
+    );
+
+    it("lets an authority retire a suspended product", async () => {
+      // Whoever can investigate the report can decide the object's life ends
+      // while it is open.
+      await expect(retire(await suspended(), "authority", "suspended")).resolves.toBeDefined();
+    });
+
+    it("still lets a holder retire a product that is not suspended", async () => {
+      // Warranty replacement. The whole reason retirement frees the serial.
+      await expect(retire(productId, "holder", "registered")).resolves.toBeDefined();
+    });
+
+    it("agrees with the declaration", () => {
+      expect(mayRetireFrom("holder", "suspended")).toBe(false);
+      expect(mayRetireFrom("issuer", "suspended")).toBe(false);
+      expect(mayRetireFrom("authority", "suspended")).toBe(true);
+      expect(mayRetireFrom("holder", "registered")).toBe(true);
+    });
   });
 });
