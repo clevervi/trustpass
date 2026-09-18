@@ -78,6 +78,7 @@ describe.skipIf(!databaseUrl)("authority is a record with a lifetime", () => {
     const [created] = await db
       .insert(organization)
       .values({
+        companyName: `Authority ${run}`,
         legalName: `Authority ${run} SAS`,
         registrationNumber: `${run}-AUTH`,
         country: "CO",

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { bigint, check, pgTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+import { issuerVerificationStatus } from "./issuer.js";
 
 /**
  * A party with a legal identity.
@@ -27,6 +28,17 @@ export const organization = pgTable(
     /** Internal key. Never serialised outside the system — ADR 0005. */
     id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
 
+    /**
+     * The name the party trades under.
+     *
+     * Kept distinct from `legalName` deliberately. They look redundant and are
+     * not: a company sells as one name and signs as another, and a migration
+     * that collapsed them would destroy information to tidy a schema. Whether
+     * they should eventually be one field is a question for when somebody has a
+     * reason, not for an identity migration.
+     */
+    companyName: varchar("company_name", { length: 200 }).notNull(),
+
     legalName: varchar("legal_name", { length: 200 }).notNull(),
 
     /**
@@ -38,6 +50,25 @@ export const organization = pgTable(
 
     /** ISO 3166-1 alpha-2. A registration number means nothing without it. */
     country: varchar("country", { length: 2 }).notNull(),
+
+    /**
+     * Whether TrustPass has checked this party against a national registry.
+     *
+     * Per ADR 0012 this is a **claim**: it answers "is this company checked,
+     * now", which is what a buyer deciding today needs and what the passport
+     * renders. Changes to it are **events**, and those do not exist yet.
+     *
+     * So this column is currently the only record of the fact, which is ADR
+     * 0011 §4's rejected shape — "was this party verified in March" has no
+     * answer. The migration that brings it here carries the **current value**
+     * and deliberately invents no history: a timeline reconstructed from a
+     * mutable column would be a plausible fiction, which is the one thing this
+     * project refuses to publish. The events come next, and the history starts
+     * when they do.
+     */
+    verificationStatus: issuerVerificationStatus("verification_status")
+      .notNull()
+      .default("unverified"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -58,6 +89,8 @@ export const organization = pgTable(
     ),
 
     check("organization_legal_name_not_blank", sql`length(trim(${table.legalName})) >= 2`),
+
+    check("organization_company_name_not_blank", sql`length(trim(${table.companyName})) >= 2`),
   ],
 );
 

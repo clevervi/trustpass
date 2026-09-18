@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type { TrustPassId } from "../identity/trustpass-id.js";
 import { issuer } from "./issuer.js";
+import { organization } from "./organization.js";
 
 /**
  * What kind of thing this is.
@@ -118,6 +119,27 @@ export const product = pgTable(
       onUpdate: "cascade",
     }),
 
+    /**
+     * Which party registered this product.
+     *
+     * Per ADR 0012 `organization` is the canonical identity of a party and
+     * `issuer` is a role it plays. This column exists beside `issuerId` during
+     * the move, which is the additive path `CONTRIBUTING.md` requires: add a
+     * column, backfill it, stop using the old one, in separate migrations. The
+     * destructive half gets its own pull request so the diff that drops data is
+     * the whole diff.
+     *
+     * Nullable for the same reason `issuerId` is: a holder-enrolled record has
+     * no party behind it.
+     */
+    organizationId: bigint("organization_id", { mode: "number" }).references(
+      () => organization.id,
+      {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      },
+    ),
+
     brand: varchar("brand", { length: 120 }).notNull(),
 
     model: varchar("model", { length: 120 }).notNull(),
@@ -163,6 +185,9 @@ export const product = pgTable(
     // "Everything this issuer registered" is the query behind an issuer
     // dashboard and behind most fraud signals.
     index("product_issuer_id_idx").on(table.issuerId),
+
+    // The same lookup, against the identity that will outlive issuer_id.
+    index("product_organization_id_idx").on(table.organizationId),
 
     // Looking a product up by serial is how a support conversation starts.
     // Lower-cased because serials get typed by hand off a sticker.
