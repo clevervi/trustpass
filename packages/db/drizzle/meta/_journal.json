@@ -29,6 +29,104 @@
       "when": 1789664189728,
       "tag": "0003_one_live_identity_per_serial",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789676839771,
+      "tag": "0004_create_lifecycle_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789676840771,
+      "tag": "0005_lifecycle_event_append_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789694205801,
+      "tag": "0006_add_product_origin",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789696063879,
+      "tag": "0007_enrol_without_issuer",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789696064879,
+      "tag": "0008_recording_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789696065879,
+      "tag": "0009_retiring_a_suspended_product",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789696066879,
+      "tag": "0010_provenance_is_guaranteed",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789696067879,
+      "tag": "0011_product_activated_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789696068879,
+      "tag": "0012_activated_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789696069879,
+      "tag": "0013_one_move_one_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789696070879,
+      "tag": "0014_events_describe_the_path",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789696071879,
+      "tag": "0015_the_database_writes_recorded_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789696072879,
+      "tag": "0016_this_transaction_is_an_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789732172179,
+      "tag": "0017_the_snapshot_catches_up",
+      "breakpoints": true
     }
   ]
 }

@@ -33,10 +33,50 @@ Every state can reach `retired`. Nothing leaves it.
 | Status       | Meaning                                                                 |
 | ------------ | ----------------------------------------------------------------------- |
 | `draft`      | A row exists. It claims nothing. The default.                           |
-| `registered` | The issuer stands behind the record.                                     |
-| `active`     | In an owner's hands. The only state whose passport is worth reading.     |
+| `registered` | TrustPass holds an established record for this product.                 |
+| `active`     | Ownership has been established and the product is in an owner's hands.  |
 | `suspended`  | Something is wrong: a fraud flag, a theft report, a disputed claim.      |
 | `retired`    | End of life. Terminal.                                                   |
+
+### `registered` says a record exists, not who vouches for it
+
+It used to read "the issuer stands behind the record", and that stopped being
+true when [ADR 0007](adr/0007-identity-may-begin-after-manufacture.md) made
+enrolment a first-class path. A person enrolling a device they hold is not an
+issuer and vouches for nothing beyond having read a serial — yet their product
+has to land somewhere, and the only honest landing place is `registered`.
+
+Keeping the old wording would have meant either a state that lies about
+holder-enrolled products, or a sixth state (`enrolled`) whose only job is to
+carry a distinction that belongs elsewhere.
+
+**The status says a record exists. Who vouches for it, and with what standing,
+is a separate question with a separate answer:**
+
+| Question | Where it is answered |
+| --- | --- |
+| Is there a record? | `status` |
+| Where did the record come from? | `origin` — `manufacturer`, `supply_chain`, `holder` |
+| Who acted, in what capacity? | the lifecycle event's actor |
+| Has anyone checked the issuer? | the `issuer` verification claim |
+
+That separation is why the state machine stays five states while the trust model
+keeps getting richer. A status is a position in a lifecycle; it is not a summary
+of how much anyone should believe.
+
+**`active` is a consequence, not a label.** Ownership does not exist until
+v0.5.0, so today nothing can make it true and `changeProductStatus` refuses to
+set it — in the type, so the compiler enforces it rather than a reviewer.
+
+Its description also used to end "the only state whose passport is worth
+reading". That was true when the only way in was an issuer registering a
+product, and enrolment made it false: a `registered` product carries an
+identity, its claims, its history and an explicit unknown period before the
+record began. That is a passport well worth reading, and it is the one most
+readers will meet first.
+
+**Every state has a passport worth reading.** What changes between them is what
+the passport is able to say, and saying that accurately is the entire job.
 
 ## Allowed moves
 

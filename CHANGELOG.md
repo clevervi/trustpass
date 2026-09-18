@@ -14,6 +14,166 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.4.0] — 2026-09-18
+
+**Lifecycle events and enrolment.** A product's history is recorded, append-only,
+and rendered on its passport, and the record can now begin with whoever holds
+the object rather than only with a business holding a national registration
+number.
+
+The milestone's own argument, from `docs/ROADMAP.md`: a status change that
+leaves no record of why it happened is not a smaller problem than a missing
+feature. Products could already be suspended, and a passport could already say
+`Suspended` while being unable to say whether that was a theft report, a fraud
+flag or a disputed claim — which mean very different things to somebody deciding
+whether to buy.
+
+`TP-034`, `TP-046` … `TP-048`, `TP-050` … `TP-053`.
+
+### Decided
+
+- **[ADR 0010](docs/adr/0010-two-records-one-object.md) amended: `unresolved` is
+  an answer, and the evidence provider is a third role.** §7 required the
+  counterparty to confirm, and the counterparty is frequently not there — so a
+  correspondence nobody answers waited in `proposed` forever, a defect the
+  original pull request's own self-review named without solving. A third exit
+  now records that the evidence did not arrive, asserting neither truth nor
+  falsehood, and reopens if evidence appears later; treating silence as
+  rejection was refused because it manufactures a verdict out of an absence.
+  Supplying evidence is also separated from proposing and verifying, since one
+  actor filling all three is self-assertion with paperwork. And only a
+  **verified** correspondence is public: were `proposed` visible, proposing one
+  would be a way to put a permanent question mark on a record you do not own.
+- **[ADR 0010](docs/adr/0010-two-records-one-object.md) — two records for one
+  object are joined by evidence, and neither is destroyed.** Settles
+  [#49](https://github.com/clevervi/trustpass/issues/49): a holder enrolment and
+  a later manufacturer registration of the same serial are two truthful
+  assertions about one object, made by parties with different standing over
+  different periods. They are joined by a **correspondence** — a record in its
+  own right, never an edit to either product — so both TrustPass IDs keep
+  resolving and each names the other once verified. Standing is explicitly not
+  evidence: a verified manufacturer has proved who it is and nothing about the
+  object, so "the manufacturer wins" is refused and self-verification with it.
+  The unknown period is bounded rather than erased, which is the actual benefit
+  of reconciling. Proposed, verified, rejected and withdrawn are all events, so
+  a join can be reversed or disputed without anything being deleted.
+- **[ADR 0009](docs/adr/0009-a-capacity-is-granted-not-claimed.md) — a capacity
+  is granted, evidenced and revocable; it is not a role on a user.**
+  `recording-authority.ts` already decides what a capacity may assert and a
+  trigger enforces it; nothing decided who holds one, and `actor_kind` is
+  self-declared. Decided before `TP-141` builds anything to present an identity,
+  because events are permanent and each will point at whatever model existed the
+  day it was written. A capacity is held under a grant carrying scope, granting
+  actor, evidence reference, validity window and revocation, and an event
+  records the grant it acted under — without which a revoked warrant leaves what
+  it wrote unfindable. Revocation never invalidates past events: the passport
+  gains a qualifier, never an erasure. A holder's capacity is granted by nobody
+  and is recorded as self-asserted, because no registry of people who own things
+  exists and inventing a grant would fabricate an authority.
+- **[ADR 0008](docs/adr/0008-events-record-what-happened-claims-assert-what-is-true.md)
+  — events record what happened; claims assert what is true.** Fixed before the
+  first event row exists, because every milestone after v0.4.0 writes to the
+  same spine and a wrong shape is migrated rather than edited. An event is
+  past-tense and append-only, carrying `occurred_at` **and** `recorded_at`
+  separately, with `reason` from a closed set. Reasons never become states:
+  `suspended` stays one state and `theft_report`, `fraud_flag` and `dispute` are
+  reasons on the event that caused it. Enrolment is the first event and must not
+  produce `active`, which means "in an owner's hands" and cannot be true before
+  ownership exists.
+- **[ADR 0007](docs/adr/0007-identity-may-begin-after-manufacture.md) amended:
+  what begins at enrolment is the record, not the product.** A device has had an
+  identity since it was made; what starts is TrustPass's knowledge of it. Read
+  loosely the original wording implied a product did not exist before enrolment,
+  which would make the unknown period look like a defect in the object rather
+  than a limit on what this system saw. The decision is unchanged.
+- **Lifecycle events now come before warranty.** The order was v0.4.0 Warranty →
+  v0.5.0 Lifecycle and ownership. It is now v0.4.0 Lifecycle events and
+  enrolment → v0.5.0 Ownership → v0.6.0 Warranty, with verification and
+  blockchain shifting to v0.7.0 and v0.8.0.
+
+  The reason is already visible in this repository rather than hypothetical:
+  [`docs/product-lifecycle.md`](docs/product-lifecycle.md) states that a status
+  change leaves no record of *why* it happened. Products can be suspended today,
+  and the passport can say `Suspended` while being unable to say whether that
+  was a theft report, a fraud flag or a disputed claim — which mean very
+  different things to a buyer. Every feature after this one writes history, so
+  warranty should be the event spine's first consumer rather than its accidental
+  author.
+
+  Note that `docs/releases/v0.3.0.md` still points forward to the old ordering.
+  It is a dated snapshot of what that tag contained and is deliberately not
+  rewritten; `docs/ROADMAP.md` is the current plan.
+- **[ADR 0007](docs/adr/0007-identity-may-begin-after-manufacture.md) — identity
+  may begin after manufacture.** A product can currently only be registered by a
+  business holding a national registration number, which makes every product
+  that already exists unreachable. Enrolment becomes a first-class path
+  recording the record's **origin** (`manufacturer`, `supply_chain`, `holder`),
+  because a device enrolled by whoever held it asserts far less than one
+  registered at the factory and must not be mistakable for it. Scheduled as
+  `TP-046`…`TP-049` in v0.4.0.
+
+### Added
+
+- **Lifecycle events, and provenance as a database guarantee.** A product's
+  history is recorded in `lifecycle_event`, append-only, and rendered on its
+  passport. Nine triggers carry the rules rather than application code, because
+  a rule that lives only in TypeScript is bypassed by the first path that writes
+  without going through it: history cannot be edited, deleted or truncated
+  (`TP002`); each actor capacity may record only what it is entitled to
+  (`TP003`); and a product can neither exist nor change status without an event
+  explaining why, written in the same transaction (`TP004`).
+- **Holder enrolment.** A person can enrol hardware they hold, without a
+  national registration number. The record carries `origin` so a device enrolled
+  by whoever held it is never mistakable for one registered at the factory.
+
+### Fixed
+
+- **`drizzle-kit` offered migrations that fail on every database**
+  ([#85](https://github.com/clevervi/trustpass/issues/85)). Its snapshot
+  refreshes only when `drizzle-kit` itself generates a migration, and every
+  migration since `0011` is hand-written — triggers and deferred constraints are
+  not things the generator can express — so the snapshot described a database
+  that stopped existing five migrations earlier. CI now fails when
+  `db:generate` produces anything, with the limit written down: a green result
+  means the part of the schema `drizzle-kit` can represent is not stale, and
+  nothing about the nine triggers, which no snapshot has ever contained.
+- **A concurrent transaction's event could explain your status change**
+  ([#82](https://github.com/clevervi/trustpass/issues/82)). The provenance
+  triggers scoped "this transaction" with `recorded_at >= transaction_timestamp()`,
+  which is a time **range**, not an identity — under READ COMMITTED anything
+  another transaction committed meanwhile fell inside it. Reproduced with two
+  connections: a product moved with no event written in its transaction at all.
+  Now `recorded_in_xact = pg_current_xact_id()`, the top-level transaction id,
+  so an event either was written by this transaction or was not.
+- **A planted `recorded_at` defeated the provenance guarantee**
+  ([#79](https://github.com/clevervi/trustpass/issues/79)). The column had a
+  default and a comment claiming the database set it; a default is what happens
+  when nobody supplies a value, and the triggers read exactly that column to
+  decide which transaction owned an event. An event planted ten years ahead, in
+  its own transaction, let a later status change commit having recorded nothing.
+  Both columns are now written by a trigger, for every writer including the
+  owner.
+- **A passport QR could encode a host this deployment does not own**
+  ([#43](https://github.com/clevervi/trustpass/issues/43)). `passportUrl`
+  defaulted to `http://localhost:3000` when `NEXT_PUBLIC_SITE_URL` was unset,
+  and both call sites relied on that default. The resulting code scanned
+  cleanly and resolved elsewhere — and on a developer's machine that address is
+  not dead, it is whatever else holds the port.
+
+### Changed
+
+- **`NEXT_PUBLIC_SITE_URL` is now required in production.** Unset, no QR is
+  rendered: the passport page omits it and `/trustpass/{id}/qr.svg` answers
+  `503`. A missing QR is honest; one pointing at the wrong host is not, and it
+  is printed onto an object that cannot be recalled.
+- **The QR's `Cache-Control` now depends on where its origin came from.** A
+  configured origin is cached for a year as before. An origin derived from the
+  request — development only — is `no-store`, because `Host` is
+  caller-controlled and caching it would serve a forged host to every later
+  visitor.
+
 ## [0.3.0] — 2026-09-17
 
 Passport. A TrustPass ID now resolves to a page anyone can read, and that page

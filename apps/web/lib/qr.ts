@@ -124,11 +124,19 @@ function escapeXml(value: string): string {
  * The absolute URL a passport QR resolves to.
  *
  * Absolute because a QR is scanned by a camera that has no page to be relative
- * to. `NEXT_PUBLIC_SITE_URL` is read here rather than at module load so a test
- * can set it, and it falls back to localhost so the code is scannable in
- * development instead of pointing at a host that does not exist yet.
+ * to.
+ *
+ * `baseUrl` is required and no environment variable is read here. An earlier
+ * version defaulted to `http://localhost:3000`, which meant that with
+ * `NEXT_PUBLIC_SITE_URL` unset every code encoded that host no matter where the
+ * app was served — and on a developer's machine that address is not dead, it is
+ * whatever else is bound to the port. The code still scanned. It simply went
+ * somewhere else.
+ *
+ * Deciding the origin is a question about the request and the deployment, which
+ * this function cannot see. It belongs to `passport-origin.ts`, and a pure
+ * function has no business guessing it.
  */
-export function passportUrl(trustpassId: string, baseUrl?: string): string {
-  const base = baseUrl ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-  return `${base.replace(/\/$/, "")}/trustpass/${encodeURIComponent(trustpassId)}`;
+export function passportUrl(trustpassId: string, baseUrl: string): string {
+  return `${baseUrl.replace(/\/$/, "")}/trustpass/${encodeURIComponent(trustpassId)}`;
 }

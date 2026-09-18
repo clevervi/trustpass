@@ -1,5 +1,6 @@
 import { createDatabase, type Database, generateTrustPassId, schema } from "@trustpass/db";
-import { eq, like } from "drizzle-orm";
+import { insertProductWithProvenance, moveProductStatus } from "@trustpass/db/testing";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { registerProduct } from "../products/register-product.js";
@@ -77,9 +78,14 @@ describe.skipIf(!databaseUrl)("GET /passports/{trustpassId} against a real datab
   });
 
   afterAll(async () => {
-    // Products first: the issuer foreign key is RESTRICT.
-    await db.delete(schema.product).where(like(schema.product.serial, `${run}%`));
-    await db.delete(schema.issuer).where(like(schema.issuer.registrationNumber, `${run}%`));
+    // Deliberately no cleanup. Since TP-051 a registered product carries a
+    // lifecycle event, events cannot be deleted, and the product foreign key is
+    // RESTRICT — so these rows cannot be removed and neither can the issuer
+    // that owns them.
+    //
+    // That is the guarantee working rather than a leak: a teardown that
+    // succeeded here would prove a product's history can be erased. Each run
+    // uses its own prefix, so the rows accumulate without colliding.
     await db.$client.end();
   });
 
@@ -155,10 +161,13 @@ describe.skipIf(!databaseUrl)("GET /passports/{trustpassId} against a real datab
 
   it("still publishes a suspended product, and says it is suspended", async () => {
     const trustpassId = await register(uniqueSerial());
-    await db
-      .update(schema.product)
-      .set({ status: "suspended" })
+    // Through the helper: since #54 a status change carries the event that
+    // explains it, and this test's subject is what the passport publishes.
+    const [row] = await db
+      .select({ id: schema.product.id })
+      .from(schema.product)
       .where(eq(schema.product.trustpassId, trustpassId as never));
+    await moveProductStatus(db, row?.id as number, "suspended");
 
     const response = await app.request(`/passports/${trustpassId}`);
 
@@ -174,7 +183,7 @@ describe.skipIf(!databaseUrl)("GET /passports/{trustpassId} against a real datab
       .from(schema.issuer)
       .where(eq(schema.issuer.registrationNumber, verifiedIssuer.registrationNumber));
 
-    await db.insert(schema.product).values({
+    await insertProductWithProvenance(db, {
       trustpassId,
       issuerId: issuer?.id as number,
       brand: "ASUS",

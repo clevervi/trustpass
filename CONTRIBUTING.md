@@ -147,6 +147,45 @@ check proves a test can fail; it cannot prove the author tested the right thing.
 The bar makes the author's reasoning inspectable, which is the most a single
 author can honestly offer.
 
+### A pull request whose commits are not yours is rebase-merged
+
+The default is a squash merge. **Squashing erases authorship**: GitHub
+attributes the squashed commit to whoever pressed merge, not to whoever wrote
+the code. Measured rather than assumed — three commits authored by the second
+account went in under #70 and the contributor count did not move.
+
+So when a pull request carries commits authored by a different account, merge it
+with **rebase**, which keeps each commit and its author while still producing a
+linear history. Squash the rest.
+
+This repository has one maintainer working from two accounts, and the history
+should say which one wrote what. Losing that to a merge strategy is a small lie
+told by a default.
+
+### Every guard ships with a test that dies without it
+
+**Adding a check, a constraint, a type guard or a trigger means adding a test
+whose failure depends on that specific condition.** Not a test that happens to
+exercise the code around it — one that goes red when the guard is removed and
+green when it is restored.
+
+This is written down because it is the mistake that keeps recurring here, three
+times in one week:
+
+| Guard | How it was caught |
+| --- | --- |
+| The QR quiet zone | The test derived its bound from the value under test, so it passed with no margin at all (#40) |
+| `FOR UPDATE` on a status change | Removing the lock left every test green; the calls serialise on their own (#57) |
+| `isHistory` in the passport fetch | Guard added, no test written; removing it changed nothing (#61) |
+
+Each was found by breaking the guard on purpose, never by the suite. **The
+protection kept arriving before the proof of the protection**, and a guard with
+no test that can fail is indistinguishable from no guard at all — except that it
+reads like safety, which is worse.
+
+The order that avoids it: write the failing case first, add the guard, watch it
+pass, then remove the guard and watch it fail again.
+
 ## Break-glass
 
 `main` and `develop` are protected, and the protection applies to
@@ -216,6 +255,70 @@ run, not merely built: `v0.1.0` was tagged once, found broken on first
 execution, and re-cut. That was free because it had not been pushed. After a
 push it is not free, because other people's checkouts already believe it.
 
+### A `TP-` identifier has to resolve to something
+
+Two were found pointing at nothing, both by hand: `TP-130`, cited for secure
+tags and present nowhere else, and `TP-111`, referenced by
+`packages/db/src/schema/product.ts` and owned by no issue at all — so the code
+was deferring a decision to an identifier that tracked nothing. It now has one
+(#89).
+
+> **A `TP-` identifier in code, an ADR, a release note or this file must resolve
+> to an issue or to a roadmap entry. `docs/ROADMAP.md` itself may name unstarted
+> work, because that is what a roadmap is for.**
+
+To check:
+
+```bash
+# CONTRIBUTING is excluded because the rule above names the identifiers that
+# were wrong, and an example is not a reference to work.
+rg -o 'TP-[0-9]{3}' --glob '!node_modules' --glob '!CONTRIBUTING.md' .   | sed 's/.*://' | sort -u > /tmp/used
+gh issue list --state all --limit 300 --json title -q '.[].title'   | rg -o 'TP-[0-9]{3}' | sort -u > /tmp/issued
+comm -23 /tmp/used /tmp/issued
+```
+
+Every result must be covered by `docs/ROADMAP.md` — **literally, or by a range
+it declares.** `TP-070` … `TP-074` assigns five identifiers and spells out two,
+so reading the output as a list of failures is wrong. That last step is a
+judgement, which is the honest reason this is not a gate.
+
+**Deliberately not a CI gate, and the reason is measured rather than assumed.**
+42 identifiers are referenced; 25 have an issue. Nearly all of the remainder are
+future roadmap entries, which are legitimate — requiring an issue for each would
+contradict the Definition of Ready, whose whole point is that an issue carries
+acceptance criteria rather than a placeholder. The roadmap also writes ranges,
+so `TP-050` … `TP-053` assigns two identifiers it never spells out, and a check
+comparing literal strings fails on correct references.
+
+A gate that cries wolf gets ignored, and an ignored gate is worse than a command
+somebody runs when they touch an identifier. That is the trade made here; the
+migration drift check is a gate because it has no equivalent false positive.
+
+### The README's status block is a claim like any other
+
+`README.md` says what works and what does not. It is the first thing a reader
+sees and the last thing anyone remembers to update, and it has already been
+wrong: it listed lifecycle events under "not built yet" while they were
+recorded, enforced by nine triggers and rendered on the public passport (#87).
+
+So before cutting a release, and whenever a milestone's worth of work has
+merged:
+
+- Read the status block against the code rather than against memory. Every entry
+  on the "not built yet" list asserts that something is absent, and absence is
+  checkable — grep for it, look for the table, open the page.
+- Check the whole block, not the line somebody complained about. A fix that
+  corrects one sentence and leaves four unverified has not been done.
+- Move what shipped into `CHANGELOG.md`'s `Unreleased` in the same pass. The
+  rule that later work belongs there already exists; it is the following of it
+  that lapses.
+- Never write a number that rots. "`develop` is 36 commits ahead" is false by
+  the next merge. "`develop` is ahead of it" stays true.
+
+This project spends its credibility on saying what is known and what nobody has
+checked. Being wrong about what it has built is the cheapest available way to
+lose that, and it costs one reader.
+
 ## Migrations
 
 ```bash
@@ -238,6 +341,43 @@ migration — a down script would imply an undo that does not exist. Consequentl
 - A destructive change gets its own migration and its own pull request, so the
   diff that drops data is the whole diff.
 - Never edit a migration that has been merged. It has already run somewhere.
+
+### The snapshot has to keep up, and CI checks that it does
+
+`drizzle-kit` keeps its own picture of the schema in
+`packages/db/drizzle/meta/NNNN_snapshot.json`, and refreshes it **only when
+drizzle-kit itself generates a migration**. A hand-written one — which is most
+of them here, because triggers, deferred constraint triggers and partial indexes
+are not things the generator can express — leaves that picture describing a
+database that no longer exists.
+
+It drifted unnoticed from `0011` to `0016` and surfaced as a generated migration
+that fails against *every* database, a freshly reset one included, because it
+offered to re-add what earlier migrations already create.
+
+So after hand-writing a migration:
+
+```bash
+pnpm db:generate     # expect: No schema changes, nothing to migrate
+```
+
+If it produces a file, the schema and the migrations disagree: either a change
+never got a migration, or the hand-written one left the snapshot behind. The fix
+for the second is to let `generate` write the migration, then replace its body
+with an explanation of why it is empty — `0017` is the worked example.
+`--custom` looks like the right tool and is not; it copies the previous snapshot
+forward and the drift survives.
+
+CI runs the same check, so this is caught in the pull request that causes it.
+
+**What a green check means, and what it does not.** The generator only sees what
+it can express. Nine triggers, five trigger functions and two deferrable
+constraints carry every guarantee this database makes, and **no snapshot has
+ever contained one of them** — measured, not assumed. A green drift check means
+*the part of the schema drizzle-kit can represent is not stale*. It says nothing
+about the triggers in `0005`, `0008`, `0010`, `0014`, `0015` and `0016`. Those
+are covered by the integration suite against a real Postgres, which is a
+separate job for exactly this reason.
 
 **`DROP SCHEMA public CASCADE` is not a reset.** Drizzle records applied
 migrations in a separate `drizzle` schema, which survives, so the next

@@ -1,10 +1,11 @@
-import { eq, like } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { issuer } from "../schema/issuer.js";
 import { type ProductStatus, product } from "../schema/product.js";
 import { expectSqlState, SqlState, sqlMessageOf, sqlStateOf } from "../testing/sql-state.js";
+import { insertProductWithProvenance, moveProductStatus } from "../testing/with-provenance.js";
 import { canTransition, PRODUCT_STATUS_TRANSITIONS } from "./product-status.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -39,23 +40,23 @@ describe.skipIf(!databaseUrl)("product status guard", () => {
     sequence += 1;
     const route = ROUTES[status];
 
-    const [created] = await db
-      .insert(product)
-      .values({
-        trustpassId: generateTrustPassId(),
-        issuerId,
-        brand: "ASUS",
-        model: "ROG Strix RTX 5070 Ti",
-        serial: `${run}-${String(sequence).padStart(4, "0")}`,
-        category: "gpu",
-        status: route.insertAs,
-      })
-      .returning();
+    // Through the helper since 0010: a product with no recorded origin is
+    // refused at COMMIT, and this suite's subject is the transition rules
+    // rather than provenance.
+    const created = await insertProductWithProvenance(db, {
+      trustpassId: generateTrustPassId(),
+      issuerId,
+      brand: "ASUS",
+      model: "ROG Strix RTX 5070 Ti",
+      serial: `${run}-${String(sequence).padStart(4, "0")}`,
+      category: "gpu",
+      status: route.insertAs,
+    });
 
-    const id = created?.id as number;
+    const id = created.id;
 
     for (const step of route.steps) {
-      await db.update(product).set({ status: step }).where(eq(product.id, id));
+      await moveProductStatus(db, id, step);
     }
 
     return id;
@@ -78,8 +79,10 @@ describe.skipIf(!databaseUrl)("product status guard", () => {
   });
 
   afterAll(async () => {
-    await db.delete(product).where(like(product.serial, `${run}%`));
-    await db.delete(issuer).where(like(issuer.registrationNumber, `${run}%`));
+    // Nothing is deleted. Products carry events since TP-051, events cannot be
+    // removed since TP-050, and the foreign keys are RESTRICT — so a teardown
+    // that succeeded would prove a product's history can be erased. Each run
+    // uses its own prefix, so the rows accumulate without colliding.
     await db.$client.end();
   });
 
@@ -88,7 +91,7 @@ describe.skipIf(!databaseUrl)("product status guard", () => {
 
     it.each(pairs)("%s to %s", async (from, to) => {
       const id = await createProductIn(from);
-      const attempt = db.update(product).set({ status: to }).where(eq(product.id, id));
+      const attempt = moveProductStatus(db, id, to);
 
       if (canTransition(from, to)) {
         await attempt;
@@ -153,12 +156,9 @@ describe.skipIf(!databaseUrl)("product status guard", () => {
     it("allows setting a status to the value it already has", async () => {
       const id = await createProductIn("retired");
 
-      const [updated] = await db
-        .update(product)
-        .set({ status: "retired" })
-        .where(eq(product.id, id))
-        .returning();
+      await moveProductStatus(db, id, "retired");
 
+      const [updated] = await db.select().from(product).where(eq(product.id, id));
       expect(updated?.status).toBe("retired");
     });
   });
@@ -170,7 +170,7 @@ describe.skipIf(!databaseUrl)("product status guard", () => {
       const id = await createProductIn("retired");
 
       try {
-        await db.update(product).set({ status: "active" }).where(eq(product.id, id));
+        await moveProductStatus(db, id, "active");
         expect.fail("expected the illegal transition to be refused");
       } catch (error) {
         // The message lives on the driver error, not on Drizzle's wrapper,
@@ -186,10 +186,7 @@ describe.skipIf(!databaseUrl)("product status guard", () => {
       // answer from "the database said no", and the API will report it as one.
       const id = await createProductIn("suspended");
 
-      await expectSqlState(
-        db.update(product).set({ status: "active" }).where(eq(product.id, id)),
-        SqlState.ILLEGAL_STATUS_TRANSITION,
-      );
+      await expectSqlState(moveProductStatus(db, id, "active"), SqlState.ILLEGAL_STATUS_TRANSITION);
     });
   });
 });

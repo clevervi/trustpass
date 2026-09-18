@@ -25,6 +25,29 @@ export const SqlState = {
    * no". See drizzle/0002_product_status_transition_guard.sql.
    */
   ILLEGAL_STATUS_TRANSITION: "TP001",
+  /**
+   * Project-defined, and deliberately distinct from TP001. Raised when
+   * something tries to modify or delete a lifecycle event, so a caller can tell
+   * "that move is not allowed" from "history cannot be rewritten" without
+   * parsing a message.
+   * See drizzle/0005_lifecycle_event_append_only.sql.
+   */
+  HISTORY_IS_APPEND_ONLY: "TP002",
+  /**
+   * Project-defined. Raised when a capacity records an event its standing does
+   * not support — a holder clearing a theft report against its own product,
+   * say. Distinct from TP001 and TP002 so a caller can tell "you may not record
+   * that" from the other two without parsing a message.
+   * See drizzle/0008_recording_authority.sql.
+   */
+  UNAUTHORISED_RECORDING: "TP003",
+  /**
+   * Project-defined. Raised at COMMIT by a deferred constraint trigger when a
+   * product exists, or a status moved, with no lifecycle event explaining it.
+   * Distinct from TP001 so an illegal move is still reported as illegal rather
+   * than as unexplained. See drizzle/0010_provenance_is_guaranteed.sql.
+   */
+  PROVENANCE_REQUIRED: "TP004",
 } as const;
 
 export type SqlStateCode = (typeof SqlState)[keyof typeof SqlState];

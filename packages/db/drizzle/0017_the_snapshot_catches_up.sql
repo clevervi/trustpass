@@ -1,0 +1,39 @@
+-- Deliberately empty. This migration exists for its snapshot, not its SQL.
+--
+-- drizzle-kit keeps its own picture of the schema in meta/NNNN_snapshot.json,
+-- and updates it only when drizzle-kit itself generates a migration. Every
+-- migration since 0011 has been hand-written, because triggers, deferred
+-- constraint triggers and partial indexes are not things the generator can
+-- express. So from 0011 onward the snapshots described a database that no
+-- longer existed, and `drizzle-kit generate` kept offering to re-apply changes
+-- that had already run:
+--
+--   ALTER TYPE "public"."lifecycle_event_type" ADD VALUE 'product_activated' …
+--   ALTER TABLE "lifecycle_event" ADD COLUMN "recorded_in_xact" …
+--
+-- Both statements FAIL against any database that has run 0011 and 0016 --
+-- which is every database, including a freshly reset one, since those
+-- migrations create exactly what the generator was offering to add. The correct
+-- migration here is therefore no migration at all. What needed fixing was the
+-- snapshot beside this file, which is now what `generate` produced: the real
+-- current schema, so the next diff starts from the truth.
+--
+-- Running this file does nothing, on a fresh database and on an existing one
+-- alike. That is the intended behaviour, not an oversight.
+--
+-- `drizzle-kit generate --custom` was tried first and is the wrong tool: it
+-- writes an empty migration but copies the *previous* snapshot forward, so the
+-- drift survives. Measured — the very next `generate` produced an 0018 with the
+-- same two statements.
+--
+-- Keeping this true is now a CI job rather than a habit. `.github/workflows`
+-- runs `drizzle-kit generate` and fails if it produces anything, so a
+-- hand-written migration that leaves the snapshot behind is caught in the pull
+-- request that introduces it rather than five migrations later.
+--
+-- What that job does NOT prove, and must not be read as proving: the generator
+-- only sees what it can express. No trigger, no trigger function and no
+-- deferred constraint in this database appears in any snapshot, so a green
+-- drift check means "the part of the schema drizzle-kit can represent is not
+-- stale". It says nothing about the triggers that carry every guarantee in
+-- packages/db/drizzle/0005, 0008, 0010, 0014, 0015 and 0016.

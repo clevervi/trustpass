@@ -1,5 +1,6 @@
 import { createDatabase, type Database, schema } from "@trustpass/db";
-import { eq, like } from "drizzle-orm";
+import { moveProductStatus } from "@trustpass/db/testing";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { buildDependencies } from "../testing/dependencies.js";
@@ -52,8 +53,14 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
   });
 
   afterAll(async () => {
-    await db.delete(schema.product).where(like(schema.product.serial, `${run}%`));
-    await db.delete(schema.issuer).where(like(schema.issuer.registrationNumber, `${run}%`));
+    // Deliberately no cleanup. Since TP-051 a registered product carries a
+    // lifecycle event, events cannot be deleted, and the product foreign key is
+    // RESTRICT — so these rows cannot be removed and neither can the issuer
+    // that owns them.
+    //
+    // That is the guarantee working rather than a leak: a teardown that
+    // succeeded here would prove a product's history can be erased. Each run
+    // uses its own prefix, so the rows accumulate without colliding.
     await db.$client.end();
   });
 
@@ -164,10 +171,13 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
       const original = (await (await post(body({ serial }))).json()) as { trustpassId: string };
       expect((await post(body({ serial }))).status).toBe(409);
 
-      await db
-        .update(schema.product)
-        .set({ status: "retired" })
+      const [row] = await db
+        .select({ id: schema.product.id })
+        .from(schema.product)
         .where(eq(schema.product.trustpassId, original.trustpassId as never));
+      // Through the helper since #54: a status change carries the event that
+      // explains it, and this test's subject is the serial rule.
+      await moveProductStatus(db, row?.id as number, "retired");
 
       const replacement = await post(body({ serial }));
       expect(replacement.status).toBe(201);

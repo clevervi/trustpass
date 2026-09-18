@@ -1,9 +1,18 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { cache } from "react";
+import { resolvePassportOrigin } from "@/lib/passport-origin";
 import { encodeQr, passportUrl, type QrCode } from "@/lib/qr";
-import { describeCategory, describeClaim, describeStatus, type Tone } from "../claim-wording";
+import {
+  describeCategory,
+  describeClaim,
+  describeHistoryEntry,
+  describeOrigin,
+  describeStatus,
+  type Tone,
+} from "../claim-wording";
 import { fetchPassport, type PassportView } from "../passport";
 
 export const dynamic = "force-dynamic";
@@ -169,7 +178,16 @@ function Warnings({ passport }: { passport: PassportView }) {
     );
   }
 
-  if (passport.issuer.verificationStatus === "unverified") {
+  if (passport.issuer === null) {
+    warnings.push(
+      <Banner key="no-issuer" tone="caution" title="No business registered this product">
+        Somebody who had the product opened this record. Nothing here comes from a manufacturer, a
+        distributor or a shop, and nobody has vouched for it.
+      </Banner>,
+    );
+  }
+
+  if (passport.issuer?.verificationStatus === "unverified") {
     warnings.push(
       <Banner key="issuer-unverified" tone="caution" title="Nobody has verified this issuer">
         Everything below is the issuer&apos;s own word. TrustPass has not confirmed the company
@@ -178,7 +196,7 @@ function Warnings({ passport }: { passport: PassportView }) {
     );
   }
 
-  if (passport.issuer.verificationStatus === "suspended") {
+  if (passport.issuer?.verificationStatus === "suspended") {
     warnings.push(
       <Banner
         key="issuer-suspended"
@@ -230,21 +248,34 @@ function Passport({ passport }: { passport: PassportView }) {
             </Row>
           )}
           <Row label="Registered on">{formatDate(passport.registeredOn)}</Row>
+          {passport.origin ? (
+            <Row label="Record started" note={describeOrigin(passport.origin).detail}>
+              {describeOrigin(passport.origin).label}
+            </Row>
+          ) : null}
         </dl>
       </Card>
 
-      <Card title="Issuer" id="issuer">
-        <dl>
-          <Row label="Company">{passport.issuer.companyName}</Row>
-          <Row label="Country">{countryName(passport.issuer.country)}</Row>
-          <Row
-            label="Registration number"
-            note="You can check this yourself in the national business registry."
-          >
-            <span className="font-mono">{passport.issuer.registrationNumber}</span>
-          </Row>
-        </dl>
-      </Card>
+      {/*
+        No panel at all when there is no issuer, rather than one with blanks in
+        it. An empty Issuer card reads as an issuer whose details are missing,
+        which is a different claim from there being none — and the warning above
+        has already said which.
+      */}
+      {passport.issuer ? (
+        <Card title="Issuer" id="issuer">
+          <dl>
+            <Row label="Company">{passport.issuer.companyName}</Row>
+            <Row label="Country">{countryName(passport.issuer.country)}</Row>
+            <Row
+              label="Registration number"
+              note="You can check this yourself in the national business registry."
+            >
+              <span className="font-mono">{passport.issuer.registrationNumber}</span>
+            </Row>
+          </dl>
+        </Card>
+      ) : null}
 
       <Card title="What has been checked" id="checks">
         <ol className="flex flex-col">
@@ -275,6 +306,8 @@ function Passport({ passport }: { passport: PassportView }) {
         </ol>
       </Card>
 
+      <History passport={passport} />
+
       <PassportQr trustpassId={passport.trustpassId} />
 
       <p className="text-balance text-xs text-black/50 dark:text-white/50">
@@ -286,16 +319,104 @@ function Passport({ passport }: { passport: PassportView }) {
 }
 
 /**
+ * What has been recorded about this product.
+ *
+ * Every entry is worded as a report, never as a finding. A suspension carrying
+ * reason `theft_report` reads "a theft was reported"; it does not read "stolen"
+ * and it does not get a red badge. Colouring a report as a verdict would do
+ * with styling exactly what the wording refuses to do with words, and would
+ * accuse a seller on the strength of one unverified filing.
+ */
+function History({ passport }: { passport: PassportView }) {
+  const history = passport.history ?? [];
+
+  // No section at all rather than an empty one. A heading over nothing invites
+  // the reading that nothing has happened, when what is true is that nothing
+  // was recorded — and those are different facts.
+  if (history.length === 0) return null;
+
+  const earliest = history[history.length - 1];
+
+  return (
+    <Card title="What has been recorded" id="history">
+      <ol className="flex flex-col">
+        {history.map((entry) => {
+          const wording = describeHistoryEntry(entry.type, entry.reason, entry.actorKind);
+          const learnedLater = entry.recordedOn !== entry.occurredOn;
+
+          return (
+            <li
+              // Composed from the entry rather than its index. Two entries
+              // alike in every field are indistinguishable to a reader anyway,
+              // so a collision there changes nothing they can see.
+              key={`${entry.type}-${entry.occurredOn}-${entry.recordedOn}-${entry.reason ?? ""}-${entry.actorKind}`}
+              className="border-b border-black/10 py-3 last:border-0 dark:border-white/10"
+            >
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
+                <span className={`text-sm ${TONE_TEXT[wording.tone]}`}>{wording.title}</span>
+                <span className="shrink-0 font-mono text-xs text-black/50 dark:text-white/50">
+                  {formatDate(entry.occurredOn)}
+                </span>
+              </div>
+
+              <p className="mt-1 text-xs text-black/60 dark:text-white/60">
+                Recorded by {wording.actor}
+                {wording.because ? <> because {wording.because}</> : null}.
+              </p>
+
+              {learnedLater ? (
+                /*
+                  Both dates, and no judgement about the gap. ADR 0008 as
+                  amended: a late record may be the one backed by a document,
+                  and an immediate one may be a seller's unchecked word. The
+                  page shows the distance and lets the reader weigh it.
+                */
+                <p className="mt-0.5 text-xs text-black/40 dark:text-white/40">
+                  Reported to have happened on {formatDate(entry.occurredOn)}; recorded by TrustPass
+                  on {formatDate(entry.recordedOn)}.
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
+
+        {/*
+          The unknown period, stated rather than left blank.
+
+          Per ADR 0007 as amended, what began is TrustPass's record, not the
+          product. The gap belongs to this system's knowledge, and a history
+          that simply stopped would read as though the product had no earlier
+          life.
+        */}
+        <li className="pt-3 text-xs text-black/50 dark:text-white/50">
+          Before {earliest ? formatDate(earliest.occurredOn) : "this record"}, nothing is known to
+          TrustPass. The product existed; this system did not have a record of it.
+        </li>
+      </ol>
+    </Card>
+  );
+}
+
+/**
  * The passport's own QR, rendered server-side as SVG elements.
  *
  * Not `dangerouslySetInnerHTML` over an SVG string: the path is data, and React
  * can take data. Not an `<img>` either, which would cost a second request for
  * something already computed here.
  */
-function PassportQr({ trustpassId }: { trustpassId: string }) {
+async function PassportQr({ trustpassId }: { trustpassId: string }) {
+  const origin = resolvePassportOrigin({ host: (await headers()).get("host") });
+
+  // No origin, no QR — and the rest of the passport is unaffected. Everything
+  // else on this page is still true; a code pointing at the wrong host would
+  // not be, and it would be the one part a reader acts on.
+  if (origin.kind === "unknown") {
+    return null;
+  }
+
   let code: QrCode;
   try {
-    code = encodeQr(passportUrl(trustpassId));
+    code = encodeQr(passportUrl(trustpassId, origin.baseUrl));
   } catch {
     // The encoder refuses anything it would corrupt. A passport that rendered
     // is proof the identifier is well formed, so this is unreachable in

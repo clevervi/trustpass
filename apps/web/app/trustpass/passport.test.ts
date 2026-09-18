@@ -36,6 +36,35 @@ describe("fetchPassport — the answers", () => {
     ).resolves.toEqual({ outcome: "found", passport: PASSPORT });
   });
 
+  it("accepts a passport from an API that serves no history", async () => {
+    // The field is optional on purpose. A reader should get the passport
+    // without its history rather than an error page.
+    const { history: _history, ...withoutHistory } = { ...PASSPORT, history: [] };
+
+    await expect(
+      fetchPassport(PASSPORT.trustpassId, { baseUrl, fetchImpl: respond(200, withoutHistory) }),
+    ).resolves.toEqual({ outcome: "found", passport: withoutHistory });
+  });
+
+  it("returns a well-formed history unchanged", async () => {
+    const passport = {
+      ...PASSPORT,
+      history: [
+        {
+          type: "product_suspended",
+          actorKind: "authority",
+          occurredOn: "2026-08-14",
+          recordedOn: "2026-09-17",
+          reason: "theft_report",
+        },
+      ],
+    };
+
+    await expect(
+      fetchPassport(PASSPORT.trustpassId, { baseUrl, fetchImpl: respond(200, passport) }),
+    ).resolves.toEqual({ outcome: "found", passport });
+  });
+
   it("accepts a passport whose serial could not be shown", async () => {
     const passport = { ...PASSPORT, serial: null };
 
@@ -113,6 +142,36 @@ describe("fetchPassport — a failure to check is never a verdict", () => {
 
     await expect(
       fetchPassport("TP1-X", { baseUrl, fetchImpl: respond(200, incomplete) }),
+    ).resolves.toEqual({ outcome: "unavailable" });
+  });
+
+  it("does not render a passport whose history is malformed", async () => {
+    // Absent history is fine — an older API does not serve it. Present and
+    // half-parsed is not: an entry missing its date would render "undefined" in
+    // a record somebody is reading to decide whether to trust a product.
+    const broken = { ...PASSPORT, history: [{ type: "product_suspended" }] };
+
+    await expect(
+      fetchPassport("TP1-X", { baseUrl, fetchImpl: respond(200, broken) }),
+    ).resolves.toEqual({ outcome: "unavailable" });
+  });
+
+  it("does not render a history entry whose reason is the wrong type", async () => {
+    const broken = {
+      ...PASSPORT,
+      history: [
+        {
+          type: "product_suspended",
+          actorKind: "authority",
+          occurredOn: "2026-08-14",
+          recordedOn: "2026-09-17",
+          reason: 42,
+        },
+      ],
+    };
+
+    await expect(
+      fetchPassport("TP1-X", { baseUrl, fetchImpl: respond(200, broken) }),
     ).resolves.toEqual({ outcome: "unavailable" });
   });
 

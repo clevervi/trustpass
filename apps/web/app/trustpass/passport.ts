@@ -12,15 +12,34 @@ export interface PassportView {
   readonly model: string;
   readonly category: string;
   readonly status: string;
+  readonly origin?: string;
   readonly serial: { readonly suffix: string; readonly hiddenCharacters: number } | null;
   readonly registeredOn: string;
+  /** Null for a holder-enrolled record: there is no issuer, which is not the same as an unverified one. */
   readonly issuer: {
     readonly companyName: string;
     readonly country: string;
     readonly registrationNumber: string;
     readonly verificationStatus: string;
-  };
+  } | null;
   readonly claims: readonly { readonly claim: string; readonly state: string }[];
+  /**
+   * What was recorded about this product, newest first.
+   *
+   * Optional on the type, not on the contract. An API serving a passport from
+   * before this shipped omits the field, and a reader should get the passport
+   * without its history rather than an error page — the same reasoning that
+   * keeps every other field a plain string here.
+   */
+  readonly history?: readonly PassportHistoryEntry[];
+}
+
+export interface PassportHistoryEntry {
+  readonly type: string;
+  readonly actorKind: string;
+  readonly occurredOn: string;
+  readonly recordedOn: string;
+  readonly reason: string | null;
 }
 
 export type PassportResult =
@@ -48,6 +67,10 @@ function isSerial(value: unknown): boolean {
 }
 
 function isIssuer(value: unknown): boolean {
+  // Null is a valid issuer: a holder-enrolled record has none. Undefined is
+  // not — that would be a field the API failed to send.
+  if (value === null) return true;
+
   return (
     isRecord(value) &&
     typeof value.companyName === "string" &&
@@ -68,6 +91,29 @@ function isClaims(value: unknown): boolean {
 }
 
 /**
+ * History is checked but not required.
+ *
+ * Absent is fine — an older API does not serve it. Present and malformed is
+ * not: a half-parsed entry would render a date or an actor as `undefined` in a
+ * record a stranger is reading to decide whether to trust a product.
+ */
+function isHistory(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) &&
+      value.every(
+        (entry) =>
+          isRecord(entry) &&
+          typeof entry.type === "string" &&
+          typeof entry.actorKind === "string" &&
+          typeof entry.occurredOn === "string" &&
+          typeof entry.recordedOn === "string" &&
+          (entry.reason === null || typeof entry.reason === "string"),
+      ))
+  );
+}
+
+/**
  * A twelve-line guard rather than a schema library: one shape, server-side only,
  * and a half-parsed body must never render as a passport with blanks in it.
  */
@@ -82,7 +128,8 @@ function isPassportView(value: unknown): value is PassportView {
     typeof value.registeredOn === "string" &&
     isSerial(value.serial) &&
     isIssuer(value.issuer) &&
-    isClaims(value.claims)
+    isClaims(value.claims) &&
+    isHistory(value.history)
   );
 }
 

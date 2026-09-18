@@ -1,6 +1,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { AppDependencies } from "../dependencies.js";
 import { ApiErrorCode, ApiErrorSchema } from "../http/errors.js";
+import { ProductCategorySchema } from "./product-category.js";
 
 const IssuerReferenceSchema = z
   .object({
@@ -29,23 +30,7 @@ const RegisterProductRequestSchema = z
     brand: z.string().trim().min(1).max(120).openapi({ example: "ASUS" }),
     model: z.string().trim().min(1).max(120).openapi({ example: "ROG Strix RTX 5070 Ti" }),
     serial: z.string().trim().min(2).max(120).openapi({ example: "M1LMCS004896" }),
-    category: z
-      .enum([
-        "gpu",
-        "cpu",
-        "motherboard",
-        "laptop",
-        "desktop",
-        "smartphone",
-        "tablet",
-        "monitor",
-        "camera",
-        "console",
-        "storage",
-        "peripheral",
-        "other",
-      ])
-      .openapi({ example: "gpu" }),
+    category: ProductCategorySchema,
   })
   .openapi("RegisterProductRequest");
 

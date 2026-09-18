@@ -2,16 +2,16 @@ import { and, eq, ne, sql } from "drizzle-orm";
 import type { Database } from "../client.js";
 import type { TrustPassId } from "../identity/trustpass-id.js";
 import { type IssuerVerificationStatus, issuer } from "../schema/issuer.js";
+import { lifecycleEvent } from "../schema/lifecycle-event.js";
 import {
   type NewProduct,
   type Product,
   type ProductCategory,
+  type ProductOrigin,
   type ProductStatus,
   product,
 } from "../schema/product.js";
-
-/** Postgres unique_violation. */
-const UNIQUE_VIOLATION = "23505";
+import { UNIQUE_VIOLATION, violatedConstraint } from "./constraint-violation.js";
 
 /** The partial unique index declared in `schema/product.ts`. */
 const LIVE_SERIAL_INDEX = "product_live_issuer_serial_idx";
@@ -19,28 +19,6 @@ const LIVE_SERIAL_INDEX = "product_live_issuer_serial_idx";
 export type InsertProductResult =
   | { readonly ok: true; readonly product: Product }
   | { readonly ok: false; readonly reason: "duplicate_live_serial" };
-
-/**
- * Drizzle wraps driver failures, so the SQLSTATE and the constraint name live
- * somewhere down the `cause` chain rather than on the error that surfaces.
- */
-function violatedConstraint(error: unknown): { code?: string; constraint?: string } {
-  let current: unknown = error;
-
-  while (current !== null && current !== undefined) {
-    const candidate = current as { code?: unknown; constraint_name?: unknown };
-    if (typeof candidate.code === "string") {
-      return {
-        code: candidate.code,
-        constraint:
-          typeof candidate.constraint_name === "string" ? candidate.constraint_name : undefined,
-      };
-    }
-    current = (current as { cause?: unknown }).cause;
-  }
-
-  return {};
-}
 
 /**
  * Inserts a product, reporting a duplicate live serial as an outcome rather
@@ -60,15 +38,45 @@ export async function insertProduct(
   values: NewProduct,
 ): Promise<InsertProductResult> {
   try {
-    const [created] = await db.insert(product).values(values).returning();
+    // One transaction, because a product and the record of where it came from
+    // are one fact. If the event cannot be written the product must not exist:
+    // a row with no provenance is exactly what ADR 0008's spine is for, and it
+    // would be invisible — nothing later can tell that its history is missing
+    // rather than empty.
+    return await db.transaction(async (tx) => {
+      const [created] = await tx.insert(product).values(values).returning();
 
-    if (!created) {
-      // A successful insert always returns its row. Reaching here means
-      // something changed underneath us, not a case a caller can handle.
-      throw new Error("Product insert returned no row.");
-    }
+      if (!created) {
+        // A successful insert always returns its row. Reaching here means
+        // something changed underneath us, not a case a caller can handle.
+        throw new Error("Product insert returned no row.");
+      }
 
-    return { ok: true, product: created };
+      await tx.insert(lifecycleEvent).values({
+        productId: created.id,
+        // What actually happened, rather than one generic "created". A product
+        // born `registered` is an issuer committing to the record; a `draft` is
+        // a row that claims nothing yet, so saying it was registered would be a
+        // claim nobody made.
+        type: created.status === "registered" ? "product_registered" : "record_enrolled",
+        // The capacity, not the person — identifying a person is TP-141. Today
+        // the only path here is an issuer registering through the API.
+        actorKind: "issuer",
+        issuerId: created.issuerId,
+        // `now()` rather than the returned `created.createdAt`, and the
+        // difference is not cosmetic. Postgres stores `timestamptz` to
+        // microseconds; a JavaScript `Date` holds milliseconds, so passing the
+        // value back through the client truncates it and the event lands up to
+        // 999 microseconds before the row it describes.
+        //
+        // `now()` is the transaction timestamp and is constant for the whole
+        // transaction, so this is the exact value the `created_at` default
+        // already took — the same clock reading, never a second one.
+        occurredAt: sql`now()`,
+      });
+
+      return { ok: true, product: created };
+    });
   } catch (error) {
     const violation = violatedConstraint(error);
 
@@ -129,13 +137,19 @@ export interface ProductWithIssuer {
   readonly serial: string;
   readonly category: ProductCategory;
   readonly status: ProductStatus;
+  readonly origin: ProductOrigin;
   readonly createdAt: Date;
+  /**
+   * Null for a holder-enrolled record. Per ADR 0007 an individual is not an
+   * issuer, so there is nothing to name — which is a different fact from an
+   * issuer nobody has verified.
+   */
   readonly issuer: {
     readonly companyName: string;
     readonly country: string;
     readonly registrationNumber: string;
     readonly verificationStatus: IssuerVerificationStatus;
-  };
+  } | null;
 }
 
 /**
@@ -171,6 +185,7 @@ export async function findProductByTrustPassId(
       serial: product.serial,
       category: product.category,
       status: product.status,
+      origin: product.origin,
       createdAt: product.createdAt,
       issuer: {
         companyName: issuer.companyName,
@@ -180,9 +195,18 @@ export async function findProductByTrustPassId(
       },
     })
     .from(product)
-    .innerJoin(issuer, eq(product.issuerId, issuer.id))
+    // Left, not inner. An inner join drops a holder-enrolled record entirely,
+    // which would report an existing product as not found — reaching the "we
+    // could not check" failure by way of a join.
+    .leftJoin(issuer, eq(product.issuerId, issuer.id))
     .where(eq(product.trustpassId, trustpassId))
     .limit(1);
 
-  return found;
+  if (!found) return undefined;
+
+  // Drizzle returns the nested object with every field null rather than a null
+  // object, so the absence has to be recognised rather than assumed.
+  return found.issuer?.companyName == null
+    ? { ...found, issuer: null }
+    : (found as ProductWithIssuer);
 }

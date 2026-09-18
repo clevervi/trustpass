@@ -53,14 +53,42 @@ export const productCategory = pgEnum("product_category", [
 export const productStatus = pgEnum("product_status", [
   /** A row exists. Nothing is claimed by it. The honest default. */
   "draft",
-  /** The issuer has committed to the record. */
+  /**
+   * A TrustPass record exists. It does not say who vouches for it — a
+   * manufacturer and a person enrolling their own device both land here, and
+   * which it was is carried by origin and by the record's first event.
+   */
   "registered",
-  /** In the hands of an owner, with a passport worth reading. */
+  /** Ownership has been established. A consequence, never a label anyone sets. */
   "active",
   /** Something is wrong: a fraud flag, a theft report, a disputed claim. */
   "suspended",
   /** End of life. Terminal. */
   "retired",
+]);
+
+/**
+ * Where a product's TrustPass record started.
+ *
+ * Per ADR 0007 as amended this is the origin of the **record**, not of the
+ * product: a graphics card has had an identity since it was made, and what
+ * begins here is this system's knowledge of it.
+ *
+ * Per ADR 0008 it is a property of the record, set once, and is **not** the
+ * actor capacity of any one event. A `supply_chain` record can later carry an
+ * event whose actor is an authority, and nothing about that is contradictory.
+ *
+ * None of these values says anything about whether the object is genuine.
+ * `manufacturer` means a maker started the record; ADR 0003 is why that is not
+ * the same as the object being what the record describes.
+ */
+export const productOrigin = pgEnum("product_origin", [
+  /** The maker started the record. */
+  "manufacturer",
+  /** A distributor or retailer did, somewhere between factory and buyer. */
+  "supply_chain",
+  /** Whoever had the object did, at some point after it was made. */
+  "holder",
 ]);
 
 export const product = pgTable(
@@ -85,9 +113,10 @@ export const product = pgTable(
      * is the one thing a passport exists to preserve. Issuers are suspended,
      * not deleted.
      */
-    issuerId: bigint("issuer_id", { mode: "number" })
-      .notNull()
-      .references(() => issuer.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    issuerId: bigint("issuer_id", { mode: "number" }).references(() => issuer.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
 
     brand: varchar("brand", { length: 120 }).notNull(),
 
@@ -106,6 +135,17 @@ export const product = pgTable(
     category: productCategory("category").notNull(),
 
     status: productStatus("status").notNull().default("draft"),
+
+    /**
+     * Where this record started. See `productOrigin`.
+     *
+     * Defaulted to `supply_chain` rather than `manufacturer`, and the default is
+     * a claim like any other: every product registered before this column
+     * existed came through `POST /products` from a business whose relationship
+     * to the factory nobody recorded. Calling those `manufacturer` would assert
+     * something no row supports.
+     */
+    origin: productOrigin("origin").notNull().default("supply_chain"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 
@@ -152,9 +192,43 @@ export const product = pgTable(
     // serials is legitimate -- serials are only unique within a manufacturer's
     // own numbering. The same serial across different issuers is a fraud signal
     // to weigh, not a constraint to enforce (TP-111).
+    //
+    // A holder-enrolled product has no issuer, and Postgres treats NULL as
+    // distinct from NULL -- so every such row falls outside this index. Measured
+    // rather than assumed: three rows with the same serial and a null issuer all
+    // inserted cleanly against it. Their rule is the separate index below.
     uniqueIndex("product_live_issuer_serial_idx")
       .on(table.issuerId, sql`lower(${table.serial})`)
       .where(sql`${table.status} <> 'retired'`),
+
+    // One live holder record per serial.
+    //
+    // A separate index rather than NULLS NOT DISTINCT on the one above, and not
+    // only because Drizzle cannot express that: the policy for a record with no
+    // issuer is a different policy, and it should be readable as one instead of
+    // hiding in how Postgres compares nulls.
+    //
+    // Without it anyone could enrol a device, have something unwelcome recorded
+    // against it, enrol it again and show the clean passport -- which breaks the
+    // one rule the serial indexes exist for. A holder has no issuer namespace to
+    // scope uniqueness to, so the scope is every holder record.
+    //
+    // It costs a real false positive: two genuinely different products with
+    // colliding serials from different makers, both holder-enrolled, and the
+    // second is refused. That is the cheaper failure of the two, and #49 owns
+    // resolving a collision properly.
+    uniqueIndex("product_live_holder_serial_idx")
+      .on(sql`lower(${table.serial})`)
+      .where(sql`${table.issuerId} IS NULL AND ${table.status} <> 'retired'`),
+
+    // A record has an issuer or it has a holder origin. Never both, never
+    // neither: an issuer-registered product with no issuer is an orphan, and a
+    // holder-enrolled one with an issuer is a person claiming a company's
+    // standing.
+    check(
+      "product_holder_has_no_issuer",
+      sql`(${table.origin} = 'holder') = (${table.issuerId} IS NULL)`,
+    ),
 
     // Shape only. The application parser in identity/trustpass-id.ts is
     // authoritative, including the check symbol; this catches a raw UUID, an
@@ -172,3 +246,4 @@ export type Product = typeof product.$inferSelect;
 export type NewProduct = typeof product.$inferInsert;
 export type ProductCategory = (typeof productCategory.enumValues)[number];
 export type ProductStatus = (typeof productStatus.enumValues)[number];
+export type ProductOrigin = (typeof productOrigin.enumValues)[number];

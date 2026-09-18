@@ -16,6 +16,10 @@ Write one when the answer to "why is it like this?" would otherwise be lost.
 | [0004](0004-trustpass-id-format.md)         | TrustPass ID format: 128-bit Crockford base32    | Accepted |
 | [0005](0005-internal-keys-are-never-public.md) | Internal keys are never public                  | Accepted |
 | [0006](0006-issuers-are-identified-by-registration-number.md) | Issuers are keyed by registration number, not name | Accepted |
+| [0007](0007-identity-may-begin-after-manufacture.md) | Identity may begin after manufacture, and the record says where | Accepted |
+| [0008](0008-events-record-what-happened-claims-assert-what-is-true.md) | Events record what happened; claims assert what is true | Accepted |
+| [0009](0009-a-capacity-is-granted-not-claimed.md) | A capacity is granted, evidenced and revocable; it is not a role | Accepted |
+| [0010](0010-two-records-one-object.md) | Two records for one object are joined by evidence, and neither is destroyed | Accepted |
 
 ## Template
 

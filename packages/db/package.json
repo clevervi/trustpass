@@ -1,12 +1,13 @@
 {
   "name": "@trustpass/db",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
-    "./identity": "./src/identity/trustpass-id.ts"
+    "./identity": "./src/identity/trustpass-id.ts",
+    "./testing": "./src/testing/index.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",

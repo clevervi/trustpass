@@ -51,7 +51,15 @@ number rather than by legal name — see
 **Not included:** authentication. Anyone reaching `POST /products` can register
 against any issuer, so the API must not be exposed publicly before `TP-141`.
 
-### v0.3.0 — Passport (in progress)
+`TP-141` is gated on `TP-140`, not the other way round.
+[ADR 0009](adr/0009-a-capacity-is-granted-not-claimed.md) decides what an
+identity **is** — an actor, and capacities granted to it with a scope, an
+evidence reference, an expiry and a revocation — before anything is built to
+present one. Login resolves a credential to an actor; it does not decide what
+that actor may assert. Events are permanent (ADR 0008), so every event written
+after `TP-141` points at whatever identity model existed that day, forever.
+
+### v0.3.0 — Passport ✅
 
 A QR resolves to a public passport page showing what is verified and what is not,
 per [ADR 0003](adr/0003-identity-is-not-authenticity.md). This is the first
@@ -74,29 +82,112 @@ unavailable. The milestone is smaller than originally written, deliberately.
 SVG served from another. The QR is an encoding of a URL and the web app owns the
 URL, so it is rendered there.
 
-### v0.4.0 — Warranty
+### v0.4.0 — Lifecycle events and retroactive enrolment
+
+Events recorded against the product identity: who did what, to which product,
+when, **why**, and what state it moved from and to.
+
+`TP-050` … `TP-053`, and `TP-034` (moved from v0.3.0: the passport's history
+section needs events to show).
+
+**Retroactive enrolment joins this milestone**, per
+[ADR 0007](adr/0007-identity-may-begin-after-manufacture.md). Today a product
+can only be registered by a business holding a national registration number, so
+every product that already exists — which is the entire resale market — is
+unreachable, and the system cannot be exercised against real hardware at all.
+
+Enrolment records a product's **origin** (`manufacturer`, `supply_chain`,
+`holder`) and the passport shows it, because a device enrolled by whoever held it
+asserts far less than one registered at the factory and must not be mistakable
+for it. A passport whose identity began at enrolment declares its unknown period
+explicitly rather than showing an empty history that reads as a clean one.
+
+`TP-046` … `TP-048`
+
+Enrolment and events ship together because they are the same statement. "The
+TrustPass **record** starts here, and everything before it is outside TrustPass"
+is the first entry in a product's history, not a field beside it. The object's
+own identity is older than the record — the unknown period is a limit on what
+this system saw, not a gap in the product.
+
+The shape of an event is fixed by
+[ADR 0008](adr/0008-events-record-what-happened-claims-assert-what-is-true.md)
+before any of it is built, because every milestone after this one writes to the
+same spine and a wrong shape is migrated, not edited. Three things it settles
+that constrain this milestone directly:
+
+- **`occurred_at` and `recorded_at` are separate.** A repair done in March and
+  recorded in September is two dates, and the distance between them is itself
+  information.
+- **Reasons are a closed set and never become states.** `suspended` stays one
+  state; `theft_report`, `fraud_flag` and `dispute` are reasons on the event
+  that caused it.
+- **Enrolment must not produce `active`.** `active` means "in an owner's hands"
+  and ownership does not exist until v0.5.0, so a `holder`-enrolled product
+  stops at `registered`. Asserted by test, not left to judgement.
+
+`origin` crosses the API boundary as part of the passport contract, not as
+something the page decides. A marketplace reading `GET /passports/{id}` has to be
+able to tell a manufacturer-registered product from a holder-enrolled one.
+
+#### Why this is no longer the warranty milestone
+
+The ordering was Warranty → Lifecycle. It is now Lifecycle → Warranty, and the
+reason is visible in this repository rather than theoretical.
+
+[`product-lifecycle.md`](product-lifecycle.md) already states that **a status
+change leaves no record of why it happened**. That is not a future gap: products
+can already be suspended today, and the passport can already say `Suspended`
+while being unable to say whether that was a theft report, a fraud flag or a
+disputed claim. Those mean very different things to someone deciding whether to
+buy.
+
+Every feature after this one writes history. Warranty activation is an event. A
+claim is an event. A repair, an inspection, a transfer, a dispute — all events.
+Building warranty first means warranty invents its own record of what happened,
+and every feature after it either copies that or retrofits.
+
+So the event spine comes first, and warranty becomes its first serious consumer
+rather than its accidental author.
+
+### v0.5.0 — Ownership
+
+Ownership as its own object with its own events, not a column on the product.
+Transfer requires acceptance by the receiver, and the history of who held a
+product outlives any single holder.
+
+`TP-060` … `TP-064`
+
+**Ownership is modelled so that possession and custody can be added without
+reshaping it.** An owner, whoever is physically holding a product, and whoever
+has custody of it — a repair centre, a courier, a marketplace holding stock —
+are three different facts. Only ownership ships here, but a design that makes
+`owner` mean "whoever last interacted with this" cannot represent a repair
+without lying.
+
+This is also where `active` stops being an administrative label.
+[`product-lifecycle.md`](product-lifecycle.md) defines it as "in an owner's
+hands" while ownership does not exist, so today it is a button. It must become a
+consequence: a product is `active` because ownership was established, not
+because somebody set it.
+
+### v0.6.0 — Warranty
 
 Warranty creation, activation, coverage calculation and claims with a real state
-machine.
+machine — recorded as evidence and events against the product, not as three
+columns on it, so that a repair can affect a warranty without erasing how it got
+there.
 
 `TP-040` … `TP-045`
 
-### v0.5.0 — Lifecycle and ownership
-
-Events recorded against the product identity, with role-based authorisation over
-who may record what. Ownership transfer requires acceptance by the receiver.
-
-`TP-050` … `TP-053`, `TP-060` … `TP-064`, and `TP-034` (moved from
-v0.3.0: the passport's history section needs events to show).
-
-### v0.6.0 — Verification and security hardening
+### v0.7.0 — Verification and security hardening
 
 Verification service, public verification endpoint, threat model, RBAC, audit
 log, rate limiting, emergency procedures.
 
 `TP-070` … `TP-074`, `TP-100` … `TP-105`
 
-### v0.7.0 — Blockchain anchoring
+### v0.8.0 — Blockchain anchoring
 
 On-chain/off-chain boundary documented first, then `ProductRegistry`,
 `LifecycleRegistry` and `OwnershipRegistry` with unit, fuzz and invariant tests

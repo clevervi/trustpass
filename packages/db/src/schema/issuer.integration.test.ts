@@ -1,4 +1,4 @@
-import { eq, like } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
@@ -42,7 +42,10 @@ describe.skipIf(!databaseUrl)("issuer table", () => {
   });
 
   afterAll(async () => {
-    await db.delete(issuer).where(like(issuer.registrationNumber, `${run}%`));
+    // Nothing is deleted. Products carry events since TP-051, events cannot be
+    // removed since TP-050, and the foreign keys are RESTRICT — so a teardown
+    // that succeeded would prove a product's history can be erased. Each run
+    // uses its own prefix, so the rows accumulate without colliding.
     await db.$client.end();
   });
 
