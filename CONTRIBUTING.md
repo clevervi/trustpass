@@ -186,6 +186,42 @@ reads like safety, which is worse.
 The order that avoids it: write the failing case first, add the guard, watch it
 pass, then remove the guard and watch it fail again.
 
+### A guarantee also has to survive the account that runs the application
+
+The rule above asks whether a guard works. This one asks a second question:
+**can the credential the API holds turn the guard off?**
+
+Because for most of this project's life the answer was yes, and nobody asked.
+`0005` put the append-only rule in a trigger and said so in its own header —
+*"the application connects as the owner, and the owner can grant itself any
+privilege back"* — offering that as the reason to trust triggers rather than as
+the hole it also describes. Measured in TP-161, the API's credential was
+`superuser`, `createdb`, `createrole`, `replication` and `bypassrls`, and owned
+every table. `ALTER TABLE lifecycle_event DISABLE TRIGGER
+lifecycle_event_no_update` is one statement, needs no `DROP`, and leaves the
+trigger sitting in `pg_trigger` looking present.
+
+So a guarantee that matters gets two tests, from two layers:
+
+1. **It refuses the write.** The trigger raises, the constraint rejects, the
+   type does not compile — asserted by SQLSTATE, not by "something threw".
+2. **The runtime cannot remove it.** Asserted from a connection as
+   `trustpass_runtime`, expecting `42501`, in
+   `packages/db/src/schema/least-privilege.integration.test.ts`.
+
+A new table needs a line in that file's `EXPECTED` matrix before it has any
+privileges at all, and the suite fails on a table it has never heard of. That is
+deliberate: the failure is a decision waiting to be made about what the
+application may do with it, and the alternative — inheriting a default — is how
+a privilege arrives that nobody wrote down.
+
+One thing that suite will not tell you, and no error message will either: **an
+`ALTER TABLE ... OWNER TO` silently destroys the grants held by the role
+becoming the owner.** Found while mutation-checking TP-161 — moving `product`
+to the runtime and straight back left its ACL with no runtime entry at all, no
+error, no warning, and every read of the central table would have started
+returning `42501` in production. Re-`GRANT` after any ownership change.
+
 ## Break-glass
 
 `main` and `develop` are protected, and the protection applies to
