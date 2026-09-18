@@ -13,6 +13,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:provision": "tsx src/scripts/provision-roles.ts",
+    "db:backup": "tsx src/scripts/backup.ts",
+    "db:restore-drill": "tsx src/scripts/restore-drill.ts",
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
