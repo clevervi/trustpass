@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
-import { issuer } from "../schema/issuer.js";
+import { organization } from "../schema/organization.js";
 import { type ProductStatus, product } from "../schema/product.js";
 import { expectSqlState, SqlState, sqlMessageOf, sqlStateOf } from "../testing/sql-state.js";
 import { insertProductWithProvenance, moveProductStatus } from "../testing/with-provenance.js";
@@ -33,7 +33,7 @@ const ROUTES: Readonly<Record<ProductStatus, { insertAs: ProductStatus; steps: P
 describe.skipIf(!databaseUrl)("product status guard", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
-  let issuerId: number;
+  let organizationId: number;
   let sequence = 0;
 
   async function createProductIn(status: ProductStatus): Promise<number> {
@@ -45,7 +45,7 @@ describe.skipIf(!databaseUrl)("product status guard", () => {
     // rather than provenance.
     const created = await insertProductWithProvenance(db, {
       trustpassId: generateTrustPassId(),
-      issuerId,
+      organizationId,
       brand: "ASUS",
       model: "ROG Strix RTX 5070 Ti",
       serial: `${run}-${String(sequence).padStart(4, "0")}`,
@@ -66,7 +66,7 @@ describe.skipIf(!databaseUrl)("product status guard", () => {
     db = createDatabase(databaseUrl as string, { maxConnections: 4 });
 
     const [created] = await db
-      .insert(issuer)
+      .insert(organization)
       .values({
         companyName: "Andes Tech Imports",
         legalName: `ANDES STATUS ${run} SAS`,
@@ -75,7 +75,7 @@ describe.skipIf(!databaseUrl)("product status guard", () => {
       })
       .returning();
 
-    issuerId = created?.id as number;
+    organizationId = created?.id as number;
   });
 
   afterAll(async () => {
@@ -123,7 +123,7 @@ describe.skipIf(!databaseUrl)("product status guard", () => {
             .insert(product)
             .values({
               trustpassId: generateTrustPassId(),
-              issuerId,
+              organizationId,
               brand: "ASUS",
               model: "ROG Strix RTX 5070 Ti",
               serial: `${run}-BORN-${sequence}`,

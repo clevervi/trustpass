@@ -77,7 +77,7 @@ describe("GET /passports/{trustpassId} — found", () => {
     const body = (await (await app.request(`/passports/${id}`)).json()) as Record<string, unknown>;
 
     expect(body).not.toHaveProperty("id");
-    expect(body).not.toHaveProperty("issuerId");
+    expect(body).not.toHaveProperty("organizationId");
     expect(body.issuer).not.toHaveProperty("id");
   });
 

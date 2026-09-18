@@ -37,7 +37,7 @@ export function holderProducts(prefix: string): () => NewProduct {
 
     return {
       trustpassId: generateTrustPassId(),
-      issuerId: null,
+      organizationId: null,
       brand: "ASUS",
       model: "ROG Strix RTX 5070 Ti",
       serial: `${prefix}-${n}`,
@@ -72,7 +72,7 @@ export function transitionEventValues(
     productId,
     type: suspending ? "product_suspended" : "product_reinstated",
     actorKind: "authority",
-    issuerId: null,
+    organizationId: null,
     occurredAt: sql`now()` as unknown as Date,
     reason: suspending ? "theft_report" : "dispute_resolved",
     previousState: from,

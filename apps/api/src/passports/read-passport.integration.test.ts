@@ -60,7 +60,7 @@ describe.skipIf(!databaseUrl)("GET /passports/{trustpassId} against a real datab
       }),
     );
 
-    await db.insert(schema.issuer).values([
+    await db.insert(schema.organization).values([
       {
         companyName: "Andes Tech Imports",
         legalName: `ANDES VERIFIED ${run} SAS`,
@@ -141,7 +141,7 @@ describe.skipIf(!databaseUrl)("GET /passports/{trustpassId} against a real datab
     >;
 
     expect(body).not.toHaveProperty("id");
-    expect(body).not.toHaveProperty("issuerId");
+    expect(body).not.toHaveProperty("organizationId");
     expect(body.issuer).not.toHaveProperty("id");
   });
 
@@ -180,12 +180,12 @@ describe.skipIf(!databaseUrl)("GET /passports/{trustpassId} against a real datab
     const trustpassId = generateTrustPassId();
     const [issuer] = await db
       .select()
-      .from(schema.issuer)
-      .where(eq(schema.issuer.registrationNumber, verifiedIssuer.registrationNumber));
+      .from(schema.organization)
+      .where(eq(schema.organization.registrationNumber, verifiedIssuer.registrationNumber));
 
     await insertProductWithProvenance(db, {
       trustpassId,
-      issuerId: issuer?.id as number,
+      organizationId: issuer?.id as number,
       brand: "ASUS",
       model: "ROG Strix RTX 5070 Ti",
       serial: uniqueSerial(),
