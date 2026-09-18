@@ -67,6 +67,13 @@ sed 's/@DATABASE@/trustpass_restored/g' database-acl.sql \
 TRUSTPASS_RUNTIME_PASSWORD=... TRUSTPASS_MIGRATION_PASSWORD=... pnpm db:provision
 ```
 
+**Every command above uses the operator's superuser credential, and none of them
+is the application's.** Restoring needs to create a database, own objects and
+grant privileges; running TrustPass needs none of that. When the restored
+database goes into service, `DATABASE_URL` names `trustpass_runtime` — and if it
+does not, the API refuses to start and says why (ADR 0013, TP-166). The
+superuser is how an operator reaches this database, never how the product does.
+
 **Never run `pnpm db:migrate` against the restored database.** Migrations
 rebuild a schema; they do not recover anything. A drill that migrates proves the
 migrations work — which is already known, and is not the question. The drill
