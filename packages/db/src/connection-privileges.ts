@@ -27,23 +27,41 @@ export interface ConnectionPrivileges {
   replication: boolean;
   bypassRowLevelSecurity: boolean;
   /**
-   * Objects in `public` whose owner this role can become — by owning them, or
-   * by being a member of a role that does.
+   * Objects this role holds the owner's rights over — by owning them, or by
+   * being a member of a role that does.
    *
-   * This is the field that matters, and it is not the obvious one. A check
+   * **This is the field that matters, and it is not the obvious one.** A check
    * built from the five attributes above plus "owns nothing" passes
    * `trustpass_migration`, measured:
    *
-   *   role                 five flags clean   owns directly   can become owner
-   *   trustpass            no                 0               16
-   *   trustpass_migration  YES                0               16
-   *   trustpass_owner      yes                16              16
+   *   role                 five flags clean   owns directly   reachable
+   *   trustpass            no                 0               35
+   *   trustpass_migration  YES                0               25
+   *   trustpass_owner      yes                25              25
    *   trustpass_runtime    yes                0               0
    *
-   * `trustpass_migration` carries no attribute and owns nothing, and one
-   * `SET ROLE trustpass_owner` makes it the owner of everything. Asking
-   * `pg_has_role(..., 'MEMBER')` collapses both questions into one, because a
-   * role is a member of itself.
+   * `trustpass_migration` carries no attribute and owns nothing of its own,
+   * and holds the owner's rights over everything through one GRANT.
+   *
+   * **Why `MEMBER` and not `SET`.** Review proposed `SET`, on the reading that
+   * `SET` is the privilege meaning "can issue `SET ROLE`" — which the Postgres
+   * documentation supports, and which would open a hole here. Measured on
+   * Postgres 18 with `GRANT trustpass_owner TO probe WITH INHERIT TRUE, SET
+   * FALSE`:
+   *
+   *   role               MEMBER   SET   USAGE (inherits privileges)
+   *   tp_probe_inherit   t        f     t
+   *
+   * Connected as that role, never issuing `SET ROLE`:
+   *
+   *   ALTER TABLE lifecycle_event DISABLE TRIGGER lifecycle_event_no_update;
+   *   -> ALTER TABLE.  guard_on: 0.  still listed in pg_trigger: 1.
+   *
+   * A `SET`-based count reads `0` for it and starts the application. So the
+   * question is deliberately not "can this connection become that role" —
+   * inheritance reaches the same privileges without `SET ROLE` ever being
+   * called. `MEMBER` is `USAGE OR SET` and covers both paths, and a role is a
+   * member of itself, which folds plain ownership in as well.
    */
   reachableOwnership: number;
 }
@@ -81,8 +99,8 @@ export function privilegeFailures(privileges: ConnectionPrivileges): string[] {
 
   if (privileges.reachableOwnership > 0) {
     failures.push(
-      `it can become the owner of ${privileges.reachableOwnership} object(s) in public, ` +
-        "which is enough to disable every trigger that protects the record",
+      `it holds the owner's rights over ${privileges.reachableOwnership} database object(s), ` +
+        "which is enough to disable or rewrite every guarantee that protects the record",
     );
   }
 
@@ -106,16 +124,52 @@ export async function readConnectionPrivileges(db: Database): Promise<Connection
     bypass_rls: boolean;
     reachable_ownership: string;
   }>(sql`
+    WITH ns AS (
+      -- Every schema this database's own objects can live in. The first
+      -- version asked about 'public' alone and missed
+      -- drizzle.__drizzle_migrations, whose owner decides which migrations
+      -- this database believes it has already run.
+      SELECT oid FROM pg_namespace
+      WHERE nspname NOT IN ('pg_catalog', 'information_schema')
+        AND nspname NOT LIKE 'pg\\_toast%'
+        AND nspname NOT LIKE 'pg\\_temp%'
+    ),
+    owned AS (
+      -- Tables, partitioned tables, sequences, views, materialised views.
+      SELECT c.relowner AS owner FROM pg_class c JOIN ns ON ns.oid = c.relnamespace
+      WHERE c.relkind IN ('r', 'p', 'S', 'v', 'm')
+
+      UNION ALL
+
+      -- Functions, which pg_class does not contain and the first version of
+      -- this query therefore never saw. Migration 0024 moves the seven trigger
+      -- functions to the owner on purpose, because a function owner can
+      -- CREATE OR REPLACE the body of an append-only guard and leave the
+      -- trigger attached, enabled, and enforcing nothing. Measured: a role able
+      -- to become the owner of a function and nothing else scored 0 here while
+      -- being able to redefine it.
+      SELECT p.proowner FROM pg_proc p JOIN ns ON ns.oid = p.pronamespace
+
+      UNION ALL
+
+      -- Enums, domains and ranges. \`lifecycle_actor_kind\` is an enum, and
+      -- altering or dropping a value silently reinterprets every event ever
+      -- recorded under it — which 0023 already has a test defending.
+      --
+      -- Restricted to those three kinds because pg_type also holds a composite
+      -- type and an array type for every table, and counting those would count
+      -- each table three times.
+      SELECT t.typowner FROM pg_type t JOIN ns ON ns.oid = t.typnamespace
+      WHERE t.typtype IN ('e', 'd', 'r')
+    )
     SELECT current_user AS role,
            r.rolsuper       AS superuser,
            r.rolcreatedb    AS create_database,
            r.rolcreaterole  AS create_role,
            r.rolreplication AS replication,
            r.rolbypassrls   AS bypass_rls,
-           (SELECT count(*) FROM pg_class
-             WHERE relnamespace = 'public'::regnamespace
-               AND relkind IN ('r', 'S', 'v', 'm')
-               AND pg_has_role(r.oid, relowner, 'MEMBER'))::text AS reachable_ownership
+           (SELECT count(*) FROM owned WHERE pg_has_role(r.oid, owned.owner, 'MEMBER'))::text
+             AS reachable_ownership
     FROM pg_roles r
     WHERE r.rolname = current_user
   `);
@@ -189,7 +243,7 @@ export async function assertConnectionIsUnprivileged(
       `Refusing to start against the database as "${privileges.role}":`,
       ...failures.map((failure) => `  - ${failure}`),
       "",
-      "The application must connect as a role that owns nothing. See ADR 0013.",
+      "The application must connect as a role that owns nothing and inherits nothing. See ADR 0013.",
       "  1. pnpm db:migrate          creates trustpass_runtime and its grants",
       "  2. pnpm db:provision        gives it a password from the environment",
       "  3. point DATABASE_URL at trustpass_runtime",
