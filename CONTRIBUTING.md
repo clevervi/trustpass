@@ -270,10 +270,17 @@ was deferring a decision to an identifier that tracked nothing. It now has one
 To check:
 
 ```bash
-rg -o 'TP-[0-9]{3}' --glob '!node_modules' . | sed 's/.*://' | sort -u > /tmp/used
+# CONTRIBUTING is excluded because the rule above names the identifiers that
+# were wrong, and an example is not a reference to work.
+rg -o 'TP-[0-9]{3}' --glob '!node_modules' --glob '!CONTRIBUTING.md' .   | sed 's/.*://' | sort -u > /tmp/used
 gh issue list --state all --limit 300 --json title -q '.[].title'   | rg -o 'TP-[0-9]{3}' | sort -u > /tmp/issued
-comm -23 /tmp/used /tmp/issued   # each result must appear in docs/ROADMAP.md
+comm -23 /tmp/used /tmp/issued
 ```
+
+Every result must be covered by `docs/ROADMAP.md` — **literally, or by a range
+it declares.** `TP-070` … `TP-074` assigns five identifiers and spells out two,
+so reading the output as a list of failures is wrong. That last step is a
+judgement, which is the honest reason this is not a gate.
 
 **Deliberately not a CI gate, and the reason is measured rather than assumed.**
 42 identifiers are referenced; 25 have an issue. Nearly all of the remainder are
