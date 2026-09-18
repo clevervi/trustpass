@@ -273,12 +273,20 @@ describe.skipIf(!databaseUrl)("product table", () => {
   });
 });
 
+/**
+ * Where a record came from, and what follows from having no issuer.
+ *
+ * One block rather than two: both need the same issuer and the same builder,
+ * and the rules they cover are the same rule seen from either side — a record
+ * has an issuer or it has a holder origin.
+ */
 describe.skipIf(!databaseUrl)("where a record began", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
   let issuerId: number;
   let n = 0;
 
+  /** An issuer-registered row. Pass `issuerId: null, origin: "holder"` for the other kind. */
   function row(overrides: Partial<NewProduct> = {}): NewProduct {
     n += 1;
     return {
@@ -290,6 +298,10 @@ describe.skipIf(!databaseUrl)("where a record began", () => {
       category: "gpu",
       ...overrides,
     };
+  }
+
+  function holder(serial: string): NewProduct {
+    return row({ serial, issuerId: null, status: "registered", origin: "holder" });
   }
 
   beforeAll(async () => {
@@ -345,46 +357,6 @@ describe.skipIf(!databaseUrl)("where a record began", () => {
       db.insert(product).values(row({ origin: "imported_somehow" as never })),
       SqlState.INVALID_TEXT_REPRESENTATION,
     );
-  });
-});
-
-describe.skipIf(!databaseUrl)("a product enrolled by whoever held it", () => {
-  const run = Math.random().toString(36).slice(2, 8).toUpperCase();
-  let db: Database;
-  let issuerId: number;
-  let n = 0;
-
-  function holder(serial: string): NewProduct {
-    return {
-      trustpassId: generateTrustPassId(),
-      issuerId: null,
-      brand: "ASUS",
-      model: "ROG Strix RTX 5070 Ti",
-      serial,
-      category: "gpu",
-      status: "registered",
-      origin: "holder",
-    };
-  }
-
-  beforeAll(async () => {
-    db = createDatabase(databaseUrl as string);
-    const [created] = await db
-      .insert(issuer)
-      .values({
-        companyName: `Enrol ${run}`,
-        legalName: `Enrol ${run} SAS`,
-        registrationNumber: `${run}-EN`,
-        country: "CO",
-      })
-      .returning({ id: issuer.id });
-    issuerId = created?.id as number;
-  });
-
-  afterAll(async () => {
-    await db.delete(product).where(like(product.serial, `${run}%`));
-    await db.delete(issuer).where(like(issuer.registrationNumber, `${run}%`));
-    await db.$client.end();
   });
 
   it("exists with no issuer at all", async () => {
