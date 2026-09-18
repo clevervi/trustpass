@@ -113,10 +113,12 @@ const isEntryPoint =
 
 if (isEntryPoint) {
   const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
-  const directory = backupDestination(process.argv[2] ?? "packages/db/.backups/latest", repoRoot);
   const database = process.env.TP_PG_DATABASE || "trustpass";
 
   try {
+    // Inside the try, because a refused destination is a message an operator
+    // should read, not a stack trace they have to interpret.
+    const directory = backupDestination(process.argv[2] ?? "packages/db/.backups/latest", repoRoot);
     const manifest = takeBackup(directory, database);
 
     console.log(`Backup of ${manifest.database} on Postgres ${manifest.server_version}`);
