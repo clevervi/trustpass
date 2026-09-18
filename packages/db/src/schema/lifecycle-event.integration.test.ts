@@ -263,6 +263,24 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
       expect(row?.server_written).toBe(true);
     });
 
+    it("ignores a recorded_in_xact the caller supplies", async () => {
+      // The same argument as recorded_at, and the reason it had to be made
+      // again: a column the writer chooses cannot be the one that decides which
+      // transaction owns a row. '0' is what the default would give, and nothing
+      // a caller passes may reach the column either.
+      const [event] = await db
+        .insert(lifecycleEvent)
+        .values(planted(new Date(), { recordedInXact: "0" } as Partial<NewLifecycleEvent>))
+        .returning();
+
+      const [row] = await db.execute<{ belongs_to_a_real_transaction: boolean }>(
+        sql`SELECT recorded_in_xact <> '0'::xid8 AS belongs_to_a_real_transaction
+            FROM lifecycle_event WHERE id = ${event?.id as number}`,
+      );
+
+      expect(row?.belongs_to_a_real_transaction).toBe(true);
+    });
+
     it("no longer lets a future occurrence ride in on a future recorded_at", async () => {
       // lifecycle_event_not_in_future compares occurred_at to recorded_at, so
       // a caller supplying both in the future satisfied it. An event that has
