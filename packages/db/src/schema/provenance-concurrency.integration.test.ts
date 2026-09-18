@@ -1,8 +1,8 @@
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Database } from "../client.js";
-import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { twoConnections, whileHoldingATransaction } from "../testing/overlapping-transactions.js";
+import { holderProducts, transitionEventValues } from "../testing/provenance-fixtures.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
 import { insertProductWithProvenance } from "../testing/with-provenance.js";
 import { lifecycleEvent } from "./lifecycle-event.js";
@@ -25,39 +25,10 @@ const databaseUrl = process.env.DATABASE_URL;
  */
 describe.skipIf(!databaseUrl)("provenance holds across concurrent transactions", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const values = holderProducts(`${run}-CONC`);
   let pool: ReturnType<typeof twoConnections>;
   let holder: Database;
   let other: Database;
-  let n = 0;
-
-  /** A holder-enrolled product, which needs no issuer. */
-  function values() {
-    n += 1;
-    return {
-      trustpassId: generateTrustPassId(),
-      issuerId: null,
-      brand: "ASUS",
-      model: "ROG Strix RTX 5070 Ti",
-      serial: `${run}-CONC-${n}`,
-      category: "gpu" as const,
-      status: "registered" as const,
-      origin: "holder" as const,
-    };
-  }
-
-  /** A transition event, written by whichever transaction is passed in. */
-  function transition(productId: number, from: "registered" | "suspended", to: string) {
-    return {
-      productId,
-      type: to === "suspended" ? ("product_suspended" as const) : ("product_reinstated" as const),
-      actorKind: "authority" as const,
-      issuerId: null,
-      occurredAt: sql`now()` as unknown as Date,
-      reason: to === "suspended" ? ("theft_report" as const) : ("dispute_resolved" as const),
-      previousState: from,
-      resultingState: to as "registered" | "suspended",
-    };
-  }
 
   beforeAll(() => {
     pool = twoConnections(databaseUrl as string);
@@ -80,7 +51,9 @@ describe.skipIf(!databaseUrl)("provenance holds across concurrent transactions",
         holder,
         other,
         otherCommits: (b) =>
-          b.insert(lifecycleEvent).values(transition(created.id, "registered", "suspended")),
+          b
+            .insert(lifecycleEvent)
+            .values(transitionEventValues(created.id, "registered", "suspended")),
         holderThen: (a) =>
           a.update(product).set({ status: "suspended" }).where(eq(product.id, created.id)),
       }),
@@ -101,10 +74,14 @@ describe.skipIf(!databaseUrl)("provenance holds across concurrent transactions",
       holder,
       other,
       otherCommits: (b) =>
-        b.insert(lifecycleEvent).values(transition(created.id, "registered", "suspended")),
+        b
+          .insert(lifecycleEvent)
+          .values(transitionEventValues(created.id, "registered", "suspended")),
       holderThen: async (a) => {
         await a.update(product).set({ status: "suspended" }).where(eq(product.id, created.id));
-        await a.insert(lifecycleEvent).values(transition(created.id, "registered", "suspended"));
+        await a
+          .insert(lifecycleEvent)
+          .values(transitionEventValues(created.id, "registered", "suspended"));
       },
     });
 
@@ -129,12 +106,18 @@ describe.skipIf(!databaseUrl)("provenance holds across concurrent transactions",
       holder,
       other,
       otherCommits: (b) =>
-        b.insert(lifecycleEvent).values(transition(created.id, "registered", "suspended")),
+        b
+          .insert(lifecycleEvent)
+          .values(transitionEventValues(created.id, "registered", "suspended")),
       holderThen: async (a) => {
         await a.update(product).set({ status: "suspended" }).where(eq(product.id, created.id));
         await a.update(product).set({ status: "registered" }).where(eq(product.id, created.id));
-        await a.insert(lifecycleEvent).values(transition(created.id, "registered", "suspended"));
-        await a.insert(lifecycleEvent).values(transition(created.id, "suspended", "registered"));
+        await a
+          .insert(lifecycleEvent)
+          .values(transitionEventValues(created.id, "registered", "suspended"));
+        await a
+          .insert(lifecycleEvent)
+          .values(transitionEventValues(created.id, "suspended", "registered"));
       },
     });
 
@@ -156,7 +139,7 @@ describe.skipIf(!databaseUrl)("provenance holds across concurrent transactions",
       await a.transaction(async (savepoint) => {
         await savepoint
           .insert(lifecycleEvent)
-          .values(transition(created.id, "registered", "suspended"));
+          .values(transitionEventValues(created.id, "registered", "suspended"));
       });
     });
 
@@ -179,7 +162,7 @@ describe.skipIf(!databaseUrl)("provenance holds across concurrent transactions",
           .transaction(async (savepoint) => {
             await savepoint
               .insert(lifecycleEvent)
-              .values(transition(created.id, "registered", "suspended"));
+              .values(transitionEventValues(created.id, "registered", "suspended"));
             throw new Error("roll this savepoint back");
           })
           .catch(() => undefined);

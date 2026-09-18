@@ -1,7 +1,11 @@
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
-import { generateTrustPassId } from "../identity/trustpass-id.js";
+import {
+  holderProducts,
+  type MovableStatus,
+  transitionEventValues,
+} from "../testing/provenance-fixtures.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
 import { insertProductWithProvenance } from "../testing/with-provenance.js";
 import { lifecycleEvent, type NewLifecycleEvent } from "./lifecycle-event.js";
@@ -19,22 +23,8 @@ const databaseUrl = process.env.DATABASE_URL;
  */
 describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const values = holderProducts(`${run}-PROV`);
   let db: Database;
-  let n = 0;
-
-  function values() {
-    n += 1;
-    return {
-      trustpassId: generateTrustPassId(),
-      issuerId: null,
-      brand: "ASUS",
-      model: "ROG Strix RTX 5070 Ti",
-      serial: `${run}-PROV-${n}`,
-      category: "gpu" as const,
-      status: "registered" as const,
-      origin: "holder" as const,
-    };
-  }
 
   /** A status change and the event explaining it, together — the legal shape. */
   async function moveWithReason(
@@ -59,31 +49,19 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
     });
   }
 
-  /** A transition event, for the cases that write one by hand. */
-  function transitionEvent(productId: number, from: "registered" | "suspended", to: string) {
-    return {
-      productId,
-      type: to === "suspended" ? ("product_suspended" as const) : ("product_reinstated" as const),
-      actorKind: "authority" as const,
-      issuerId: null,
-      occurredAt: sql`now()` as unknown as Date,
-      reason: to === "suspended" ? ("theft_report" as const) : ("dispute_resolved" as const),
-      previousState: from,
-      resultingState: to as "registered" | "suspended",
-    };
-  }
-
   /** A batch of status moves and hand-written events, as one transaction. */
   function inOneTransaction(
     moves: readonly { id: number; to: "registered" | "suspended" | "retired" }[],
-    events: readonly { id: number; from: "registered" | "suspended"; to: string }[],
+    events: readonly { id: number; from: MovableStatus; to: MovableStatus }[],
   ) {
     return db.transaction(async (tx) => {
       for (const move of moves) {
         await tx.update(product).set({ status: move.to }).where(eq(product.id, move.id));
       }
       for (const event of events) {
-        await tx.insert(lifecycleEvent).values(transitionEvent(event.id, event.from, event.to));
+        await tx
+          .insert(lifecycleEvent)
+          .values(transitionEventValues(event.id, event.from, event.to));
       }
     });
   }
@@ -156,7 +134,7 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
     // A status change with no reason in its transaction, on an append-only
     // history that could never be corrected afterwards.
     await db.insert(lifecycleEvent).values({
-      ...transitionEvent(created.id, "registered", "suspended"),
+      ...transitionEventValues(created.id, "registered", "suspended"),
       recordedAt: sql`now() + interval '10 years'`,
     } as unknown as NewLifecycleEvent);
 
