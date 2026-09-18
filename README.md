@@ -148,11 +148,17 @@ gated on the previous layer proving its value. See
 
 ## Maintainer
 
-[@clevervi](https://github.com/clevervi). One person, which
-[`.github/CODEOWNERS`](.github/CODEOWNERS) records and
-[`CONTRIBUTING.md`](CONTRIBUTING.md) builds the merge bar around, because a
-second account owned by the same person is a review signal with nothing behind
+One person, working from two accounts:
+[@clevervi](https://github.com/clevervi) and
+[@raishark](https://github.com/raishark). Both write code — the foundation
+commits are Raishark's — and GitHub attributes each to the account that authored
 it.
+
+**Neither ever reviews the other.** They are the same person, so an approval
+between them would be a review signal with nothing behind it.
+[`.github/CODEOWNERS`](.github/CODEOWNERS) records one maintainer for that
+reason, and [`CONTRIBUTING.md`](CONTRIBUTING.md) builds the merge bar around
+having no second reader rather than pretending to have one.
 
 ## Contributing
 
