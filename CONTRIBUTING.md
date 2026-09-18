@@ -255,6 +255,15 @@ run, not merely built: `v0.1.0` was tagged once, found broken on first
 execution, and re-cut. That was free because it had not been pushed. After a
 push it is not free, because other people's checkouts already believe it.
 
+### `console` is allowed in `packages/db/src/scripts`, and nowhere else
+
+`noConsole` is a warning everywhere else because application code that prints
+has usually lost an error somewhere. A command whose whole output is a report
+is the exception, and it is scoped to that directory in `biome.json` rather than
+disabled globally — eighteen standing warnings train people to stop reading
+warnings, and turning the rule off everywhere would lose it where it earns its
+keep.
+
 ### A query that takes one row says why there is one
 
 ```ts
