@@ -64,6 +64,13 @@
       "when": 1789696064879,
       "tag": "0008_recording_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789696065879,
+      "tag": "0009_retiring_a_suspended_product",
+      "breakpoints": true
     }
   ]
 }

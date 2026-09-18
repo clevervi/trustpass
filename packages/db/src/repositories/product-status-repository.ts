@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import type { Database } from "../client.js";
-import { mayRecord } from "../domain/recording-authority.js";
+import { mayRecord, mayRetireFrom } from "../domain/recording-authority.js";
 import {
   type LifecycleActorKind,
   type LifecycleEventReason,
@@ -125,7 +125,7 @@ export async function changeProductStatus(
       // Checked here as well as in the trigger, so a caller gets an outcome it
       // can act on rather than an exception it has to decode. The trigger is
       // still the authority: this is the same rule read early, not a second one.
-      if (!mayRecord(input.actorKind, type)) {
+      if (!mayRecord(input.actorKind, type) || !mayRetireFrom(input.actorKind, current.status)) {
         return { ok: false, reason: "unauthorised_actor", actorKind: input.actorKind };
       }
 

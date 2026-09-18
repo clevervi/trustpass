@@ -1,4 +1,5 @@
 import type { LifecycleActorKind, LifecycleEventType } from "../schema/lifecycle-event.js";
+import type { ProductStatus } from "../schema/product.js";
 
 /**
  * What each capacity is allowed to record.
@@ -60,6 +61,22 @@ export class UnauthorisedRecording extends Error {
     super(`A ${actorKind} cannot record "${type}".`);
     this.name = "UnauthorisedRecording";
   }
+}
+
+/**
+ * Whether this capacity may end the life of a product in this state.
+ *
+ * Retiring a product frees its serial — the live-serial index excludes retired
+ * rows on purpose, so a warranty replacement can reuse the serial of the unit it
+ * replaces. That is correct, and combined with a holder being able to retire it
+ * became a door: suspend over a theft report, retire, re-enrol the serial, and
+ * the new passport has no history.
+ *
+ * So whoever can investigate a report is who can decide the object's life ends
+ * while that report is open. Everything else is untouched.
+ */
+export function mayRetireFrom(actorKind: LifecycleActorKind, from: ProductStatus): boolean {
+  return from === "suspended" ? actorKind === "authority" : true;
 }
 
 /** Whether this capacity may record this kind of event. */
