@@ -26,6 +26,12 @@ export {
   type TrustPassIdParseError,
   type TrustPassIdParseResult,
 } from "./identity/trustpass-id.js";
+export {
+  type EnrolProductInput,
+  type EnrolProductResult,
+  enrolProduct,
+  findLiveHolderEnrolment,
+} from "./repositories/enrolment-repository.js";
 export { findIssuerByRegistration } from "./repositories/issuer-repository.js";
 export {
   findHistoryByTrustPassId,
