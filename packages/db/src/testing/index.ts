@@ -7,5 +7,6 @@
  * rule that has to stay identical.
  */
 
+export { twoConnections, whileHoldingATransaction } from "./overlapping-transactions.js";
 export { expectSqlState, SqlState, sqlMessageOf, sqlStateOf } from "./sql-state.js";
 export { insertProductWithProvenance, moveProductStatus } from "./with-provenance.js";
