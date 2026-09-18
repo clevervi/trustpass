@@ -154,14 +154,6 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
       ],
     },
     {
-      name: "two moves even when each has its own event",
-      moves: ["suspended", "registered"],
-      events: [
-        ["registered", "suspended"],
-        ["suspended", "registered"],
-      ],
-    },
-    {
       name: "an event that describes a different move",
       moves: ["retired"],
       events: [["suspended", "registered"]],
@@ -185,6 +177,58 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
       inOneTransaction(
         moves.map((to) => ({ id: created.id, to })),
         events.map(([from, to]) => ({ id: created.id, from, to })),
+      ),
+      SqlState.PROVENANCE_REQUIRED,
+    );
+  });
+
+  it.each([
+    { name: "two moves, each with its own event", moves: 2 },
+    { name: "three moves, each with its own event", moves: 3 },
+  ])("accepts $name", async ({ moves }) => {
+    // The events have to account for every move, not be limited to one. A
+    // transaction deliberately moving a product twice with a recorded reason
+    // for each has nothing to hide, and an earlier rule refused it — raised in
+    // review, and the objection was right.
+    const created = await insertProductWithProvenance(db, values());
+    const path = Array.from({ length: moves }, (_, i) =>
+      i % 2 === 0 ? ("suspended" as const) : ("registered" as const),
+    );
+
+    await inOneTransaction(
+      path.map((to) => ({ id: created.id, to })),
+      path.map((to, i) => ({
+        id: created.id,
+        from:
+          i === 0
+            ? ("registered" as const)
+            : path[i - 1] === "suspended"
+              ? ("suspended" as const)
+              : ("registered" as const),
+        to,
+      })),
+    );
+
+    const [row] = await db.select().from(product).where(eq(product.id, created.id));
+    expect(row?.status).toBe(path[path.length - 1]);
+  });
+
+  it("refuses events that do not form an unbroken path", async () => {
+    const created = await insertProductWithProvenance(db, values());
+
+    // Two events that each describe a legal move but do not connect: the
+    // second starts where the first did, not where it ended. A count would
+    // accept this; the chain does not.
+    await expectSqlState(
+      inOneTransaction(
+        [
+          { id: created.id, to: "suspended" },
+          { id: created.id, to: "registered" },
+        ],
+        [
+          { id: created.id, from: "registered", to: "suspended" },
+          { id: created.id, from: "registered", to: "suspended" },
+        ],
       ),
       SqlState.PROVENANCE_REQUIRED,
     );
