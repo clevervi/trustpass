@@ -5,7 +5,13 @@ import type { ReactNode } from "react";
 import { cache } from "react";
 import { resolvePassportOrigin } from "@/lib/passport-origin";
 import { encodeQr, passportUrl, type QrCode } from "@/lib/qr";
-import { describeCategory, describeClaim, describeStatus, type Tone } from "../claim-wording";
+import {
+  describeCategory,
+  describeClaim,
+  describeHistoryEntry,
+  describeStatus,
+  type Tone,
+} from "../claim-wording";
 import { fetchPassport, type PassportView } from "../passport";
 
 export const dynamic = "force-dynamic";
@@ -277,6 +283,8 @@ function Passport({ passport }: { passport: PassportView }) {
         </ol>
       </Card>
 
+      <History passport={passport} />
+
       <PassportQr trustpassId={passport.trustpassId} />
 
       <p className="text-balance text-xs text-black/50 dark:text-white/50">
@@ -284,6 +292,85 @@ function Passport({ passport }: { passport: PassportView }) {
         checked. It is not a certificate of authenticity.
       </p>
     </Shell>
+  );
+}
+
+/**
+ * What has been recorded about this product.
+ *
+ * Every entry is worded as a report, never as a finding. A suspension carrying
+ * reason `theft_report` reads "a theft was reported"; it does not read "stolen"
+ * and it does not get a red badge. Colouring a report as a verdict would do
+ * with styling exactly what the wording refuses to do with words, and would
+ * accuse a seller on the strength of one unverified filing.
+ */
+function History({ passport }: { passport: PassportView }) {
+  const history = passport.history ?? [];
+
+  // No section at all rather than an empty one. A heading over nothing invites
+  // the reading that nothing has happened, when what is true is that nothing
+  // was recorded — and those are different facts.
+  if (history.length === 0) return null;
+
+  const earliest = history[history.length - 1];
+
+  return (
+    <Card title="What has been recorded" id="history">
+      <ol className="flex flex-col">
+        {history.map((entry) => {
+          const wording = describeHistoryEntry(entry.type, entry.reason, entry.actorKind);
+          const learnedLater = entry.recordedOn !== entry.occurredOn;
+
+          return (
+            <li
+              // Composed from the entry rather than its index. Two entries
+              // alike in every field are indistinguishable to a reader anyway,
+              // so a collision there changes nothing they can see.
+              key={`${entry.type}-${entry.occurredOn}-${entry.recordedOn}-${entry.reason ?? ""}-${entry.actorKind}`}
+              className="border-b border-black/10 py-3 last:border-0 dark:border-white/10"
+            >
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
+                <span className={`text-sm ${TONE_TEXT[wording.tone]}`}>{wording.title}</span>
+                <span className="shrink-0 font-mono text-xs text-black/50 dark:text-white/50">
+                  {formatDate(entry.occurredOn)}
+                </span>
+              </div>
+
+              <p className="mt-1 text-xs text-black/60 dark:text-white/60">
+                Recorded by {wording.actor}
+                {wording.because ? <> because {wording.because}</> : null}.
+              </p>
+
+              {learnedLater ? (
+                /*
+                  Both dates, and no judgement about the gap. ADR 0008 as
+                  amended: a late record may be the one backed by a document,
+                  and an immediate one may be a seller's unchecked word. The
+                  page shows the distance and lets the reader weigh it.
+                */
+                <p className="mt-0.5 text-xs text-black/40 dark:text-white/40">
+                  Reported to have happened on {formatDate(entry.occurredOn)}; recorded by TrustPass
+                  on {formatDate(entry.recordedOn)}.
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
+
+        {/*
+          The unknown period, stated rather than left blank.
+
+          Per ADR 0007 as amended, what began is TrustPass's record, not the
+          product. The gap belongs to this system's knowledge, and a history
+          that simply stopped would read as though the product had no earlier
+          life.
+        */}
+        <li className="pt-3 text-xs text-black/50 dark:text-white/50">
+          Before {earliest ? formatDate(earliest.occurredOn) : "this record"}, nothing is known to
+          TrustPass. The product existed; this system did not have a record of it.
+        </li>
+      </ol>
+    </Card>
   );
 }
 
