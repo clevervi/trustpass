@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeHistoryEntry } from "./claim-wording";
+import { describeHistoryEntry, describeOrigin } from "./claim-wording";
 
 /**
  * Every reason the API can send, so a new one cannot be added without this
@@ -109,5 +109,42 @@ describe("an actor is a capacity, not a person", () => {
 
   it("carries no reason clause when there is no reason", () => {
     expect(describeHistoryEntry("product_registered", null, "issuer").because).toBe("");
+  });
+});
+
+describe("an origin says where a record began, never that a product is genuine", () => {
+  // The most reassuring value on the whole passport. A reader weighs everything
+  // else against it, so it has to say what it actually means.
+
+  it("does not turn a manufacturer origin into proof about the object", () => {
+    const { label, detail } = describeOrigin("manufacturer");
+
+    expect(label).toBe("Started by the manufacturer");
+    expect(detail).toContain("does not confirm");
+    expect(`${label} ${detail}`.toLowerCase()).not.toMatch(/\b(genuine|authentic|verified)\b/);
+  });
+
+  it.each(["manufacturer", "supply_chain", "holder"])(
+    "describes %s without claiming authenticity",
+    (origin) => {
+      const { label, detail } = describeOrigin(origin);
+
+      expect(label).not.toBe(origin);
+      expect(detail.length).toBeGreaterThan(0);
+      expect(`${label} ${detail}`.toLowerCase()).not.toMatch(/\bauthentic\b/);
+    },
+  );
+
+  it("says a holder origin establishes only that a serial was entered", () => {
+    // It is not provenance, not ownership, and not evidence about the object —
+    // and it must not be mistakable for a manufacturer record.
+    expect(describeOrigin("holder").detail).toContain("nothing about where the product came from");
+  });
+
+  it("does not present an unrecognised origin as reassuring", () => {
+    const { label, detail } = describeOrigin("customs_seizure");
+
+    expect(label).toBe("Customs seizure");
+    expect(detail).toBe("TrustPass does not have a description for this kind of record.");
   });
 });

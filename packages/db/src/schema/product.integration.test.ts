@@ -267,3 +267,66 @@ describe.skipIf(!databaseUrl)("product table", () => {
     });
   });
 });
+
+describe.skipIf(!databaseUrl)("where a record began", () => {
+  const run = Math.random().toString(36).slice(2, 8).toUpperCase();
+  let db: Database;
+  let issuerId: number;
+  let n = 0;
+
+  function row(overrides: Partial<NewProduct> = {}): NewProduct {
+    n += 1;
+    return {
+      trustpassId: generateTrustPassId(),
+      issuerId,
+      brand: "ASUS",
+      model: "ROG Strix RTX 5070 Ti",
+      serial: `${run}-ORIGIN-${n}`,
+      category: "gpu",
+      ...overrides,
+    };
+  }
+
+  beforeAll(async () => {
+    db = createDatabase(databaseUrl as string);
+    const [created] = await db
+      .insert(issuer)
+      .values({
+        companyName: `Origin ${run}`,
+        legalName: `Origin ${run} SAS`,
+        registrationNumber: `${run}-OR`,
+        country: "CO",
+      })
+      .returning({ id: issuer.id });
+    issuerId = created?.id as number;
+  });
+
+  afterAll(async () => {
+    await db.delete(product).where(like(product.serial, `${run}%`));
+    await db.delete(issuer).where(like(issuer.registrationNumber, `${run}%`));
+    await db.$client.end();
+  });
+
+  it("defaults to supply_chain rather than claiming a factory", async () => {
+    const [created] = await db.insert(product).values(row()).returning();
+
+    // Every product registered before this column existed came through
+    // POST /products from a business whose relationship to the factory nobody
+    // recorded. Defaulting them to `manufacturer` would assert something no row
+    // supports — the default is a claim like any other.
+    expect(created?.origin).toBe("supply_chain");
+  });
+
+  it.each(["manufacturer", "supply_chain", "holder"] as const)("accepts %s", async (origin) => {
+    const [created] = await db.insert(product).values(row({ origin })).returning();
+
+    expect(created?.origin).toBe(origin);
+  });
+
+  it("refuses an origin outside the closed set", async () => {
+    await expectSqlState(
+      db.insert(product).values(row({ origin: "imported_somehow" as never })),
+      SqlState.INVALID_TEXT_REPRESENTATION,
+    );
+  });
+});

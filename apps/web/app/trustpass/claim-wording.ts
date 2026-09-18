@@ -191,3 +191,49 @@ export function describeHistoryEntry(
     tone: type === "product_suspended" ? "caution" : "neutral",
   };
 }
+
+/**
+ * Where a record began, in words.
+ *
+ * The risk here is subtle and larger than it looks. `manufacturer` is the most
+ * reassuring value in the whole passport, and a reader will weigh everything
+ * else against it — so it has to say what it actually means: **a maker started
+ * this record**. Not that the object in front of you is the one that record
+ * describes, which is ADR 0003 and the reason the serial claim stays
+ * `recorded` rather than `verified`.
+ *
+ * None of these is toned positive. An origin is a fact about the record's
+ * provenance, not a verification of anything, and colouring the best one green
+ * would turn it into the badge this project refuses to render.
+ */
+const ORIGINS: Readonly<Record<string, { readonly label: string; readonly detail: string }>> = {
+  manufacturer: {
+    label: "Started by the manufacturer",
+    detail:
+      "The maker opened this record. That places its start at the factory; it does not confirm that the object you are holding is the unit it describes.",
+  },
+  supply_chain: {
+    label: "Started in the supply chain",
+    detail:
+      "A distributor or retailer opened this record somewhere between the factory and a buyer. What happened before that is outside TrustPass.",
+  },
+  holder: {
+    label: "Started by whoever held it",
+    detail:
+      "Somebody who had the product opened this record. It establishes that a serial was entered, and nothing about where the product came from.",
+  },
+};
+
+export function describeOrigin(origin: string): {
+  readonly label: string;
+  readonly detail: string;
+} {
+  return (
+    ORIGINS[origin] ?? {
+      label: humanise(origin),
+      // Neutral, never reassuring. An origin this page does not recognise is
+      // not evidence in either direction.
+      detail: "TrustPass does not have a description for this kind of record.",
+    }
+  );
+}

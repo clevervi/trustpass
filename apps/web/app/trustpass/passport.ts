@@ -12,6 +12,7 @@ export interface PassportView {
   readonly model: string;
   readonly category: string;
   readonly status: string;
+  readonly origin?: string;
   readonly serial: { readonly suffix: string; readonly hiddenCharacters: number } | null;
   readonly registeredOn: string;
   readonly issuer: {
