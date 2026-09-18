@@ -77,8 +77,10 @@ const enrolRoute = createRoute({
     },
     409: {
       description:
-        "A live enrolment already holds this serial. The response names it, so a client " +
-        "that timed out and retried learns the identifier it already created.",
+        "A live enrolment already holds this serial. The response does not say which one: " +
+        "a serial is printed on the object, and returning the identifier in exchange for it " +
+        "would make a photograph of a label into a passport lookup (ADR 0004). Recovering " +
+        "your own enrolment needs proof you created it, which is TP-176.",
       content: { "application/json": { schema: ApiErrorSchema } },
     },
     422: {
@@ -97,9 +99,10 @@ export function registerEnrolmentRoutes(app: OpenAPIHono, dependencies: AppDepen
       return c.json(
         {
           error: ApiErrorCode.DUPLICATE_SERIAL,
-          message: result.existingTrustpassId
-            ? `Serial ${body.serial} is already enrolled as ${result.existingTrustpassId}.`
-            : `Serial ${body.serial} is already enrolled.`,
+          // Neither the identifier nor the serial. Echoing the serial back
+          // confirms which one was asked about, which matters when a response
+          // is the only thing a sweep gets to look at.
+          message: "That serial already has a live record.",
         },
         409,
       );

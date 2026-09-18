@@ -78,7 +78,9 @@ const registerProductRoute = createRoute({
     409: {
       content: { "application/json": { schema: ApiErrorSchema } },
       description:
-        "This issuer already holds a live identity for that serial. The message carries its TrustPass ID.",
+        "This issuer already holds a live identity for that serial. The message does not " +
+        "carry its TrustPass ID: a serial is printed on the object, and trading one for the " +
+        "other would make a label a passport lookup (ADR 0004).",
     },
     422: {
       content: { "application/json": { schema: ApiErrorSchema } },
@@ -102,7 +104,8 @@ export function registerProductRoutes(app: OpenAPIHono, deps: AppDependencies): 
       return c.json(
         {
           error: ApiErrorCode.DUPLICATE_SERIAL,
-          message: `Serial ${body.serial} already belongs to ${result.existingTrustpassId} under this issuer. Retire that identity before registering the serial again.`,
+          message:
+            "That serial already has a live record under this issuer. Retire it before registering the serial again.",
         },
         409,
       );
