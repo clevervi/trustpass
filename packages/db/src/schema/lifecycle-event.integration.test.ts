@@ -134,7 +134,14 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
     it("links a correction to what it corrects", async () => {
       const [wrong] = await db
         .insert(lifecycleEvent)
-        .values(build({ type: "product_suspended", reason: "theft_report" }))
+        .values(
+          build({
+            type: "product_suspended",
+            actorKind: "authority",
+            issuerId: null,
+            reason: "theft_report",
+          }),
+        )
         .returning();
 
       const [correction] = await db
@@ -167,7 +174,9 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
 
     it("refuses a correction that points at nothing", async () => {
       await expectSqlState(
-        db.insert(lifecycleEvent).values(build({ type: "record_corrected", actorKind: "system" })),
+        db
+          .insert(lifecycleEvent)
+          .values(build({ type: "record_corrected", actorKind: "system", issuerId: null })),
         SqlState.CHECK_VIOLATION,
       );
     });
@@ -197,7 +206,15 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
       const march = new Date("2026-03-04T10:00:00Z");
       const [event] = await db
         .insert(lifecycleEvent)
-        .values(build({ occurredAt: march, type: "product_suspended", reason: "theft_report" }))
+        .values(
+          build({
+            occurredAt: march,
+            type: "product_suspended",
+            actorKind: "authority",
+            issuerId: null,
+            reason: "theft_report",
+          }),
+        )
         .returning();
 
       expect(event?.occurredAt.toISOString()).toBe(march.toISOString());
@@ -218,22 +235,31 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
 
     it("refuses an issuer reference from a non-issuer actor", async () => {
       await expectSqlState(
-        db.insert(lifecycleEvent).values(build({ actorKind: "holder" })),
+        db.insert(lifecycleEvent).values(build({ actorKind: "holder", type: "record_enrolled" })),
         SqlState.CHECK_VIOLATION,
       );
     });
 
-    it.each(["holder", "authority", "system"] as const)(
-      "accepts a %s acting with no issuer",
-      async (actorKind) => {
-        const [event] = await db
-          .insert(lifecycleEvent)
-          .values(build({ actorKind, issuerId: null }))
-          .returning();
+    it.each([
+      ["holder", "record_enrolled"],
+      ["authority", "product_suspended"],
+      ["system", "record_corrected"],
+    ] as const)("accepts a %s acting with no issuer", async (actorKind, type) => {
+      // Each capacity is given a type it is allowed to record. Since TP-053 the
+      // pairing matters, so a sweep over actors with one fixed type would be
+      // testing the authority trigger by accident rather than the actor check.
+      const target =
+        type === "record_corrected"
+          ? (await db.insert(lifecycleEvent).values(build()).returning())[0]?.id
+          : undefined;
 
-        expect(event?.actorKind).toBe(actorKind);
-      },
-    );
+      const [event] = await db
+        .insert(lifecycleEvent)
+        .values(build({ actorKind, issuerId: null, type, correctsEventId: target ?? null }))
+        .returning();
+
+      expect(event?.actorKind).toBe(actorKind);
+    });
   });
 
   describe("a transition names both ends or neither", () => {
@@ -243,6 +269,8 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
         .values(
           build({
             type: "product_suspended",
+            actorKind: "authority",
+            issuerId: null,
             reason: "theft_report",
             previousState: "registered",
             resultingState: "suspended",

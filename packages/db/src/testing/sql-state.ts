@@ -33,6 +33,14 @@ export const SqlState = {
    * See drizzle/0005_lifecycle_event_append_only.sql.
    */
   HISTORY_IS_APPEND_ONLY: "TP002",
+  /**
+   * Project-defined. Raised when a capacity records an event its standing does
+   * not support — a holder clearing a theft report against its own product,
+   * say. Distinct from TP001 and TP002 so a caller can tell "you may not record
+   * that" from the other two without parsing a message.
+   * See drizzle/0008_recording_authority.sql.
+   */
+  UNAUTHORISED_RECORDING: "TP003",
 } as const;
 
 export type SqlStateCode = (typeof SqlState)[keyof typeof SqlState];
