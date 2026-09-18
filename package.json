@@ -19,6 +19,7 @@
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f postgres",
     "db:migrate": "pnpm --filter @trustpass/db db:migrate",
+    "db:provision": "pnpm --filter @trustpass/db db:provision",
     "db:generate": "pnpm --filter @trustpass/db db:generate",
     "db:studio": "pnpm --filter @trustpass/db db:studio",
     "db:reset": "docker compose down -v && docker compose up -d --wait && pnpm db:migrate",

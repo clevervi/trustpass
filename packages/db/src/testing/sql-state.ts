@@ -63,6 +63,30 @@ export const SqlState = {
    * cannot be edited" without parsing a message.
    */
   AUTHORITY_IS_APPEND_ONLY: "TP005",
+
+  /**
+   * Project-defined. Raised by `0024_three_roles_one_database.sql` when the
+   * privilege model it builds is not the one it ends up with — an object still
+   * owned by the wrong role, a runtime holding a privilege nobody granted, a
+   * new role carrying a cluster-level attribute.
+   *
+   * Distinct from the five above because those are refusals *of* a write. This
+   * one is a refusal to finish a migration, and the difference matters when
+   * reading a failed deploy: TP001–TP005 mean the database defended itself,
+   * TP006 means the defences were about to be installed wrongly.
+   */
+  PRIVILEGE_MODEL_VIOLATED: "TP006",
+
+  /**
+   * Postgres's own. What a role without a privilege gets — and the code the
+   * least-privilege suite asserts, because it is the difference between "a
+   * trigger refused this" and "this role was never able to try".
+   *
+   * Worth knowing where it lands: permission is checked before any trigger
+   * fires, so the runtime updating a lifecycle event raises this rather than
+   * TP002. Two answers to the same attack, from two independent layers.
+   */
+  INSUFFICIENT_PRIVILEGE: "42501",
 } as const;
 
 export type SqlStateCode = (typeof SqlState)[keyof typeof SqlState];

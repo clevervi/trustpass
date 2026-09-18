@@ -169,6 +169,13 @@
       "when": 1789750174368,
       "tag": "0023_one_identity_remains",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789750175368,
+      "tag": "0024_three_roles_one_database",
+      "breakpoints": true
     }
   ]
 }
