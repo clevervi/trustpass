@@ -46,6 +46,16 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # The context router is development tooling, and it is also a hook that
+      # decides which files may be sent to a third party. That makes its tests
+      # the same kind of thing as the rest of this job, so they run here rather
+      # than only on whichever machine last remembered to run them.
+      #
+      # No network, no API key, no Gemini -- which is the property being
+      # asserted, not a limitation of the runner.
+      - name: Test the context router
+        run: node --test ".claude/tests/*.test.mjs"
+
       # Migrations in this repository are hand-written, because triggers,
       # deferred constraint triggers and partial indexes are not things
       # drizzle-kit can express. But drizzle-kit keeps its own snapshot of the
