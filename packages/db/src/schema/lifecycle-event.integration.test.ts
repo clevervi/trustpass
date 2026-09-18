@@ -225,6 +225,61 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
     });
   });
 
+  describe("when TrustPass learned of something is not the caller's to say", () => {
+    // The provenance triggers identify this transaction's events by
+    // recorded_at. A writer who can set that column chooses which transaction
+    // its event appears to belong to, which is the whole guarantee. 0015 takes
+    // the column away from every writer, the owner included.
+
+    /**
+     * The type refuses `recordedAt` since 0015. These tests supply it anyway,
+     * because the type is not the guard — it only stops an honest mistake. The
+     * database is the guard, and that is what is under test here.
+     */
+    function planted(recordedAt: unknown, overrides: Partial<NewLifecycleEvent> = {}) {
+      return { ...build(overrides), recordedAt } as NewLifecycleEvent;
+    }
+
+    it("ignores a recorded_at the caller supplies", async () => {
+      const decade = new Date(Date.now() + 10 * 365 * 86_400_000);
+
+      const [event] = await db.insert(lifecycleEvent).values(planted(decade)).returning();
+
+      // Compared in SQL rather than in JavaScript: the host clock runs ahead of
+      // the container's, so a Date taken here is not the same instant as now()
+      // and a comparison between them measures the skew, not the guarantee.
+      //
+      // Bounded from below as well, and that is not padding. `recorded_at <=
+      // now()` alone would also accept 1970 — it would pass for a trigger that
+      // wrote any past constant, which is a different bug wearing this one's
+      // clothes. The requirement is that the column holds the time of the write,
+      // so the test says so, with a minute of room for the clock skew above.
+      const [row] = await db.execute<{ server_written: boolean }>(
+        sql`SELECT recorded_at <= now()
+                   AND recorded_at > now() - interval '1 minute' AS server_written
+            FROM lifecycle_event WHERE id = ${event?.id as number}`,
+      );
+
+      expect(row?.server_written).toBe(true);
+    });
+
+    it("no longer lets a future occurrence ride in on a future recorded_at", async () => {
+      // lifecycle_event_not_in_future compares occurred_at to recorded_at, so
+      // a caller supplying both in the future satisfied it. An event that has
+      // not happened yet then sat in the history for a passport to render as a
+      // fact — ADR 0008's distinction between an event and a schedule, lost to
+      // a column nobody was guarding.
+      const later = new Date(Date.now() + 5 * 365 * 86_400_000);
+
+      await expectSqlState(
+        db
+          .insert(lifecycleEvent)
+          .values(planted(new Date(later.getTime() + 86_400_000), { occurredAt: later })),
+        SqlState.CHECK_VIOLATION,
+      );
+    });
+  });
+
   describe("an actor is recorded whole or not at all", () => {
     it("refuses the issuer capacity without an issuer", async () => {
       await expectSqlState(

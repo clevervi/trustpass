@@ -23,6 +23,19 @@ import { product, productStatus } from "./product.js";
  * mistake is corrected by recording a correcting event, never by editing the
  * original — the history is the product, and a history that can be rewritten
  * proves nothing.
+ *
+ * **Transition events are written in the same order as the transitions they
+ * describe.** The provenance trigger reads a transaction's events in `id` order
+ * — insertion order — and requires them to form an unbroken path ending where
+ * the product now stands. Writing the second move's event before the first
+ * move's therefore produces a chain that does not match the path, and the
+ * transaction is refused.
+ *
+ * That refusal is wanted: an event written before its cause records nothing.
+ * It is written down here because until it was, it was a property of an
+ * identity column rather than a rule anybody had decided, and the next person
+ * to change the ordering would have had no way to know they were changing what
+ * the history means.
  */
 
 /**
@@ -162,7 +175,23 @@ export const lifecycleEvent = pgTable(
      */
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
 
-    /** When TrustPass learned of it. Set by the database, not by the caller. */
+    /**
+     * When TrustPass learned of it.
+     *
+     * Written by the database, which the default alone did not achieve. A
+     * default is what happens when nobody supplies a value, and any writer may
+     * supply one — while the provenance triggers decide what "this transaction"
+     * means by reading precisely this column. An event planted in an earlier
+     * transaction with `recorded_at` set ten years ahead let a later status
+     * change commit with nothing recorded to explain it, which is the one thing
+     * 0010 exists to prevent.
+     *
+     * A BEFORE INSERT trigger now overwrites it with `now()` (0015), for every
+     * writer including the owner. Overwritten rather than refused because the
+     * column default fills the value in before any BEFORE trigger runs, so a
+     * caller who passed `now()` is indistinguishable from one who passed
+     * nothing.
+     */
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
 
     /** Why. Nullable: `product_registered` needs no reason beyond itself. */
@@ -239,7 +268,13 @@ export const lifecycleEvent = pgTable(
 );
 
 export type LifecycleEvent = typeof lifecycleEvent.$inferSelect;
-export type NewLifecycleEvent = typeof lifecycleEvent.$inferInsert;
+/**
+ * `recordedAt` is omitted deliberately: the database overwrites it on insert
+ * (0015), so a value supplied here is discarded. Refusing it at the type makes
+ * that visible when the code is written, rather than when somebody reads the
+ * row back and finds a timestamp they did not write.
+ */
+export type NewLifecycleEvent = Omit<typeof lifecycleEvent.$inferInsert, "recordedAt">;
 export type LifecycleEventType = (typeof lifecycleEventType.enumValues)[number];
 export type LifecycleEventReason = (typeof lifecycleEventReason.enumValues)[number];
 export type LifecycleActorKind = (typeof lifecycleActorKind.enumValues)[number];
