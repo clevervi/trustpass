@@ -222,8 +222,8 @@ export const product = pgTable(
     // distinct from NULL -- so every such row falls outside this index. Measured
     // rather than assumed: three rows with the same serial and a null issuer all
     // inserted cleanly against it. Their rule is the separate index below.
-    uniqueIndex("product_live_issuer_serial_idx")
-      .on(table.issuerId, sql`lower(${table.serial})`)
+    uniqueIndex("product_live_organization_serial_idx")
+      .on(table.organizationId, sql`lower(${table.serial})`)
       .where(sql`${table.status} <> 'retired'`),
 
     // One live holder record per serial.
@@ -244,15 +244,20 @@ export const product = pgTable(
     // resolving a collision properly.
     uniqueIndex("product_live_holder_serial_idx")
       .on(sql`lower(${table.serial})`)
-      .where(sql`${table.issuerId} IS NULL AND ${table.status} <> 'retired'`),
+      .where(sql`${table.organizationId} IS NULL AND ${table.status} <> 'retired'`),
 
     // A record has an issuer or it has a holder origin. Never both, never
     // neither: an issuer-registered product with no issuer is an orphan, and a
     // holder-enrolled one with an issuer is a person claiming a company's
     // standing.
+    // Renamed with the identity it now names. The rule is unchanged: a record
+    // has a party behind it or it has a holder origin, never both and never
+    // neither — an organization-registered product with no organization is an
+    // orphan, and a holder-enrolled one with a party is a person claiming a
+    // company's standing.
     check(
-      "product_holder_has_no_issuer",
-      sql`(${table.origin} = 'holder') = (${table.issuerId} IS NULL)`,
+      "product_holder_has_no_organization",
+      sql`(${table.origin} = 'holder') = (${table.organizationId} IS NULL)`,
     ),
 
     // Shape only. The application parser in identity/trustpass-id.ts is

@@ -55,7 +55,7 @@ export interface PublicPassport {
     readonly companyName: string;
     readonly country: string;
     readonly registrationNumber: string;
-    readonly verificationStatus: schema.IssuerVerificationStatus;
+    readonly verificationStatus: schema.VerificationStatus;
   } | null;
   readonly claims: readonly { readonly claim: ClaimSubject; readonly state: ClaimState }[];
   /**
@@ -132,7 +132,7 @@ export async function readPassport(
       registeredOn: record.createdAt.toISOString().slice(0, 10),
       issuer: record.issuer,
       claims: computeVerificationClaims({
-        issuerVerificationStatus: record.issuer?.verificationStatus ?? null,
+        verificationStatus: record.issuer?.verificationStatus ?? null,
       }),
       // Dates, not instants, for the reason `registeredOn` is one: a
       // millisecond republishes ordering and rate, and a reader needs the day.

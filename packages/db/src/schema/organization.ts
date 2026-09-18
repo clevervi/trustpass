@@ -1,6 +1,32 @@
 import { sql } from "drizzle-orm";
-import { bigint, check, pgTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
-import { issuerVerificationStatus } from "./issuer.js";
+import {
+  bigint,
+  check,
+  pgEnum,
+  pgTable,
+  timestamp,
+  uniqueIndex,
+  varchar,
+} from "drizzle-orm/pg-core";
+
+/**
+ * Whether a party has been checked against a national registry.
+ *
+ * Declared here because per ADR 0012 `organization` is the canonical identity
+ * and verification is a property of the party. The database name stays
+ * `issuer_verification_status`: renaming a Postgres enum is a migration with no
+ * benefit, and the old name is referenced by two tables until `issuer` goes.
+ */
+export const verificationStatus = pgEnum("issuer_verification_status", [
+  /** Registered, nothing checked. The default, and the honest one. */
+  "unverified",
+  /** Documentation submitted, review in progress. */
+  "pending",
+  /** Legal existence confirmed against an authoritative source. */
+  "verified",
+  /** Previously trusted, trust withdrawn. Never silently returns to verified. */
+  "suspended",
+]);
 
 /**
  * A party with a legal identity.
@@ -66,9 +92,7 @@ export const organization = pgTable(
      * project refuses to publish. The events come next, and the history starts
      * when they do.
      */
-    verificationStatus: issuerVerificationStatus("verification_status")
-      .notNull()
-      .default("unverified"),
+    verificationStatus: verificationStatus("verification_status").notNull().default("unverified"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -96,3 +120,5 @@ export const organization = pgTable(
 
 export type Organization = typeof organization.$inferSelect;
 export type NewOrganization = typeof organization.$inferInsert;
+
+export type VerificationStatus = (typeof verificationStatus.enumValues)[number];

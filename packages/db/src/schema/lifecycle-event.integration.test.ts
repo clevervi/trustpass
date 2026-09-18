@@ -4,8 +4,8 @@ import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
 import { insertProductWithProvenance } from "../testing/with-provenance.js";
-import { issuer } from "./issuer.js";
 import { lifecycleEvent, type NewLifecycleEvent } from "./lifecycle-event.js";
+import { organization } from "./organization.js";
 import { product } from "./product.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -21,7 +21,7 @@ const databaseUrl = process.env.DATABASE_URL;
 describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
-  let issuerId: number;
+  let organizationId: number;
   let productId: number;
   let sequence = 0;
 
@@ -30,7 +30,7 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
       productId,
       type: "product_registered",
       actorKind: "issuer",
-      issuerId,
+      organizationId,
       // now(), not a Date: recorded_at defaults to the transaction
       // timestamp, and a Date read afterwards is later than it.
       occurredAt: sql`now()` as unknown as Date,
@@ -42,19 +42,19 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
     db = createDatabase(databaseUrl as string);
 
     const [created] = await db
-      .insert(issuer)
+      .insert(organization)
       .values({
         companyName: `Events ${run}`,
         legalName: `Events ${run} SAS`,
         registrationNumber: `${run}-EV`,
         country: "CO",
       })
-      .returning({ id: issuer.id });
-    issuerId = created?.id as number;
+      .returning({ id: organization.id });
+    organizationId = created?.id as number;
 
     const registered = await insertProductWithProvenance(db, {
       trustpassId: generateTrustPassId(),
-      issuerId,
+      organizationId,
       brand: "ASUS",
       model: "ROG Strix RTX 5070 Ti",
       serial: `${run}-EV-SERIAL`,
@@ -138,7 +138,7 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
           build({
             type: "product_suspended",
             actorKind: "authority",
-            issuerId: null,
+            organizationId: null,
             reason: "theft_report",
           }),
         )
@@ -150,7 +150,7 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
           build({
             type: "record_corrected",
             actorKind: "system",
-            issuerId: null,
+            organizationId: null,
             reason: "recording_error",
             correctsEventId: wrong?.id as number,
           }),
@@ -176,7 +176,7 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
       await expectSqlState(
         db
           .insert(lifecycleEvent)
-          .values(build({ type: "record_corrected", actorKind: "system", issuerId: null })),
+          .values(build({ type: "record_corrected", actorKind: "system", organizationId: null })),
         SqlState.CHECK_VIOLATION,
       );
     });
@@ -211,7 +211,7 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
             occurredAt: march,
             type: "product_suspended",
             actorKind: "authority",
-            issuerId: null,
+            organizationId: null,
             reason: "theft_report",
           }),
         )
@@ -301,7 +301,7 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
   describe("an actor is recorded whole or not at all", () => {
     it("refuses the issuer capacity without an issuer", async () => {
       await expectSqlState(
-        db.insert(lifecycleEvent).values(build({ issuerId: null })),
+        db.insert(lifecycleEvent).values(build({ organizationId: null })),
         SqlState.CHECK_VIOLATION,
       );
     });
@@ -328,7 +328,7 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
 
       const [event] = await db
         .insert(lifecycleEvent)
-        .values(build({ actorKind, issuerId: null, type, correctsEventId: target ?? null }))
+        .values(build({ actorKind, organizationId: null, type, correctsEventId: target ?? null }))
         .returning();
 
       expect(event?.actorKind).toBe(actorKind);
@@ -343,7 +343,7 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
           build({
             type: "product_suspended",
             actorKind: "authority",
-            issuerId: null,
+            organizationId: null,
             reason: "theft_report",
             previousState: "registered",
             resultingState: "suspended",
@@ -369,7 +369,7 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
     it("accepts an event that is not a transition at all", async () => {
       const [event] = await db
         .insert(lifecycleEvent)
-        .values(build({ type: "record_enrolled", actorKind: "holder", issuerId: null }))
+        .values(build({ type: "record_enrolled", actorKind: "holder", organizationId: null }))
         .returning();
 
       expect(event?.previousState).toBeNull();
@@ -382,7 +382,7 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
       sequence += 1;
       const doomed = await insertProductWithProvenance(db, {
         trustpassId: generateTrustPassId(),
-        issuerId,
+        organizationId,
         brand: "ASUS",
         model: "RTX",
         serial: `${run}-DOOMED-${sequence}`,
@@ -400,9 +400,12 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
       );
     });
 
-    it("refuses to delete an issuer that recorded events", async () => {
+    it("refuses to delete a party that recorded events", async () => {
+      // The protection moved with the identity. Per ADR 0012 the organization
+      // is the party, so it is the row that cannot vanish from under the events
+      // referencing it — deleting it would silently delete who acted.
       await expectSqlState(
-        db.delete(issuer).where(eq(issuer.id, issuerId)),
+        db.delete(organization).where(eq(organization.id, organizationId)),
         SqlState.RESTRICT_VIOLATION,
       );
     });

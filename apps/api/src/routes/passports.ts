@@ -59,7 +59,7 @@ const PassportSchema = z
             "the issuer independently instead of taking TrustPass's word.",
           example: "900123456-7",
         }),
-        verificationStatus: z.enum(schema.issuerVerificationStatus.enumValues),
+        verificationStatus: z.enum(schema.verificationStatus.enumValues),
       })
       .nullable()
       .openapi({
