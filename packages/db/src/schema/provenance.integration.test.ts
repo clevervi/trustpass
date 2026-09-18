@@ -4,7 +4,7 @@ import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
 import { insertProductWithProvenance } from "../testing/with-provenance.js";
-import { lifecycleEvent } from "./lifecycle-event.js";
+import { lifecycleEvent, type NewLifecycleEvent } from "./lifecycle-event.js";
 import { product } from "./product.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -138,6 +138,28 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
     // still in the table and matches registered -> suspended, so a check
     // scoped to history rather than to this transaction would accept it and
     // leave the third move unexplained while looking accounted for.
+    await expectSqlState(
+      db.update(product).set({ status: "suspended" }).where(eq(product.id, created.id)),
+      SqlState.PROVENANCE_REQUIRED,
+    );
+  });
+
+  it("does not accept an event planted with a future recorded_at", async () => {
+    const created = await insertProductWithProvenance(db, values());
+
+    // The attack the trigger was open to until 0015. Every rule in this file
+    // scopes "this transaction" by recorded_at, and recorded_at was a column
+    // the writer chose — so an event planted ten years ahead, alone in an
+    // earlier transaction, satisfied a later move that recorded nothing at all.
+    //
+    // Measured before the fix: the plant was accepted, and the move committed.
+    // A status change with no reason in its transaction, on an append-only
+    // history that could never be corrected afterwards.
+    await db.insert(lifecycleEvent).values({
+      ...transitionEvent(created.id, "registered", "suspended"),
+      recordedAt: sql`now() + interval '10 years'`,
+    } as unknown as NewLifecycleEvent);
+
     await expectSqlState(
       db.update(product).set({ status: "suspended" }).where(eq(product.id, created.id)),
       SqlState.PROVENANCE_REQUIRED,
