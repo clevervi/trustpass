@@ -51,6 +51,14 @@ number rather than by legal name — see
 **Not included:** authentication. Anyone reaching `POST /products` can register
 against any issuer, so the API must not be exposed publicly before `TP-141`.
 
+`TP-141` is gated on `TP-140`, not the other way round.
+[ADR 0009](adr/0009-a-capacity-is-granted-not-claimed.md) decides what an
+identity **is** — an actor, and capacities granted to it with a scope, an
+evidence reference, an expiry and a revocation — before anything is built to
+present one. Login resolves a credential to an actor; it does not decide what
+that actor may assert. Events are permanent (ADR 0008), so every event written
+after `TP-141` points at whatever identity model existed that day, forever.
+
 ### v0.3.0 — Passport ✅
 
 A QR resolves to a public passport page showing what is verified and what is not,
