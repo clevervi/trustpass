@@ -117,8 +117,56 @@ jobs:
       - name: Apply database migrations
         run: pnpm db:migrate
 
+      # The runtime role is created NOLOGIN with no password, so it needs one
+      # before the least-privilege suite can connect as it — and without that
+      # connection the suite skips, which would be worse than not having it:
+      # a green run claiming a guarantee nobody measured.
+      #
+      # Generated per run rather than stored. The database is a throwaway
+      # container that lives for the length of this job, so there is nothing
+      # here to rotate and nothing to leak beyond it. Masked anyway, because a
+      # password in a public build log teaches the wrong habit.
+      - name: Provision the runtime role
+        run: |
+          RUNTIME_PASSWORD="$(openssl rand -hex 24)"
+          MIGRATION_PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$RUNTIME_PASSWORD"
+          echo "::add-mask::$MIGRATION_PASSWORD"
+          TRUSTPASS_RUNTIME_PASSWORD="$RUNTIME_PASSWORD" \
+          TRUSTPASS_MIGRATION_PASSWORD="$MIGRATION_PASSWORD" \
+            pnpm db:provision
+          echo "RUNTIME_DATABASE_URL=postgresql://trustpass_runtime:${RUNTIME_PASSWORD}@localhost:5432/trustpass_test" >> "$GITHUB_ENV"
+
       - name: Run test suites
         run: pnpm test
+
+      # The privilege matrix, on the run page, for a reader who wants to see
+      # what the application can do without checking out the branch. The test
+      # suite is what *enforces* it; this is what makes it legible. Written to
+      # the step summary rather than uploaded, so it needs no extra action —
+      # #123 is about having fewer of those, not more.
+      - name: Report the privilege matrix
+        if: always()
+        run: |
+          {
+            echo '## What `trustpass_runtime` can do'
+            echo
+            echo '```'
+            PGPASSWORD=trustpass_ci psql -h localhost -U trustpass -d trustpass_test -P pager=off -c "
+              SELECT c.relname AS table_name,
+                     has_table_privilege('trustpass_runtime', c.oid, 'SELECT')   AS select,
+                     has_table_privilege('trustpass_runtime', c.oid, 'INSERT')   AS insert,
+                     has_table_privilege('trustpass_runtime', c.oid, 'UPDATE')   AS update,
+                     has_table_privilege('trustpass_runtime', c.oid, 'DELETE')   AS delete,
+                     has_table_privilege('trustpass_runtime', c.oid, 'TRUNCATE') AS truncate
+              FROM pg_class c
+              WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r'
+              ORDER BY 1;"
+            PGPASSWORD=trustpass_ci psql -h localhost -U trustpass -d trustpass_test -P pager=off -c "
+              SELECT rolname, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls
+              FROM pg_roles WHERE rolname LIKE 'trustpass%' ORDER BY 1;"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   secrets:
     name: Secret scan
