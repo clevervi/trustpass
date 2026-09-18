@@ -3,7 +3,6 @@ import {
   bigint,
   check,
   index,
-  pgEnum,
   pgTable,
   timestamp,
   uniqueIndex,
