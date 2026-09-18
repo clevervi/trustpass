@@ -147,6 +147,21 @@ check proves a test can fail; it cannot prove the author tested the right thing.
 The bar makes the author's reasoning inspectable, which is the most a single
 author can honestly offer.
 
+### A pull request whose commits are not yours is rebase-merged
+
+The default is a squash merge. **Squashing erases authorship**: GitHub
+attributes the squashed commit to whoever pressed merge, not to whoever wrote
+the code. Measured rather than assumed — three commits authored by the second
+account went in under #70 and the contributor count did not move.
+
+So when a pull request carries commits authored by a different account, merge it
+with **rebase**, which keeps each commit and its author while still producing a
+linear history. Squash the rest.
+
+This repository has one maintainer working from two accounts, and the history
+should say which one wrote what. Losing that to a merge strategy is a small lie
+told by a default.
+
 ### Every guard ships with a test that dies without it
 
 **Adding a check, a constraint, a type guard or a trigger means adding a test
