@@ -12,7 +12,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { lifecycleActorKind } from "./actor-capacity.js";
 import { capacityGrant } from "./capacity-grant.js";
-import { issuer } from "./issuer.js";
 import { organization } from "./organization.js";
 import { product, productStatus } from "./product.js";
 
@@ -152,23 +151,10 @@ export const lifecycleEvent = pgTable(
     actorKind: lifecycleActorKind("actor_kind").notNull(),
 
     /**
-     * Which issuer acted, when one did.
-     *
-     * Nullable because a holder, an authority or the system is not an issuer.
-     * Restrict for the same reason as the product reference: an issuer with
-     * recorded events cannot be deleted out from under them.
-     */
-    issuerId: bigint("issuer_id", { mode: "number" }).references(() => issuer.id, {
-      onDelete: "restrict",
-      onUpdate: "cascade",
-    }),
-
-    /**
      * Which party acted, when one did.
      *
      * Per ADR 0012 `organization` is the canonical identity of a party, so this
-     * is where `issuerId` is going. It sits beside it during the move, per the
-     * additive rule in `CONTRIBUTING.md`.
+     * is the only identity a party has, as of `0023`.
      *
      * It also closes a gap the old column could not: an event whose actor is an
      * authority is *required* to have `issuer_id IS NULL` by
@@ -317,7 +303,6 @@ export const lifecycleEvent = pgTable(
 
     // "Everything this issuer recorded" is the issuer dashboard and the first
     // place a fraud pattern shows up.
-    index("lifecycle_event_issuer_idx").on(table.issuerId),
 
     // The same lookup, against the identity that will outlive issuer_id.
     index("lifecycle_event_organization_idx").on(table.organizationId),

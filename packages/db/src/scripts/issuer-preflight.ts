@@ -187,8 +187,21 @@ async function main(): Promise<void> {
   const repoRoot = repositoryRoot();
 
   try {
-    const [counts] = await db.execute<Record<string, string>>(
-      sql`SELECT
+    // Whether the table is still there decides which query can even be parsed.
+    //
+    // The first version asked for row counts unconditionally and died with
+    // 42P01 the moment the table was gone — a command that claimed to answer
+    // both phases and could not start in the second. Postgres resolves a
+    // relation at parse time, so a CASE around the subquery does not help; the
+    // query has to differ.
+    const [existence] = await db.execute<{ present: boolean }>(
+      sql`SELECT to_regclass('public.issuer') IS NOT NULL AS present`,
+    );
+    const tableStillExists = existence?.present === true;
+
+    const [counts]: readonly Record<string, string>[] = tableStillExists
+      ? await db.execute<Record<string, string>>(
+          sql`SELECT
             (SELECT count(*) FROM issuer)::text AS issuers,
             (SELECT count(*) FROM organization)::text AS organizations,
             (SELECT count(*) FROM product WHERE issuer_id IS NOT NULL)::text
@@ -212,7 +225,22 @@ async function main(): Promise<void> {
                 AND o.registration_number = i.registration_number
                WHERE o.verification_status IS DISTINCT FROM i.verification_status)::text
               AS verification_disagreeing`,
-    );
+        )
+      : // Nothing to count once the table is gone. Every row condition is
+        // vacuously met, and the catalogue conditions below are the ones that
+        // matter from here on.
+        [
+          {
+            issuers: "0",
+            organizations: "0",
+            products_on_issuer: "0",
+            events_on_issuer: "0",
+            products_unmoved: "0",
+            events_unmoved: "0",
+            issuers_unmatched: "0",
+            verification_disagreeing: "0",
+          },
+        ];
 
     // What Postgres still knows, which is a different question from what the
     // repository still says. Raised in review: `grep repo = 0` does not
@@ -266,7 +294,6 @@ async function main(): Promise<void> {
     );
 
     const c = (key: string): number => Number(catalogue?.[key] ?? "0");
-    const tableStillExists = c("issuer_table") > 0;
 
     const { offenders, scanned } = filesDependingOnTheIssuerTable(repoRoot);
 

@@ -24,13 +24,6 @@ export {
   type NewCredential,
 } from "./credential.js";
 export {
-  type Issuer,
-  issuer,
-  type NewIssuer,
-  type VerificationStatus,
-  verificationStatus,
-} from "./issuer.js";
-export {
   type LifecycleActorKind,
   type LifecycleEvent,
   type LifecycleEventReason,
@@ -46,6 +39,8 @@ export {
   type NewOrganization,
   type Organization,
   organization,
+  type VerificationStatus,
+  verificationStatus,
 } from "./organization.js";
 export {
   type NewProduct,
