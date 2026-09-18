@@ -36,6 +36,29 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
     };
   }
 
+  /** A status change and the event explaining it, together — the legal shape. */
+  async function moveWithReason(
+    productId: number,
+    from: "registered" | "suspended",
+    to: "registered" | "suspended",
+  ): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.update(product).set({ status: to }).where(eq(product.id, productId));
+      await tx.insert(lifecycleEvent).values({
+        productId,
+        type: to === "suspended" ? "product_suspended" : "product_reinstated",
+        actorKind: "authority",
+        issuerId: null,
+        // now(), not a Date: recorded_at defaults to the transaction timestamp,
+        // and a Date read afterwards is later than it.
+        occurredAt: sql`now()` as unknown as Date,
+        reason: to === "suspended" ? "theft_report" : "dispute_resolved",
+        previousState: from,
+        resultingState: to,
+      });
+    });
+  }
+
   beforeAll(() => {
     db = createDatabase(databaseUrl as string);
   });
@@ -69,21 +92,7 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
   it("accepts the status change when the event is written in the same transaction", async () => {
     const created = await insertProductWithProvenance(db, values());
 
-    await db.transaction(async (tx) => {
-      await tx.update(product).set({ status: "suspended" }).where(eq(product.id, created.id));
-      await tx.insert(lifecycleEvent).values({
-        productId: created.id,
-        type: "product_suspended",
-        actorKind: "authority",
-        issuerId: null,
-        // now(), not a Date: recorded_at defaults to the transaction
-        // timestamp, and a Date read afterwards is later than it.
-        occurredAt: sql`now()` as unknown as Date,
-        reason: "theft_report",
-        previousState: "registered",
-        resultingState: "suspended",
-      });
-    });
+    await moveWithReason(created.id, "registered", "suspended");
 
     const [row] = await db.select().from(product).where(eq(product.id, created.id));
     expect(row?.status).toBe("suspended");
@@ -92,37 +101,9 @@ describe.skipIf(!databaseUrl)("provenance is guaranteed, not conventional", () =
   it("does not accept an event from an earlier transaction as an explanation", async () => {
     const created = await insertProductWithProvenance(db, values());
 
-    await db.transaction(async (tx) => {
-      await tx.update(product).set({ status: "suspended" }).where(eq(product.id, created.id));
-      await tx.insert(lifecycleEvent).values({
-        productId: created.id,
-        type: "product_suspended",
-        actorKind: "authority",
-        issuerId: null,
-        // now(), not a Date: recorded_at defaults to the transaction
-        // timestamp, and a Date read afterwards is later than it.
-        occurredAt: sql`now()` as unknown as Date,
-        reason: "theft_report",
-        previousState: "registered",
-        resultingState: "suspended",
-      });
-    });
+    await moveWithReason(created.id, "registered", "suspended");
 
-    await db.transaction(async (tx) => {
-      await tx.update(product).set({ status: "registered" }).where(eq(product.id, created.id));
-      await tx.insert(lifecycleEvent).values({
-        productId: created.id,
-        type: "product_reinstated",
-        actorKind: "authority",
-        issuerId: null,
-        // now(), not a Date: recorded_at defaults to the transaction
-        // timestamp, and a Date read afterwards is later than it.
-        occurredAt: sql`now()` as unknown as Date,
-        reason: "dispute_resolved",
-        previousState: "suspended",
-        resultingState: "registered",
-      });
-    });
+    await moveWithReason(created.id, "suspended", "registered");
 
     // The same move again, with no new event. The first suspension's event is
     // still in the table and matches registered -> suspended, so a check
