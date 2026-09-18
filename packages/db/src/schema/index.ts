@@ -5,6 +5,24 @@
  *   TP-060 ownership, TP-040 warranty.
  */
 
+export { type Actor, actor, actorKind, type NewActor } from "./actor.js";
+export {
+  type CapacityGrant,
+  type CapacityGrantRevocation,
+  capacityGrant,
+  capacityGrantRevocation,
+  type GrantScopeKind,
+  grantScopeKind,
+  type NewCapacityGrant,
+  type NewCapacityGrantRevocation,
+} from "./capacity-grant.js";
+export {
+  type Credential,
+  type CredentialKind,
+  credential,
+  credentialKind,
+  type NewCredential,
+} from "./credential.js";
 export {
   type Issuer,
   type IssuerVerificationStatus,
@@ -23,6 +41,12 @@ export {
   lifecycleEventType,
   type NewLifecycleEvent,
 } from "./lifecycle-event.js";
+export { type Membership, membership, type NewMembership } from "./membership.js";
+export {
+  type NewOrganization,
+  type Organization,
+  organization,
+} from "./organization.js";
 export {
   type NewProduct,
   type Product,

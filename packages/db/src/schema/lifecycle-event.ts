@@ -10,6 +10,8 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
+import { lifecycleActorKind } from "./actor-capacity.js";
+import { capacityGrant } from "./capacity-grant.js";
 import { issuer } from "./issuer.js";
 import { product, productStatus } from "./product.js";
 
@@ -129,25 +131,6 @@ export const lifecycleEventReason = pgEnum("lifecycle_event_reason", [
   "recording_error",
 ]);
 
-/**
- * In what capacity the actor acted.
- *
- * Not who they are. Identifying a person requires authentication, which is
- * `TP-141`; recording the capacity is what the system can honestly assert
- * today. An event whose actor is unknown is worse than one that says the
- * capacity and stops there.
- */
-export const lifecycleActorKind = pgEnum("lifecycle_actor_kind", [
-  /** A registered business. `issuer_id` identifies which. */
-  "issuer",
-  /** Whoever had the object. Per ADR 0007 this asserts very little. */
-  "holder",
-  /** A police report, a customs seizure, a regulator. */
-  "authority",
-  /** TrustPass itself — a scheduled expiry, a migration, an automated check. */
-  "system",
-]);
-
 export const lifecycleEvent = pgTable(
   "lifecycle_event",
   {
@@ -175,6 +158,42 @@ export const lifecycleEvent = pgTable(
      * recorded events cannot be deleted out from under them.
      */
     issuerId: bigint("issuer_id", { mode: "number" }).references(() => issuer.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+
+    /**
+     * The grant this action was authorised under.
+     *
+     * Per ADR 0011 §3 an event pins the **grant**, not the capacity.
+     * `actor_kind` alone says only what somebody declared themselves to be: it
+     * cannot name which authority, or under what warrant, and the schema
+     * currently requires it to stay silent — `lifecycle_event_issuer_matches_actor`
+     * forces `issuer_id IS NULL` whenever the actor is not an issuer. With a
+     * grant, three questions become answerable years later that are not
+     * answerable now: who recorded this, why were they allowed to, and was that
+     * still valid at the time.
+     *
+     * **`NULL` means "recorded before TrustPass could prove authority". It does
+     * not mean "recorded without authority".** Over eight thousand events
+     * predate this column, and no grant existed to point them at. Inventing a
+     * "legacy" grant would have those events referencing something nobody
+     * issued, to nobody, for nothing — the same objection ADR 0010 makes to
+     * merging two records to tidy them up.
+     *
+     * That distinction is one `WHERE grant_id IS NULL` away from being read as
+     * an accusation about a record, so it is written here, in the column
+     * comment in the migration, and pinned by a regression test.
+     *
+     * Nullable **for now**, and deliberately without a trigger requiring it yet:
+     * no write path resolves a grant, so a constraint arriving before the code
+     * that satisfies it is a broken suite in a project without deployments and
+     * an outage in one with them. The trigger is the phase after this one.
+     *
+     * Per ADR 0011 §3 as amended, when it is written it is resolved by the
+     * server from the authenticated actor and never accepted as input.
+     */
+    grantId: bigint("grant_id", { mode: "number" }).references(() => capacityGrant.id, {
       onDelete: "restrict",
       onUpdate: "cascade",
     }),
@@ -319,4 +338,5 @@ export type NewLifecycleEvent = Omit<
 >;
 export type LifecycleEventType = (typeof lifecycleEventType.enumValues)[number];
 export type LifecycleEventReason = (typeof lifecycleEventReason.enumValues)[number];
-export type LifecycleActorKind = (typeof lifecycleActorKind.enumValues)[number];
+
+export { type LifecycleActorKind, lifecycleActorKind } from "./actor-capacity.js";

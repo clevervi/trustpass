@@ -127,6 +127,13 @@
       "when": 1789732172179,
       "tag": "0017_the_snapshot_catches_up",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789743324512,
+      "tag": "0018_authority_is_a_grant",
+      "breakpoints": true
     }
   ]
 }
