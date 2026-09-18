@@ -58,7 +58,7 @@ describe("privilegeFailures", () => {
     });
 
     expect(failures).toHaveLength(1);
-    expect(failures[0]).toMatch(/become the owner of 16 object\(s\)/);
+    expect(failures[0]).toMatch(/owner's rights over 16 database object\(s\)/);
   });
 
   it("reports every reason at once rather than stopping at the first", () => {

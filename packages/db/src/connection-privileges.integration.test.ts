@@ -98,10 +98,129 @@ describe.skipIf(!databaseUrl)("the connection describes itself honestly", () => 
       expect(privileges.bypassRowLevelSecurity).toBe(false);
       expect(privileges.reachableOwnership).toBeGreaterThan(0);
 
-      await expect(assertConnectionIsUnprivileged(pinned)).rejects.toThrow(/become the owner/);
+      await expect(assertConnectionIsUnprivileged(pinned)).rejects.toThrow(/owner's rights over/);
     } finally {
       await pinned.$client.end();
     }
+  });
+
+  /**
+   * Builds an owner nobody else uses, gives it exactly one object, and asks the
+   * guard what a member of that owner looks like.
+   *
+   * Written this way rather than asserting a count, because a count is a
+   * property of today's schema: `reachableOwnership` was 16 when #127 shipped
+   * and is 25 now, and a test pinned to either number fails on the next
+   * migration for no reason anyone cares about. This asks the question the
+   * guard exists to answer, and stays true whatever the schema becomes.
+   */
+  async function guardSeesOwnershipOf(
+    create: string,
+    drop: string,
+    grantOptions = "",
+  ): Promise<number> {
+    // One connection: SET ROLE applies to a session, and a ten-member pool
+    // would answer from whichever member the next query lands on.
+    const pinned = createDatabase(databaseUrl as string, { maxConnections: 1 });
+
+    try {
+      await pinned.execute(sql.raw("DROP ROLE IF EXISTS tp_probe_member"));
+      await pinned.execute(sql.raw("DROP ROLE IF EXISTS tp_probe_owner"));
+      await pinned.execute(sql.raw("CREATE ROLE tp_probe_owner NOLOGIN"));
+      await pinned.execute(sql.raw("CREATE ROLE tp_probe_member NOLOGIN"));
+      await pinned.execute(sql.raw(`GRANT tp_probe_owner TO tp_probe_member ${grantOptions}`));
+      await pinned.execute(sql.raw(create));
+
+      await pinned.execute(sql.raw("SET ROLE tp_probe_member"));
+      const privileges = await readConnectionPrivileges(pinned);
+      await pinned.execute(sql.raw("RESET ROLE"));
+
+      expect(privileges.role).toBe("tp_probe_member");
+      return privileges.reachableOwnership;
+    } finally {
+      const cleanup = createDatabase(databaseUrl as string, { maxConnections: 1 });
+      try {
+        await cleanup.execute(sql.raw(drop));
+        await cleanup.execute(sql.raw("DROP ROLE IF EXISTS tp_probe_member"));
+        await cleanup.execute(sql.raw("DROP ROLE IF EXISTS tp_probe_owner"));
+      } finally {
+        await cleanup.$client.end();
+      }
+      await pinned.$client.end();
+    }
+  }
+
+  it("sees a function it could redefine, which pg_class does not contain", async () => {
+    // The defect this file was extended for. Migration 0024 moves the seven
+    // trigger functions to the owner because a function owner can
+    // CREATE OR REPLACE the body of an append-only guard and leave the trigger
+    // attached, enabled, and enforcing nothing — `least-privilege` tests that
+    // exact attack under the name "redefine a trigger function".
+    //
+    // The first version of the startup guard queried pg_class only. Functions
+    // are in pg_proc, so a role able to become the owner of every one of them
+    // scored 0 and the API started.
+    const reachable = await guardSeesOwnershipOf(
+      "CREATE FUNCTION tp_probe_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$;" +
+        " ALTER FUNCTION tp_probe_fn() OWNER TO tp_probe_owner",
+      "DROP FUNCTION IF EXISTS tp_probe_fn()",
+    );
+
+    expect(reachable).toBeGreaterThan(0);
+  });
+
+  it("sees a member that inherits the owner's rights but cannot SET ROLE", async () => {
+    // The case that decides MEMBER against SET, and which nothing defended
+    // until this test existed — the reasoning was in a comment and a comment
+    // cannot go red.
+    //
+    // Review proposed `pg_has_role(..., 'SET')` on the reading that SET is the
+    // privilege meaning "can issue SET ROLE". The reading is right and the
+    // change opens a hole. Measured on Postgres 18:
+    //
+    //   role               MEMBER   SET   USAGE (inherits privileges)
+    //   probe              t        f     t
+    //
+    // Connected as such a role, never issuing SET ROLE:
+    //
+    //   ALTER TABLE lifecycle_event DISABLE TRIGGER lifecycle_event_no_update;
+    //   -> ALTER TABLE.  guard_on: 0.  still listed in pg_trigger: 1.
+    //
+    // Inheritance reaches the owner's privileges without SET ROLE ever being
+    // called, so a SET-based count reads 0 and the application starts on it.
+    const reachable = await guardSeesOwnershipOf(
+      "CREATE TABLE tp_probe_inherited (id integer); ALTER TABLE tp_probe_inherited OWNER TO tp_probe_owner",
+      "DROP TABLE IF EXISTS tp_probe_inherited",
+      "WITH INHERIT TRUE, SET FALSE",
+    );
+
+    expect(reachable).toBeGreaterThan(0);
+  });
+
+  it("sees an enum it could reinterpret every past event with", async () => {
+    // `lifecycle_actor_kind` is an enum. Its owner can add, rename or drop a
+    // value, and dropping one silently changes what every event recorded under
+    // it means — 0023 already carries a test defending `'issuer'` from exactly
+    // that, and the startup guard should not be the layer that ignores it.
+    const reachable = await guardSeesOwnershipOf(
+      "CREATE TYPE tp_probe_enum AS ENUM ('a', 'b'); ALTER TYPE tp_probe_enum OWNER TO tp_probe_owner",
+      "DROP TYPE IF EXISTS tp_probe_enum",
+    );
+
+    expect(reachable).toBeGreaterThan(0);
+  });
+
+  it("sees an object outside public, where the migration ledger lives", async () => {
+    // `drizzle.__drizzle_migrations` decides which migrations this database
+    // believes it has already run. Its owner can make it believe anything.
+    const reachable = await guardSeesOwnershipOf(
+      "CREATE SCHEMA tp_probe_schema; CREATE TABLE tp_probe_schema.ledger (id integer);" +
+        " ALTER TABLE tp_probe_schema.ledger OWNER TO tp_probe_owner;" +
+        " ALTER SCHEMA tp_probe_schema OWNER TO tp_probe_owner",
+      "DROP SCHEMA IF EXISTS tp_probe_schema CASCADE",
+    );
+
+    expect(reachable).toBeGreaterThan(0);
   });
 
   it("counts reachable ownership rather than direct ownership", async () => {
