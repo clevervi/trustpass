@@ -16,6 +16,19 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ### Decided
 
+- **[ADR 0010](docs/adr/0010-two-records-one-object.md) — two records for one
+  object are joined by evidence, and neither is destroyed.** Settles
+  [#49](https://github.com/clevervi/trustpass/issues/49): a holder enrolment and
+  a later manufacturer registration of the same serial are two truthful
+  assertions about one object, made by parties with different standing over
+  different periods. They are joined by a **correspondence** — a record in its
+  own right, never an edit to either product — so both TrustPass IDs keep
+  resolving and each names the other once verified. Standing is explicitly not
+  evidence: a verified manufacturer has proved who it is and nothing about the
+  object, so "the manufacturer wins" is refused and self-verification with it.
+  The unknown period is bounded rather than erased, which is the actual benefit
+  of reconciling. Proposed, verified, rejected and withdrawn are all events, so
+  a join can be reversed or disputed without anything being deleted.
 - **[ADR 0009](docs/adr/0009-a-capacity-is-granted-not-claimed.md) — a capacity
   is granted, evidenced and revocable; it is not a role on a user.**
   `recording-authority.ts` already decides what a capacity may assert and a
