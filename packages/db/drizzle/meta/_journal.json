@@ -57,6 +57,13 @@
       "when": 1789696063879,
       "tag": "0007_enrol_without_issuer",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789696064879,
+      "tag": "0008_recording_authority",
+      "breakpoints": true
     }
   ]
 }

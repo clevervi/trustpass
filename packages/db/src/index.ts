@@ -7,6 +7,12 @@ export {
   nextStatuses,
   PRODUCT_STATUS_TRANSITIONS,
 } from "./domain/product-status.js";
+export {
+  mayRecord,
+  RECORDING_AUTHORITY,
+  recordingAuthorityPairs,
+  UnauthorisedRecording,
+} from "./domain/recording-authority.js";
 export { discloseSerial, type SerialDisclosure } from "./domain/serial-disclosure.js";
 export {
   CLAIM_STATES,
