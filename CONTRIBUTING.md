@@ -255,6 +255,38 @@ run, not merely built: `v0.1.0` was tagged once, found broken on first
 execution, and re-cut. That was free because it had not been pushed. After a
 push it is not free, because other people's checkouts already believe it.
 
+### A `TP-` identifier has to resolve to something
+
+Two were found pointing at nothing, both by hand: `TP-130`, cited for secure
+tags and present nowhere else, and `TP-111`, referenced by
+`packages/db/src/schema/product.ts` and owned by no issue at all — so the code
+was deferring a decision to an identifier that tracked nothing. It now has one
+(#89).
+
+> **A `TP-` identifier in code, an ADR, a release note or this file must resolve
+> to an issue or to a roadmap entry. `docs/ROADMAP.md` itself may name unstarted
+> work, because that is what a roadmap is for.**
+
+To check:
+
+```bash
+rg -o 'TP-[0-9]{3}' --glob '!node_modules' . | sed 's/.*://' | sort -u > /tmp/used
+gh issue list --state all --limit 300 --json title -q '.[].title'   | rg -o 'TP-[0-9]{3}' | sort -u > /tmp/issued
+comm -23 /tmp/used /tmp/issued   # each result must appear in docs/ROADMAP.md
+```
+
+**Deliberately not a CI gate, and the reason is measured rather than assumed.**
+42 identifiers are referenced; 25 have an issue. Nearly all of the remainder are
+future roadmap entries, which are legitimate — requiring an issue for each would
+contradict the Definition of Ready, whose whole point is that an issue carries
+acceptance criteria rather than a placeholder. The roadmap also writes ranges,
+so `TP-050` … `TP-053` assigns two identifiers it never spells out, and a check
+comparing literal strings fails on correct references.
+
+A gate that cries wolf gets ignored, and an ignored gate is worse than a command
+somebody runs when they touch an identifier. That is the trade made here; the
+migration drift check is a gate because it has no equivalent false positive.
+
 ### The README's status block is a claim like any other
 
 `README.md` says what works and what does not. It is the first thing a reader
