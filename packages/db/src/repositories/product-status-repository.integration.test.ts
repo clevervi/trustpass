@@ -92,8 +92,7 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
       await changeProductStatus(db, {
         productId: id,
         to: "suspended",
-        actorKind: "issuer",
-        issuerId,
+        actorKind: "authority",
         reason: "fraud_flag",
       });
 
@@ -370,6 +369,63 @@ describe.skipIf(!databaseUrl)("changing a product's status records why", () => {
         "theft_report",
         "issuer_request",
       ]);
+    });
+  });
+
+  describe("a capacity cannot record what its standing does not support", () => {
+    it("refuses a holder clearing a suspension, as an outcome", async () => {
+      const id = await aProduct();
+      await changeProductStatus(db, {
+        productId: id,
+        to: "suspended",
+        actorKind: "authority",
+        reason: "theft_report",
+      });
+
+      const result = await changeProductStatus(db, {
+        productId: id,
+        to: "registered",
+        actorKind: "holder",
+        reason: "dispute_resolved",
+      });
+
+      // The one that matters: a product suspended over a theft report, cleared by
+      // whoever holds it, is the system helping launder a stolen device.
+      expect(result).toEqual({ ok: false, reason: "unauthorised_actor", actorKind: "holder" });
+    });
+
+    it("leaves the product suspended when the actor was refused", async () => {
+      const id = await aProduct();
+      await changeProductStatus(db, {
+        productId: id,
+        to: "suspended",
+        actorKind: "authority",
+        reason: "theft_report",
+      });
+      await changeProductStatus(db, {
+        productId: id,
+        to: "registered",
+        actorKind: "holder",
+        reason: "dispute_resolved",
+      });
+
+      const [row] = await db.select().from(product).where(eq(product.id, id));
+
+      expect(row?.status).toBe("suspended");
+    });
+
+    it("refuses an issuer suspending a product to bury a complaint", async () => {
+      const id = await aProduct();
+
+      const result = await changeProductStatus(db, {
+        productId: id,
+        to: "suspended",
+        actorKind: "issuer",
+        issuerId,
+        reason: "fraud_flag",
+      });
+
+      expect(result).toMatchObject({ ok: false, reason: "unauthorised_actor" });
     });
   });
 });

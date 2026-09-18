@@ -1,5 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import type { Database } from "../client.js";
+import { mayRecord } from "../domain/recording-authority.js";
 import {
   type LifecycleActorKind,
   type LifecycleEventReason,
@@ -52,6 +53,11 @@ export interface ChangeProductStatusInput {
 export type ChangeProductStatusResult =
   | { readonly ok: true; readonly product: Product }
   | { readonly ok: false; readonly reason: "not_found" }
+  | {
+      readonly ok: false;
+      readonly reason: "unauthorised_actor";
+      readonly actorKind: LifecycleActorKind;
+    }
   | {
       readonly ok: false;
       readonly reason: "illegal_transition";
@@ -114,6 +120,15 @@ export async function changeProductStatus(
         return { ok: true, product: unchanged as Product };
       }
 
+      const type = eventFor(current.status, input.to);
+
+      // Checked here as well as in the trigger, so a caller gets an outcome it
+      // can act on rather than an exception it has to decode. The trigger is
+      // still the authority: this is the same rule read early, not a second one.
+      if (!mayRecord(input.actorKind, type)) {
+        return { ok: false, reason: "unauthorised_actor", actorKind: input.actorKind };
+      }
+
       const [updated] = await tx
         .update(product)
         .set({ status: input.to })
@@ -122,7 +137,7 @@ export async function changeProductStatus(
 
       await tx.insert(lifecycleEvent).values({
         productId: input.productId,
-        type: eventFor(current.status, input.to),
+        type,
         actorKind: input.actorKind,
         issuerId: input.issuerId ?? null,
         // `now()` rather than a JavaScript Date, for the reason TP-051 found:
