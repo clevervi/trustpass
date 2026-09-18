@@ -16,6 +16,20 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ### Decided
 
+- **[ADR 0012](docs/adr/0012-one-party-one-record.md) — one party, one record,
+  and verification is a claim about it.** #107 added `organization` without
+  reconciling it with `issuer`, leaving two unconnected tables for one kind of
+  thing — the duplication ADR 0006 and ADR 0009 both refuse, introduced by the
+  pull request citing ADR 0009 as its reason. The question raised in review
+  reframed it: not *how do we connect them* but **which is canonical and where
+  does verification live**. `organization` is canonical and `issuer` becomes a
+  role it plays. Verification belongs to the party rather than to a capacity,
+  because a police force is checked whether or not it holds a grant. And
+  `verification_status` is a **claim** while changes to it are **events**, per
+  ADR 0008 — today it is a mutable column and nothing else, which is ADR 0011
+  §4's rejected shape in a different table: *"was this issuer verified in
+  March"* has no answer, and the passport renders the present value beside
+  events recorded over years.
 - **[ADR 0011](docs/adr/0011-authority-is-pinned-to-the-moment-it-was-used.md)
   amended: `grant_id` is not the caller's to choose.** §3 decided an event pins
   the grant it acted under and never said who writes it — the third column of
