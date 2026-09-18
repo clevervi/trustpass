@@ -14,6 +14,17 @@ A version's section lists only what that tag actually contains. Work merged to
 
 ## [Unreleased]
 
+### Changed
+
+- **The roadmap says what shipped.** v0.5.0 was planned as Ownership and became
+  **Identity and authority**, because `TP-141` turned out to be unbuildable
+  until the model behind it was decided and that took four ADRs. Ownership moves
+  to v0.6.0 for the reason that moved lifecycle events ahead of warranty: a
+  transfer has to say *who* transferred it, and until this milestone the system
+  could not name a party or prove one held any capacity. Recorded rather than
+  quietly renumbered — a roadmap that drops a milestone is the stale claim this
+  project keeps removing from everywhere else.
+
 ### Decided
 
 - **[ADR 0012](docs/adr/0012-one-party-one-record.md) — one party, one record,
