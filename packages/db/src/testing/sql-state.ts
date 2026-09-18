@@ -41,6 +41,13 @@ export const SqlState = {
    * See drizzle/0008_recording_authority.sql.
    */
   UNAUTHORISED_RECORDING: "TP003",
+  /**
+   * Project-defined. Raised at COMMIT by a deferred constraint trigger when a
+   * product exists, or a status moved, with no lifecycle event explaining it.
+   * Distinct from TP001 so an illegal move is still reported as illegal rather
+   * than as unexplained. See drizzle/0010_provenance_is_guaranteed.sql.
+   */
+  PROVENANCE_REQUIRED: "TP004",
 } as const;
 
 export type SqlStateCode = (typeof SqlState)[keyof typeof SqlState];

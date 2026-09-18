@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
-    "./identity": "./src/identity/trustpass-id.ts"
+    "./identity": "./src/identity/trustpass-id.ts",
+    "./testing": "./src/testing/index.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",

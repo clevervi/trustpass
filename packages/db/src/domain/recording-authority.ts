@@ -50,7 +50,7 @@ export const RECORDING_AUTHORITY: Readonly<
   authority: ["product_suspended", "product_reinstated", "product_retired"],
 
   /** TrustPass itself. Only the system corrects the system's own record. */
-  system: ["record_corrected"],
+  system: ["record_corrected", "product_activated"],
 } as const;
 
 export class UnauthorisedRecording extends Error {
