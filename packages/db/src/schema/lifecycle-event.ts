@@ -13,6 +13,7 @@ import {
 import { lifecycleActorKind } from "./actor-capacity.js";
 import { capacityGrant } from "./capacity-grant.js";
 import { issuer } from "./issuer.js";
+import { organization } from "./organization.js";
 import { product, productStatus } from "./product.js";
 
 /**
@@ -163,6 +164,28 @@ export const lifecycleEvent = pgTable(
     }),
 
     /**
+     * Which party acted, when one did.
+     *
+     * Per ADR 0012 `organization` is the canonical identity of a party, so this
+     * is where `issuerId` is going. It sits beside it during the move, per the
+     * additive rule in `CONTRIBUTING.md`.
+     *
+     * It also closes a gap the old column could not: an event whose actor is an
+     * authority is *required* to have `issuer_id IS NULL` by
+     * `lifecycle_event_issuer_matches_actor`, so a passport could report a theft
+     * and structurally could not say who reported it. An organization is not an
+     * issuer, so a police force can finally be named — though the check that
+     * enforces the old silence moves with the destructive half, not here.
+     */
+    organizationId: bigint("organization_id", { mode: "number" }).references(
+      () => organization.id,
+      {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      },
+    ),
+
+    /**
      * The grant this action was authorised under.
      *
      * Per ADR 0011 §3 an event pins the **grant**, not the capacity.
@@ -295,6 +318,9 @@ export const lifecycleEvent = pgTable(
     // "Everything this issuer recorded" is the issuer dashboard and the first
     // place a fraud pattern shows up.
     index("lifecycle_event_issuer_idx").on(table.issuerId),
+
+    // The same lookup, against the identity that will outlive issuer_id.
+    index("lifecycle_event_organization_idx").on(table.organizationId),
 
     // An event is past-tense by ADR 0008. Something recorded as having happened
     // after it was recorded is not an event, it is a schedule, and a schedule
