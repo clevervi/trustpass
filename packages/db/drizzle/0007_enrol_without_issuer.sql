@@ -1,0 +1,3 @@
+ALTER TABLE "product" ALTER COLUMN "issuer_id" DROP NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "product_live_holder_serial_idx" ON "product" USING btree (lower("serial")) WHERE "product"."issuer_id" IS NULL AND "product"."status" <> 'retired';--> statement-breakpoint
+ALTER TABLE "product" ADD CONSTRAINT "product_holder_has_no_issuer" CHECK (("product"."origin" = 'holder') = ("product"."issuer_id" IS NULL));
