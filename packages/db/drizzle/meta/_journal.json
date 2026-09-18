@@ -120,6 +120,13 @@
       "when": 1789696072879,
       "tag": "0016_this_transaction_is_an_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789732172179,
+      "tag": "0017_the_snapshot_catches_up",
+      "breakpoints": true
     }
   ]
 }
