@@ -1,12 +1,13 @@
 import { desc, eq } from "drizzle-orm";
 import type { Database } from "../client.js";
+import type { TrustPassId } from "../identity/trustpass-id.js";
 import {
   type LifecycleActorKind,
   type LifecycleEventReason,
   type LifecycleEventType,
   lifecycleEvent,
 } from "../schema/lifecycle-event.js";
-import type { ProductStatus } from "../schema/product.js";
+import { type ProductStatus, product } from "../schema/product.js";
 
 /**
  * One entry in a product's history, as anything outside this package may see it.
@@ -54,5 +55,38 @@ export async function findProductHistory(
     })
     .from(lifecycleEvent)
     .where(eq(lifecycleEvent.productId, productId))
+    .orderBy(desc(lifecycleEvent.occurredAt), desc(lifecycleEvent.id));
+}
+
+/**
+ * A product's history, found by the identifier the outside world uses.
+ *
+ * One query with a join rather than "look up the product, then its events",
+ * and that is not an optimisation. The product's internal key is what links the
+ * two, and per ADR 0005 it must never leave this package — so the join has to
+ * happen here. A caller that could pass an `id` in would be a caller that had
+ * already been given one.
+ *
+ * An empty array means either no history or no such product. The passport read
+ * has already established which, so distinguishing them here would only invite
+ * a second lookup to answer a question nobody asked.
+ */
+export async function findHistoryByTrustPassId(
+  db: Database,
+  trustpassId: TrustPassId,
+): Promise<readonly ProductHistoryEntry[]> {
+  return await db
+    .select({
+      type: lifecycleEvent.type,
+      actorKind: lifecycleEvent.actorKind,
+      occurredAt: lifecycleEvent.occurredAt,
+      recordedAt: lifecycleEvent.recordedAt,
+      reason: lifecycleEvent.reason,
+      previousState: lifecycleEvent.previousState,
+      resultingState: lifecycleEvent.resultingState,
+    })
+    .from(lifecycleEvent)
+    .innerJoin(product, eq(product.id, lifecycleEvent.productId))
+    .where(eq(product.trustpassId, trustpassId))
     .orderBy(desc(lifecycleEvent.occurredAt), desc(lifecycleEvent.id));
 }

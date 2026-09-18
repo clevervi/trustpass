@@ -5,8 +5,9 @@ import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { issuer } from "../schema/issuer.js";
 import { lifecycleEvent } from "../schema/lifecycle-event.js";
 import { type NewProduct, product } from "../schema/product.js";
-import { findProductHistory } from "./lifecycle-event-repository.js";
+import { findHistoryByTrustPassId, findProductHistory } from "./lifecycle-event-repository.js";
 import { insertProduct } from "./product-repository.js";
+import { changeProductStatus } from "./product-status-repository.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -195,5 +196,87 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
     for (const key of ["id", "productId", "issuerId", "correctsEventId"]) {
       expect(entry).not.toHaveProperty(key);
     }
+  });
+});
+
+describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
+  const run = Math.random().toString(36).slice(2, 8).toUpperCase();
+  let db: Database;
+  let issuerId: number;
+
+  beforeAll(async () => {
+    db = createDatabase(databaseUrl as string);
+    const [created] = await db
+      .insert(issuer)
+      .values({
+        companyName: `ById ${run}`,
+        legalName: `ById ${run} SAS`,
+        registrationNumber: `${run}-BI`,
+        country: "CO",
+      })
+      .returning({ id: issuer.id });
+    issuerId = created?.id as number;
+  });
+
+  afterAll(async () => {
+    await db.$client.end();
+  });
+
+  it("finds a product's history without the caller holding its internal key", async () => {
+    const result = await insertProduct(db, {
+      trustpassId: generateTrustPassId(),
+      issuerId,
+      brand: "ASUS",
+      model: "ROG Strix RTX 5070 Ti",
+      serial: `${run}-BYID`,
+      category: "gpu",
+      status: "registered",
+    });
+    if (!result.ok) throw new Error("expected success");
+
+    const history = await findHistoryByTrustPassId(db, result.product.trustpassId);
+
+    // The join lives inside this package precisely so the product id never has
+    // to leave it. ADR 0005.
+    expect(history).toHaveLength(1);
+    expect(history[0]?.type).toBe("product_registered");
+  });
+
+  it("returns nothing for an identifier that resolves to no product", async () => {
+    expect(await findHistoryByTrustPassId(db, generateTrustPassId())).toEqual([]);
+  });
+
+  it("does not mix one product's history into another's", async () => {
+    const [one, two] = await Promise.all([
+      insertProduct(db, {
+        trustpassId: generateTrustPassId(),
+        issuerId,
+        brand: "ASUS",
+        model: "A",
+        serial: `${run}-MIX-1`,
+        category: "gpu",
+        status: "registered",
+      }),
+      insertProduct(db, {
+        trustpassId: generateTrustPassId(),
+        issuerId,
+        brand: "ASUS",
+        model: "B",
+        serial: `${run}-MIX-2`,
+        category: "gpu",
+        status: "registered",
+      }),
+    ]);
+    if (!one.ok || !two.ok) throw new Error("expected both");
+
+    await changeProductStatus(db, {
+      productId: one.product.id,
+      to: "suspended",
+      actorKind: "authority",
+      reason: "theft_report",
+    });
+
+    expect(await findHistoryByTrustPassId(db, one.product.trustpassId)).toHaveLength(2);
+    expect(await findHistoryByTrustPassId(db, two.product.trustpassId)).toHaveLength(1);
   });
 });

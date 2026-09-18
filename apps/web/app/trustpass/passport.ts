@@ -21,6 +21,23 @@ export interface PassportView {
     readonly verificationStatus: string;
   };
   readonly claims: readonly { readonly claim: string; readonly state: string }[];
+  /**
+   * What was recorded about this product, newest first.
+   *
+   * Optional on the type, not on the contract. An API serving a passport from
+   * before this shipped omits the field, and a reader should get the passport
+   * without its history rather than an error page — the same reasoning that
+   * keeps every other field a plain string here.
+   */
+  readonly history?: readonly PassportHistoryEntry[];
+}
+
+export interface PassportHistoryEntry {
+  readonly type: string;
+  readonly actorKind: string;
+  readonly occurredOn: string;
+  readonly recordedOn: string;
+  readonly reason: string | null;
 }
 
 export type PassportResult =
@@ -68,6 +85,29 @@ function isClaims(value: unknown): boolean {
 }
 
 /**
+ * History is checked but not required.
+ *
+ * Absent is fine — an older API does not serve it. Present and malformed is
+ * not: a half-parsed entry would render a date or an actor as `undefined` in a
+ * record a stranger is reading to decide whether to trust a product.
+ */
+function isHistory(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) &&
+      value.every(
+        (entry) =>
+          isRecord(entry) &&
+          typeof entry.type === "string" &&
+          typeof entry.actorKind === "string" &&
+          typeof entry.occurredOn === "string" &&
+          typeof entry.recordedOn === "string" &&
+          (entry.reason === null || typeof entry.reason === "string"),
+      ))
+  );
+}
+
+/**
  * A twelve-line guard rather than a schema library: one shape, server-side only,
  * and a half-parsed body must never render as a passport with blanks in it.
  */
@@ -82,7 +122,8 @@ function isPassportView(value: unknown): value is PassportView {
     typeof value.registeredOn === "string" &&
     isSerial(value.serial) &&
     isIssuer(value.issuer) &&
-    isClaims(value.claims)
+    isClaims(value.claims) &&
+    isHistory(value.history)
   );
 }
 
