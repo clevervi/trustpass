@@ -34,7 +34,6 @@ export {
   type TrustPassIdParseResult,
 } from "./identity/trustpass-id.js";
 export {
-  grantHistory,
   grantsHeldAt,
   type HeldGrant,
   heldCapacityAt,

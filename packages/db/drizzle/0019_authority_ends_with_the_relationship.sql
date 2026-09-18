@@ -1,0 +1,25 @@
+-- An actor is never its own grantor.
+--
+-- ADR 0011 §1 as amended. `granted_by` existed and nothing said who may fill
+-- it, so nothing stopped an actor granting to itself. Being permitted to record
+-- an event does not make you permitted to hand that permission to somebody
+-- else: they are two capacities, and conflating them means the first
+-- compromised actor can mint authority indefinitely while every grant it writes
+-- is technically well-formed.
+--
+-- NULL stays allowed and only for the root grant — the first in a fresh
+-- database, which nothing preceded.
+--
+-- This is the narrow half and the only half a constraint can express. *Which*
+-- capacities may be granted by whom is a rule about capacities, and it lands
+-- with the write path that issues them, where it can be tested against a real
+-- refusal rather than asserted here.
+--
+-- The larger fix in this change is not in SQL. `grantsHeldAt` never consulted
+-- `membership`, so an actor who left an organization in June still held its
+-- capacity in July and kept it until the grant expired nineteen months later.
+-- That belongs in the query rather than in a constraint, because a grant that
+-- stops applying is not a grant that was revoked, and writing it as a
+-- constraint would force the two facts to become one.
+
+ALTER TABLE "capacity_grant" ADD CONSTRAINT "capacity_grant_is_not_self_granted" CHECK ("capacity_grant"."granted_by" IS NULL OR "capacity_grant"."granted_by" <> "capacity_grant"."actor_id");

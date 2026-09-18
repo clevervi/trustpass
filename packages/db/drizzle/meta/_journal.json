@@ -134,6 +134,13 @@
       "when": 1789743324512,
       "tag": "0018_authority_is_a_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789744164952,
+      "tag": "0019_authority_ends_with_the_relationship",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,8 @@
-import { and, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
+import { and, eq, exists, gt, isNull, lte, or, sql } from "drizzle-orm";
 import type { Database } from "../client.js";
 import type { LifecycleActorKind } from "../schema/actor-capacity.js";
 import { capacityGrant, capacityGrantRevocation } from "../schema/capacity-grant.js";
+import { membership } from "../schema/membership.js";
 
 /** A grant as it stood at the instant asked about. */
 export interface HeldGrant {
@@ -29,6 +30,17 @@ export interface HeldGrant {
  * about this instant; a passport rendering a two-year-old event asks about that
  * one, and a function that quietly assumed the first would answer the second
  * wrongly while looking correct.
+ *
+ * **A grant held through an organization also needs a membership covering that
+ * instant.** Per ADR 0011 §2 as amended: a grant with an `organization_id` is
+ * authority on behalf of that party, and the relationship is what makes it that.
+ * Without this the query answered a question nobody asked — an employee who left
+ * in June still held the organization's capacity in July, and kept it until the
+ * grant expired nineteen months later.
+ *
+ * A grant with no organization — a `system` capacity — needs no membership, so
+ * the condition is `organization_id IS NULL OR a membership covers it` rather
+ * than a join that would silently drop every system grant.
  */
 export async function grantsHeldAt(
   db: Database,
@@ -52,6 +64,28 @@ export async function grantsHeldAt(
         or(isNull(capacityGrant.expiresAt), gt(capacityGrant.expiresAt, at)),
         // The clause the whole design rests on.
         or(isNull(capacityGrantRevocation.revokedAt), gt(capacityGrantRevocation.revokedAt, at)),
+        // And the relationship the grant is held through, where there is one.
+        //
+        // Written with Drizzle's `exists` rather than a raw fragment: a raw one
+        // takes the instant as an untyped parameter and postgres.js is handed a
+        // Date where it expects a string. Measured — the first version of this
+        // failed every query in the suite with ERR_INVALID_ARG_TYPE.
+        or(
+          isNull(capacityGrant.organizationId),
+          exists(
+            db
+              .select({ present: sql`1` })
+              .from(membership)
+              .where(
+                and(
+                  eq(membership.actorId, capacityGrant.actorId),
+                  eq(membership.organizationId, capacityGrant.organizationId),
+                  lte(membership.beganAt, at),
+                  or(isNull(membership.endedAt), gt(membership.endedAt, at)),
+                ),
+              ),
+          ),
+        ),
       ),
     )
     .orderBy(capacityGrant.id);
@@ -79,18 +113,4 @@ export async function heldCapacityAt(
   const held = await grantsHeldAt(db, actorId, at);
 
   return held.some((grant) => grant.capacity === capacity);
-}
-
-/** Every grant an actor has ever held, revoked or not. For audit, never for authorisation. */
-export async function grantHistory(db: Database, actorId: number) {
-  return await db
-    .select({
-      grant: capacityGrant,
-      revokedAt: capacityGrantRevocation.revokedAt,
-      revocationReason: capacityGrantRevocation.reason,
-    })
-    .from(capacityGrant)
-    .leftJoin(capacityGrantRevocation, eq(capacityGrantRevocation.grantId, capacityGrant.id))
-    .where(eq(capacityGrant.actorId, actorId))
-    .orderBy(sql`${capacityGrant.effectiveFrom} DESC`);
 }
