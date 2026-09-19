@@ -50,9 +50,18 @@ each is a fact with a time rather than a label:
 
 | State | How it is known |
 | --- | --- |
-| active | `revoked_at IS NULL` and (`expires_at IS NULL` or in the future) |
-| expired | `expires_at` has passed |
-| revoked | `revoked_at` is set |
+| active | `revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())` |
+| expired | `expires_at <= now()` |
+| revoked | `revoked_at IS NOT NULL` |
+
+**The boundary is pinned deliberately.** A credential whose `expires_at` is
+exactly `now()` is expired — `>` and not `>=`. It is one character and it is the
+kind of place edge-case bugs live, so it is written here rather than decided
+twice by two people reading the same sentence differently.
+
+`revoked_at` is checked without comparing it to anything. A revocation is a fact
+that it happened, not a time it takes effect, and `revoked_at > now()` would be
+a scheduled revocation — a different feature nobody asked for.
 
 **Revoked never resurrects.** `revoked_at` is written once and the verification
 query consults it on every request, which is a property the transport decision
@@ -84,12 +93,34 @@ at rest:            SHA-256 of the secret
                     NOT bcrypt/argon2, and not because they are worse
 ```
 
-**A lookup handle travels with the secret.** The presented value carries the
-credential's public id and the secret together, so verification is an indexed
-lookup followed by a comparison, rather than hashing the input against every row.
-Without it, either the table is scanned or the hash becomes the index — and a
-hash used as a primary lookup key is a value whose leak through an error message
-or a log is more interesting than it needs to be.
+**The format is part of the decision, not of the implementation.**
+
+```
+tp_<env>_<handle>_<secret>
+
+tp_live_7f3a91c4_9mK2x…          46 characters after the prefix
+   |     |         |
+   |     |         └─ 256 bits from crypto.randomBytes(32), base64url
+   |     └─────────── 64 bits, the indexed lookup handle, stored in clear
+   └───────────────── environment, so a staging secret pasted into production
+                      fails as a secret rather than as a permission
+```
+
+The handle is why verification is an indexed lookup and not a scan. Without it
+the hash becomes the index, and a hash used as a primary lookup key is a value
+whose leak through a log or an error message is more interesting than it needs
+to be. It is stored in clear on purpose: it identifies a credential and proves
+nothing.
+
+The prefix is not decoration. A token pasted into the wrong environment should
+fail because it is not a credential there, not because the environment happened
+to reject it for some other reason — and a secret scanner can be taught one
+literal string.
+
+**Comparison is `timingSafeEqual` over the two digests**, not `===` over
+strings. Both are 32 bytes, which is the length requirement that function has,
+and the comparison happens only after the handle has already narrowed it to one
+row. Nothing compares raw secrets.
 
 ### 4. Transport: `Authorization: Bearer`, and not a cookie
 
@@ -162,6 +193,41 @@ belongs in the issue that introduces verification.
 Rotation is issuing a second credential and revoking the first — which the table
 already supports, and which is why `label` exists. Loss is revocation followed by
 issuance. Neither needs a new mechanism.
+
+**The secret is shown once, to a terminal, and that is a delivery path with a
+known weakness.** Terminal scrollback persists, and a session in this repository
+has already had a live API key pasted into a transcript and needed rotating. So:
+
+- the command writes the secret to stdout and to nothing else — no file, no log,
+  no state, and never a return value another process captures;
+- it refuses to run when `CI` is set, because a secret in a build log is a
+  secret in an artefact that outlives the build;
+- `provision-roles.ts` already sets `log_statement = 'none'` for its own session
+  and the same applies here;
+- the operator is told, in the output, that scrollback is not storage.
+
+That does not make the path safe. It makes its one weakness explicit, which is
+the most an ADR can honestly do for something a human has to copy.
+
+### 9. The attack cases are written before the thing that passes them
+
+Not a testing preference — an ordering decision, recorded because the order is
+easy to reverse under pressure and the reversal is invisible afterwards. Every
+one of these fails today, and each must fail for its own reason before any
+middleware exists to satisfy it.
+
+| Case | Must hold |
+| --- | --- |
+| Credential A, body asserting `actor_kind`, `actor_id`, `organization_id`, `membership_id` and `credential_id` of somebody else | principal is A |
+| Credential A, body asserting A's own values | principal is A — **because of the credential**, not because the body agreed |
+| A revoked credential | refused, and still refused after a restart |
+| A credential expiring exactly at `now()` | expired |
+| No header, a malformed header, an unknown handle, a right handle with a wrong secret | one indistinguishable refusal |
+| Any of the above | the presented secret appears in no log, error body, exception or test artefact |
+
+The second row is the one that is easy to skip and the one that matters. A test
+where the body happens to agree with the credential passes whether identity came
+from the credential or from the body, and proves nothing about which.
 
 ## What this ADR does not decide
 
