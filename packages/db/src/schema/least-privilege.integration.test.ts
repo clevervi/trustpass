@@ -333,8 +333,18 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
 
   describe("what the grant matrix does not decide", () => {
     it("records an event that names nobody, because no constraint asks it to", async () => {
-      // **This asserts a gap, deliberately, and it is the honest half of a
-      // claim I nearly overstated.**
+      // **A characterization test, and #153 is the issue that closes it.**
+      //
+      // Green here means the current boundary is documented and watched. It
+      // does not mean a null actor is fine:
+      //
+      //   this test passes  =  the behaviour is known and pinned
+      //   this test passes  !=  actor_id NULL is safe
+      //
+      // When #153 lands this test fails, and the failure is the notification.
+      // Anyone who finds it green and reads no further should land on #153.
+      //
+      // It is also the honest half of a claim I nearly overstated.
       //
       // `lifecycle_event.actor_id` arrived in 0026 and the API cannot omit it:
       // the repository parameter is required and the compiler enforces it at
