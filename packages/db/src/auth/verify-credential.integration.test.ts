@@ -155,24 +155,65 @@ describe.skipIf(!databaseUrl)("a credential resolves to an actor, or to nothing"
     expect(await verifyCredential(db, minted.token, "live")).toBeNull();
   });
 
-  it("never looks up a credential presented for the wrong environment", async () => {
-    // Proved structurally rather than by inspection: a database that throws on
-    // contact. If the environment is checked before the query this returns
-    // null; if it is checked after, the test fails with that error.
-    const poisoned = {
-      select() {
-        throw new Error("the verifier reached the database");
-      },
-      execute() {
-        throw new Error("the verifier reached the database");
-      },
-    } as unknown as Database;
+  /**
+   * A database that records being touched and refuses to be useful.
+   *
+   * Counting rather than only throwing, because "it did not throw" and "it
+   * issued no query" are different statements and only the second is the claim.
+   */
+  function databaseThatCounts() {
+    let reached = 0;
 
+    const counting = new Proxy(
+      {},
+      {
+        get(_target, property) {
+          reached += 1;
+          throw new Error(`the verifier reached the database: .${String(property)}()`);
+        },
+      },
+    ) as unknown as Database;
+
+    return { counting, reached: () => reached };
+  }
+
+  it("issues no query for anything it can refuse without one", async () => {
+    // A credential that cannot be valid here must cost nothing: no round trip,
+    // and no question asked of the database that a timing difference could
+    // answer. Proved structurally rather than by reading the code.
+    const { token } = await issue();
+    const [, , handle, secret] = token.split(".");
+
+    const refusedWithoutAsking: readonly (readonly [string, string | undefined])[] = [
+      ["nothing presented", undefined],
+      ["an empty string", ""],
+      ["no structure at all", "nonsense"],
+      ["a staging token against live", `tp.staging.${handle}.${secret}`],
+      ["a dev token against live", `tp.dev.${handle}.${secret}`],
+      ["the wrong prefix", `xx.live.${handle}.${secret}`],
+      ["a truncated handle", `tp.live.${handle?.slice(0, 10)}.${secret}`],
+      ["a truncated secret", `tp.live.${handle}.${secret?.slice(0, 42)}`],
+      ["a handle outside the alphabet", `tp.live.${"+".repeat(11)}.${secret}`],
+      ["an extra segment", `${token}.extra`],
+    ];
+
+    for (const [label, presented] of refusedWithoutAsking) {
+      const { counting, reached } = databaseThatCounts();
+
+      expect(await verifyCredential(counting, presented, "live"), label).toBeNull();
+      expect(reached(), label).toBe(0);
+    }
+  });
+
+  it("does reach the database for a token it cannot refuse on shape alone", async () => {
+    // The instrument's own test. Without it, "zero queries" above is equally
+    // true of a counter that never counts, and the suite would prove nothing
+    // while looking thorough.
+    const { counting, reached } = databaseThatCounts();
     const { token } = await issue();
 
-    expect(await verifyCredential(poisoned, token, "staging")).toBeNull();
-    expect(await verifyCredential(poisoned, undefined, "live")).toBeNull();
-    expect(await verifyCredential(poisoned, "nonsense", "live")).toBeNull();
+    await expect(verifyCredential(counting, token, "live")).rejects.toThrow(/reached the database/);
+    expect(reached()).toBe(1);
   });
 
   it("puts the presented secret in nothing it writes", async () => {
