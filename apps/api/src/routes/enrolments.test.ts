@@ -60,6 +60,47 @@ function post(app: ReturnType<typeof createApp>, body: unknown) {
 }
 
 describe("POST /enrolments", () => {
+  it("hands the service four fields, whatever the body contained", async () => {
+    // The layer, on its own. Three things stop a body's identity reaching a
+    // row — the schema stripping unknown keys, the service naming its fields,
+    // and the repository writing literals — and each is sufficient by itself,
+    // so no end-to-end test can go red when one of them is removed. Measured:
+    // making this schema `.passthrough()` left every integration test green.
+    //
+    // This one covers the first layer and nothing else.
+    let received: unknown;
+
+    const app = createApp(
+      buildDependencies({
+        authenticate: authenticates(),
+        enrolProduct: async (input) => {
+          received = input;
+          return ENROLLED;
+        },
+      }),
+    );
+
+    await post(app, {
+      ...BODY,
+      actorId: 999,
+      actorKind: "issuer",
+      actor_kind: "issuer",
+      credentialId: 999,
+      organizationId: 999,
+      issuer: { country: "CO", registrationNumber: "999" },
+      origin: "supply_chain",
+      status: "verified",
+      trustpassId: "TP1-ATTACKER-CHOSE-THIS",
+    });
+
+    expect(Object.keys(received as object).sort()).toEqual([
+      "brand",
+      "category",
+      "model",
+      "serial",
+    ]);
+  });
+
   it("returns 201 and the identifier to the caller that created it", async () => {
     const app = createApp(
       buildDependencies({ authenticate: authenticates(), enrolProduct: async () => ENROLLED }),

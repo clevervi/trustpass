@@ -29,9 +29,21 @@ export function authenticates(
   return async (presented) => (presented === token ? principal : null);
 }
 
-/** The header a test attaches to a write. */
+/**
+ * The two ways a test may make a write, and there are deliberately only two.
+ *
+ * Named rather than left as a bare `{}` at the call site, so a request that
+ * carries no credential says so on purpose. The failure worth preventing is the
+ * quiet one: a helper that attaches a credential by default makes every test
+ * pass, and the tests that exist to prove a write is refused without one
+ * disappear without anybody deleting them.
+ */
 export function credentialHeaders(token: string = TEST_TOKEN): Record<string, string> {
   return { authorization: `Bearer ${token}` };
+}
+
+export function withoutCredential(): Record<string, string> {
+  return {};
 }
 
 /**

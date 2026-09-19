@@ -14,14 +14,15 @@ export type EnrolProductResult =
 /**
  * What a caller may set when enrolling a product they hold.
  *
- * `organizationId` and `origin` are absent on purpose rather than optional: an
- * enrolment is a holder enrolment, and letting either be passed in would let a
- * caller claim a company's standing through this path.
+ * `organizationId`, `origin` and `status` are absent on purpose rather than
+ * optional: an enrolment is a holder enrolment, and letting any of them be
+ * passed in would let a caller claim a company's standing through this path.
+ *
+ * This is the structural half of ADR 0014 §6. The request body carries no
+ * identity because the type it becomes has nowhere to put one — which is a
+ * stronger guarantee than a handler remembering not to read one.
  */
-export type EnrolProductInput = Omit<
-  NewProduct,
-  "organizationId" | "organizationId" | "origin" | "status"
->;
+export type EnrolProductInput = Omit<NewProduct, "organizationId" | "origin" | "status">;
 
 /**
  * Enrols a product nobody registered.
