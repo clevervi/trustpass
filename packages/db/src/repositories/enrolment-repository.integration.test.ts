@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
+import { actor } from "../schema/actor.js";
 import { lifecycleEvent } from "../schema/lifecycle-event.js";
 import { product } from "../schema/product.js";
 import { enrolProduct, findLiveHolderEnrolment } from "./enrolment-repository.js";
@@ -21,6 +22,12 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
   let db: Database;
   let n = 0;
 
+  /**
+   * Whoever is recording these. A real row, because `lifecycle_event.actor_id`
+   * references `actor` and a write with no identified actor no longer compiles.
+   */
+  let caller: { actorId: number };
+
   function values(serial?: string) {
     n += 1;
     return {
@@ -31,8 +38,15 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
     };
   }
 
-  beforeAll(() => {
+  beforeAll(async () => {
     db = createDatabase(databaseUrl as string);
+
+    const [created] = await db
+      .insert(actor)
+      .values({ kind: "service", displayName: `${run} caller` })
+      .returning({ id: actor.id });
+
+    caller = { actorId: created?.id as number };
   });
 
   afterAll(async () => {
@@ -42,7 +56,11 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
   });
 
   it("creates a record with no issuer and a holder origin", async () => {
-    const result = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values() });
+    const result = await enrolProduct(
+      db,
+      { trustpassId: generateTrustPassId(), ...values() },
+      caller,
+    );
     if (!result.ok) throw new Error("expected success");
 
     expect(result.product.organizationId).toBeNull();
@@ -69,7 +87,7 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
       status: "verified",
     } as unknown as Parameters<typeof enrolProduct>[1];
 
-    const result = await enrolProduct(db, smuggled);
+    const result = await enrolProduct(db, smuggled, caller);
     if (!result.ok) throw new Error("expected success");
 
     expect(result.product.organizationId).toBeNull();
@@ -89,7 +107,11 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
   });
 
   it("never produces active, because entering a serial is not owning a product", async () => {
-    const result = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values() });
+    const result = await enrolProduct(
+      db,
+      { trustpassId: generateTrustPassId(), ...values() },
+      caller,
+    );
     if (!result.ok) throw new Error("expected success");
 
     // ADR 0008. `active` means ownership was established, and nothing here
@@ -98,7 +120,11 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
   });
 
   it("writes the enrolment as the record's first event, by a holder", async () => {
-    const result = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values() });
+    const result = await enrolProduct(
+      db,
+      { trustpassId: generateTrustPassId(), ...values() },
+      caller,
+    );
     if (!result.ok) throw new Error("expected success");
 
     const history = await findProductHistory(db, result.product.id);
@@ -112,7 +138,11 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
   });
 
   it("records no issuer on the event either", async () => {
-    const result = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values() });
+    const result = await enrolProduct(
+      db,
+      { trustpassId: generateTrustPassId(), ...values() },
+      caller,
+    );
     if (!result.ok) throw new Error("expected success");
 
     // Asserting the length is what makes the `[0]` below valid, and it is the
@@ -134,13 +164,21 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
 
   it("reports a second live enrolment of the same serial as an outcome", async () => {
     const shared = `${run}-DUPE`;
-    const first = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values(shared) });
+    const first = await enrolProduct(
+      db,
+      { trustpassId: generateTrustPassId(), ...values(shared) },
+      caller,
+    );
     if (!first.ok) throw new Error("expected the first to succeed");
 
-    const second = await enrolProduct(db, {
-      trustpassId: generateTrustPassId(),
-      ...values(shared),
-    });
+    const second = await enrolProduct(
+      db,
+      {
+        trustpassId: generateTrustPassId(),
+        ...values(shared),
+      },
+      caller,
+    );
 
     // An outcome rather than an exception: a client that timed out and retried
     // is asking a reasonable question, not making a mistake.
@@ -149,8 +187,8 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
 
   it("leaves no product behind when the serial was already enrolled", async () => {
     const shared = `${run}-NOORPHAN`;
-    await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values(shared) });
-    await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values(shared) });
+    await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values(shared) }, caller);
+    await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values(shared) }, caller);
 
     const rows = await db
       .select({ id: product.id })
@@ -162,19 +200,23 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
 
   it("does not report an unrelated unique violation as a duplicate serial", async () => {
     const shared = generateTrustPassId();
-    const first = await enrolProduct(db, { trustpassId: shared, ...values() });
+    const first = await enrolProduct(db, { trustpassId: shared, ...values() }, caller);
     if (!first.ok) throw new Error("expected the first to succeed");
 
     // Same identifier, different serial. That violates the TrustPass ID index,
     // not the serial one — and reporting it as "already enrolled" would tell a
     // caller their serial is taken when it is not, sending them to change the
     // one thing that was correct.
-    await expect(enrolProduct(db, { trustpassId: shared, ...values() })).rejects.toThrow();
+    await expect(enrolProduct(db, { trustpassId: shared, ...values() }, caller)).rejects.toThrow();
   });
 
   it("finds the enrolment a serial already has, case insensitively", async () => {
     const shared = `${run}-FIND`;
-    const first = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values(shared) });
+    const first = await enrolProduct(
+      db,
+      { trustpassId: generateTrustPassId(), ...values(shared) },
+      caller,
+    );
     if (!first.ok) throw new Error("expected success");
 
     const found = await findLiveHolderEnrolment(db, shared.toLowerCase());

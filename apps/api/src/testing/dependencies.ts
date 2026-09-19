@@ -11,7 +11,17 @@ import type { Authenticator } from "../http/authenticate.js";
  */
 export const TEST_TOKEN = `tp.dev.${"A".repeat(11)}.${"B".repeat(43)}`;
 
-/** Whose request it is. Named, so a test can say "this one, not that one". */
+/**
+ * Whose request it is, for a test whose service is stubbed.
+ *
+ * **Not for a test that reaches Postgres.** `lifecycle_event.actor_id`
+ * references `actor`, so a write records a principal that has to exist, and
+ * these two numbers name nothing in particular. An integration test creates its
+ * own actor and builds a principal from the row — see
+ * `enrol-product.integration.test.ts`, which uses two of them precisely so that
+ * "each record names its own caller" is distinguishable from "every record
+ * names the same one".
+ */
 export const TEST_PRINCIPAL: AuthenticatedPrincipal = { actorId: 1, credentialId: 1 };
 
 /**

@@ -1,4 +1,5 @@
 import {
+  type AuthenticatedPrincipal,
   type Database,
   enrolProduct as enrolInDatabase,
   generateTrustPassId,
@@ -65,14 +66,21 @@ export type EnrolProductResult =
 export async function enrolProduct(
   db: Database,
   input: EnrolProductInput,
+  principal: AuthenticatedPrincipal,
 ): Promise<EnrolProductResult> {
-  const result = await enrolInDatabase(db, {
-    trustpassId: generateTrustPassId(),
-    brand: input.brand,
-    model: input.model,
-    serial: input.serial,
-    category: input.category,
-  });
+  const result = await enrolInDatabase(
+    db,
+    {
+      trustpassId: generateTrustPassId(),
+      brand: input.brand,
+      model: input.model,
+      serial: input.serial,
+      category: input.category,
+    },
+    // Two arguments, and the separation is the point: the first is what the
+    // caller described, the second is who the caller is. Nothing crosses.
+    { actorId: principal.actorId },
+  );
 
   if (!result.ok) {
     // No second lookup. It existed only to name the identifier, and a query

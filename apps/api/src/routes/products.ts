@@ -130,7 +130,7 @@ const registerProductRoute = createRoute({
 export function registerProductRoutes(app: OpenAPIHono, deps: AppDependencies): void {
   app.openapi(registerProductRoute, async (c) => {
     const body = c.req.valid("json");
-    const result = await deps.registerProduct(body);
+    const result = await deps.registerProduct(body, c.get("principal"));
 
     if (!result.ok && result.reason === "duplicate_serial") {
       // 409, not 422: the request is entirely valid and would have been

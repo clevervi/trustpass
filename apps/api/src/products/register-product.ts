@@ -1,4 +1,5 @@
 import {
+  type AuthenticatedPrincipal,
   type Database,
   findOrganizationByRegistration,
   generateTrustPassId,
@@ -84,6 +85,7 @@ export type RegisterProductResult =
 export async function registerProduct(
   db: Database,
   input: RegisterProductInput,
+  principal: AuthenticatedPrincipal,
 ): Promise<RegisterProductResult> {
   const party = await findOrganizationByRegistration(
     db,
@@ -95,15 +97,22 @@ export async function registerProduct(
     return { ok: false, reason: "issuer_not_found" };
   }
 
-  const inserted = await insertProduct(db, {
-    trustpassId: generateTrustPassId(),
-    organizationId: party.id,
-    brand: input.brand,
-    model: input.model,
-    serial: input.serial,
-    category: input.category,
-    status: "registered",
-  });
+  const inserted = await insertProduct(
+    db,
+    {
+      trustpassId: generateTrustPassId(),
+      // From the body, by lookup, and still not proof of any relationship
+      // between the caller and this organization. That gap is #152.
+      organizationId: party.id,
+      brand: input.brand,
+      model: input.model,
+      serial: input.serial,
+      category: input.category,
+      status: "registered",
+    },
+    // From the credential, and from nowhere else.
+    { actorId: principal.actorId },
+  );
 
   if (!inserted.ok) {
     return { ok: false, reason: "duplicate_serial" };

@@ -1,9 +1,8 @@
-import { createDatabase, type Database, schema } from "@trustpass/db";
+import { type AuthenticatedPrincipal, createDatabase, type Database, schema } from "@trustpass/db";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import {
-  authenticates,
   buildDependencies,
   credentialHeaders,
   withoutCredential,
@@ -46,12 +45,41 @@ describe.skipIf(!databaseUrl)("POST /enrolments against a real database", () => 
   let db: Database;
   let app: ReturnType<typeof createApp>;
 
-  beforeAll(() => {
+  /**
+   * Two actors, both real rows.
+   *
+   * `lifecycle_event.actor_id` references `actor`, so a principal is no longer
+   * a number a test can invent — which is itself the guarantee: a write cannot
+   * record an identity the system does not have.
+   */
+  const TOKEN_A = `tp.dev.${"A".repeat(11)}.${"A".repeat(43)}`;
+  const TOKEN_B = `tp.dev.${"B".repeat(11)}.${"B".repeat(43)}`;
+  let alice: AuthenticatedPrincipal;
+  let bob: AuthenticatedPrincipal;
+
+  async function newActor(name: string): Promise<AuthenticatedPrincipal> {
+    const [created] = await db
+      .insert(schema.actor)
+      .values({ kind: "service", displayName: `${run} ${name}` })
+      .returning({ id: schema.actor.id });
+
+    // `credentialId` is not referenced by anything these tests read, so it is
+    // left as the actor's id rather than minting a credential row. Said out
+    // loud because a number that happens not to be checked is not the same as
+    // a number that is right.
+    return { actorId: created?.id as number, credentialId: created?.id as number };
+  }
+
+  beforeAll(async () => {
     db = createDatabase(databaseUrl as string, { maxConnections: 4 });
+    alice = await newActor("alice");
+    bob = await newActor("bob");
+
     app = createApp(
       buildDependencies({
-        authenticate: authenticates(),
-        enrolProduct: (input) => enrolProduct(db, input),
+        authenticate: async (presented) =>
+          presented === TOKEN_A ? alice : presented === TOKEN_B ? bob : null,
+        enrolProduct: (input, principal) => enrolProduct(db, input, principal),
       }),
     );
   });
@@ -72,7 +100,7 @@ describe.skipIf(!databaseUrl)("POST /enrolments against a real database", () => 
     await db.$client.end();
   });
 
-  function post(payload: unknown, headers: Record<string, string> = credentialHeaders()) {
+  function post(payload: unknown, headers: Record<string, string> = credentialHeaders(TOKEN_A)) {
     return app.request("/enrolments", {
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
@@ -156,6 +184,11 @@ describe.skipIf(!databaseUrl)("POST /enrolments against a real database", () => 
 
     const { product, event } = await storedFor(serial);
 
+    // Attribution: Alice, because Alice's credential was presented. Not the
+    // actor the body named, and not null.
+    expect(event?.actorId).toBe(alice.actorId);
+    expect(event?.actorId).not.toBe(bob.actorId);
+
     // Identity: the literals the repository writes, not the claims in the body.
     expect(product?.origin).toBe("holder");
     expect(product?.organizationId).toBeNull();
@@ -172,40 +205,43 @@ describe.skipIf(!databaseUrl)("POST /enrolments against a real database", () => 
     expect(product?.trustpassId.startsWith("TP1-")).toBe(true);
   });
 
-  it("writes the same row whichever credential presents it", async () => {
-    // Today's honest limitation, pinned so it is noticed when it changes.
+  it("attributes the record to whoever's credential was presented", async () => {
+    // **The composition, end to end.** This is the test #141 is finished by:
+    // not "the verifier returns A" and not "the handler receives A", but a row
+    // in Postgres that names A because A's credential arrived over HTTP.
     //
-    // The enrolment records no actor: there is no column for one, so two
-    // different principals produce indistinguishable rows. That is not the
-    // final state — recording who enrolled is a schema change — and this test
-    // will fail the day it lands, which is the point of writing it now.
-    const somebodyElse = { actorId: 4242, credentialId: 4242 };
-    const other = createApp(
-      buildDependencies({
-        authenticate: authenticates(
-          "tp.dev.CCCCCCCCCCC.DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
-          somebodyElse,
-        ),
-        enrolProduct: (input) => enrolProduct(db, input),
-      }),
+    // Two callers, identical bodies, and each body names the *other* actor.
+    // If identity came from anywhere but the credential, the two rows would be
+    // swapped, identical, or null — and every one of those fails here.
+    const mine = `${run}-ALICE`;
+    const theirs = `${run}-BOB`;
+
+    const asAlice = await post(
+      { brand: "ASUS", model: "ROG", serial: mine, category: "gpu", actorId: bob.actorId },
+      credentialHeaders(TOKEN_A),
+    );
+    const asBob = await post(
+      { brand: "ASUS", model: "ROG", serial: theirs, category: "gpu", actorId: alice.actorId },
+      credentialHeaders(TOKEN_B),
     );
 
-    const serial = `${run}-OTHER`;
-    const response = await other.request("/enrolments", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...credentialHeaders("tp.dev.CCCCCCCCCCC.DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"),
-      },
-      body: JSON.stringify({ brand: "ASUS", model: "ROG", serial, category: "gpu" }),
-    });
+    expect(asAlice.status).toBe(201);
+    expect(asBob.status).toBe(201);
 
-    expect(response.status).toBe(201);
+    const alices = await storedFor(mine);
+    const bobs = await storedFor(theirs);
 
-    const { product, event } = await storedFor(serial);
+    expect(alices.event?.actorId).toBe(alice.actorId);
+    expect(bobs.event?.actorId).toBe(bob.actorId);
 
-    expect(product?.origin).toBe("holder");
-    expect(event?.actorKind).toBe("holder");
+    // Stated separately, because "each is its own" and "they differ" are
+    // different claims and only the pair rules out a constant.
+    expect(alices.event?.actorId).not.toBe(bobs.event?.actorId);
+
+    // And the kind is still a literal on both, even though neither body
+    // sent one and neither actor is an issuer.
+    expect(alices.event?.actorKind).toBe("holder");
+    expect(bobs.event?.actorKind).toBe("holder");
   });
 
   it("returns nothing the caller put in that it did not keep", async () => {

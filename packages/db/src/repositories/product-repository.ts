@@ -12,6 +12,7 @@ import {
   product,
 } from "../schema/product.js";
 import { UNIQUE_VIOLATION, violatedConstraint } from "./constraint-violation.js";
+import type { RecordingActor } from "./enrolment-repository.js";
 
 /** The partial unique index declared in `schema/product.ts`. */
 const LIVE_SERIAL_INDEX = "product_live_organization_serial_idx";
@@ -36,6 +37,7 @@ export type InsertProductResult =
 export async function insertProduct(
   db: Database,
   values: NewProduct,
+  actor: RecordingActor,
 ): Promise<InsertProductResult> {
   try {
     // One transaction, because a product and the record of where it came from
@@ -59,11 +61,14 @@ export async function insertProduct(
         // a row that claims nothing yet, so saying it was registered would be a
         // claim nobody made.
         type: created.status === "registered" ? "product_registered" : "record_enrolled",
-        // The capacity, not the person — identifying a person is TP-141. Today
-        // the only path here is a party registering through the API in the
-        // issuer capacity, which is a role an organization plays (ADR 0012) and
-        // not the same thing as the party itself.
+        // The capacity, not the person. A role an organization plays (ADR
+        // 0012), and not the same thing as the party itself — still a literal,
+        // still never read from a request.
         actorKind: "issuer",
+        // The person, which TP-141 made nameable. It is the authenticated
+        // principal and nothing else: `organizationId` below still comes from
+        // the request, and that gap is #152.
+        actorId: actor.actorId,
         organizationId: created.organizationId,
         // `now()` rather than the returned `created.createdAt`, and the
         // difference is not cosmetic. Postgres stores `timestamptz` to

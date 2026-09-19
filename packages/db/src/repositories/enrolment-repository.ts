@@ -25,6 +25,22 @@ export type EnrolProductResult =
 export type EnrolProductInput = Omit<NewProduct, "organizationId" | "origin" | "status">;
 
 /**
+ * Who is recording this, as distinct from what is being recorded.
+ *
+ * A separate parameter rather than a field on the input, deliberately. The
+ * input type's whole purpose is having nowhere to put an identity — ADR 0014
+ * §6 — and adding one to it would undo that at the only layer where it is
+ * structural rather than a habit.
+ *
+ * Required, not optional. An optional identity is one that gets forgotten, and
+ * being forgotten is precisely the state #141 exists to end.
+ */
+export interface RecordingActor {
+  /** The authenticated principal. Never a value from a request body. */
+  readonly actorId: number;
+}
+
+/**
  * Enrols a product nobody registered.
  *
  * The product and the record of where it came from are written together, for
@@ -38,6 +54,7 @@ export type EnrolProductInput = Omit<NewProduct, "organizationId" | "origin" | "
 export async function enrolProduct(
   db: Database,
   values: EnrolProductInput,
+  actor: RecordingActor,
 ): Promise<EnrolProductResult> {
   try {
     return await db.transaction(async (tx) => {
@@ -60,7 +77,14 @@ export async function enrolProduct(
         // Per ADR 0007 as amended: what begins here is the TrustPass record,
         // not the product. The object is older than this row.
         type: "record_enrolled",
+        // What kind of operation this is: a literal, never read from a request.
         actorKind: "holder",
+        // Who did it: the authenticated principal, and the one value here that
+        // is not a literal. The two are separate columns for the reason ADR
+        // 0014 §6 gives — a body saying "authority" does not make its sender
+        // one, and whether this actor may act as a holder is a grant lookup
+        // that runs elsewhere (#152).
+        actorId: actor.actorId,
         organizationId: null,
         reason: "holder_request",
         // `now()` rather than a JavaScript Date: `timestamptz` keeps

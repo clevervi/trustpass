@@ -56,7 +56,7 @@ describe.skipIf(!databaseUrl)("GET /passports/{trustpassId} against a real datab
     app = createApp(
       buildDependencies({
         authenticate: authenticates(),
-        registerProduct: (input) => registerProduct(db, input),
+        registerProduct: (input, principal) => registerProduct(db, input, principal),
         readPassport: (trustpassId) => readPassport(db, trustpassId),
       }),
     );

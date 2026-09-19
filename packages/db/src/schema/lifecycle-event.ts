@@ -10,6 +10,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
+import { actor } from "./actor.js";
 import { lifecycleActorKind } from "./actor-capacity.js";
 import { capacityGrant } from "./capacity-grant.js";
 import { organization } from "./organization.js";
@@ -149,6 +150,33 @@ export const lifecycleEvent = pgTable(
     type: lifecycleEventType("type").notNull(),
 
     actorKind: lifecycleActorKind("actor_kind").notNull(),
+
+    /**
+     * **Who** acted, as opposed to what kind of thing they were acting as.
+     *
+     * The two are deliberately separate columns and the distinction is the
+     * whole point of ADR 0014 §6:
+     *
+     *   actor_id     the authenticated principal. Comes from the credential
+     *                that was presented, and from nowhere else. A request
+     *                cannot set it, suggest it, or influence it.
+     *   actor_kind   what the operation is. A literal chosen by the code path
+     *                that writes the event, never read from a request either.
+     *
+     * A body saying `actor_kind: "authority"` does not make its sender an
+     * authority. Whether an actor may act as a given kind is a grant lookup,
+     * it runs after authentication, and it is not decided here.
+     *
+     * Nullable, because every event written before authentication existed has
+     * no principal to name. Inventing one would be worse than the gap: it
+     * would make history say a specific actor did something nobody recorded.
+     * A null here means "written before the system knew who was asking", and
+     * that is a true statement about those rows.
+     */
+    actorId: bigint("actor_id", { mode: "number" }).references(() => actor.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
 
     /**
      * Which party acted, when one did.
@@ -306,6 +334,9 @@ export const lifecycleEvent = pgTable(
 
     // The same lookup, against the identity that will outlive issuer_id.
     index("lifecycle_event_organization_idx").on(table.organizationId),
+
+    /** "What did this actor do" is a question an audit asks. */
+    index("lifecycle_event_actor_idx").on(table.actorId),
 
     // An event is past-tense by ADR 0008. Something recorded as having happened
     // after it was recorded is not an event, it is a schedule, and a schedule

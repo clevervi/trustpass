@@ -65,8 +65,8 @@ const app = createApp(
     // The environment is bound here, once, from configuration — not passed per
     // request where a caller could influence it.
     authenticate: (presented) => verifyCredential(db, presented, env.TRUSTPASS_ENV),
-    registerProduct: (input) => registerProduct(db, input),
-    enrolProduct: (input) => enrolProduct(db, input),
+    registerProduct: (input, principal) => registerProduct(db, input, principal),
+    enrolProduct: (input, principal) => enrolProduct(db, input, principal),
     readPassport: (trustpassId) => readPassport(db, trustpassId),
   },
   corsPolicy,
