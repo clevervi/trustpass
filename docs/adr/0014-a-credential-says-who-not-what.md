@@ -306,8 +306,15 @@ from the credential or from the body, and proves nothing about which.
 
 - A migration adds the lookup handle and the hash to `credential`. The table's
   existing shape is unchanged: this fills the hole v0.5.0 left open on purpose.
-- Every write endpoint gains a principal and stops reading identity from its
-  body. `POST /enrolments` and `POST /products` are the two that exist.
+- Every write endpoint gains a principal. `POST /enrolments` and
+  `POST /products` are the two that exist, and they are not in the same place:
+  `/enrolments` reads no identity from its body and cannot, because the type its
+  body becomes has nowhere to put one; `/products` still takes `issuer` from
+  its body, and closing that needs actor to organization through membership,
+  which is ADR 0009 and ADR 0011 and is not decided here. **Until it is, an
+  authenticated caller may still name an organization it has no relationship
+  with.** Authentication is enforced on both. Authorisation is enforced on
+  neither, and the route says so where a consumer will read it.
 - **#120's remaining criterion becomes buildable, and not by authentication
   alone.** Recovering your own enrolment identifier needs proof of entitlement to
   *that* enrolment; being the same actor does not establish it. What this ADR

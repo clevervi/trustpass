@@ -49,6 +49,45 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
     expect(result.product.origin).toBe("holder");
   });
 
+  it("ignores an issuer, an origin and a status handed to it anyway", async () => {
+    // `EnrolProductInput` omits these three, so no caller written against the
+    // type can pass them. The cast is the point: this asserts the runtime
+    // behaviour rather than the compiler's, because the compiler is not what
+    // is between a request and this row.
+    //
+    // Measured before writing it: with the literals replaced by
+    // `values.organizationId ?? null` and friends, every HTTP-level test in
+    // `apps/api` stayed green — Zod had already stripped the fields further
+    // up, so nothing reaching this function carried them. Three layers each
+    // sufficient on their own means no test of the whole chain can fail when
+    // one of them goes. This test covers this layer alone.
+    const smuggled = {
+      trustpassId: generateTrustPassId(),
+      ...values(),
+      organizationId: 999,
+      origin: "supply_chain",
+      status: "verified",
+    } as unknown as Parameters<typeof enrolProduct>[1];
+
+    const result = await enrolProduct(db, smuggled);
+    if (!result.ok) throw new Error("expected success");
+
+    expect(result.product.organizationId).toBeNull();
+    expect(result.product.origin).toBe("holder");
+    expect(result.product.status).toBe("registered");
+
+    // Read from the table rather than through `findProductHistory`, which
+    // projects a subset and does not carry `organization_id` — a `toMatchObject`
+    // against a key the projection omits fails for the wrong reason, and did.
+    const events = await db
+      .select()
+      .from(lifecycleEvent)
+      .where(eq(lifecycleEvent.productId, result.product.id));
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ actorKind: "holder", organizationId: null });
+  });
+
   it("never produces active, because entering a serial is not owning a product", async () => {
     const result = await enrolProduct(db, { trustpassId: generateTrustPassId(), ...values() });
     if (!result.ok) throw new Error("expected success");

@@ -7,6 +7,7 @@ import {
   credentialHeaders,
   TEST_PRINCIPAL,
   TEST_TOKEN,
+  withoutCredential,
 } from "../testing/dependencies.js";
 import { bearerToken, requireCredential } from "./authenticate.js";
 
@@ -110,9 +111,35 @@ function write(path: string, headers: Record<string, string> = {}) {
   });
 }
 
+describe("the harness itself", () => {
+  // The seam has a default, and a default drifts. This is the guard on it.
+  //
+  // If `buildDependencies` ever authenticates by default, every write test in
+  // the repository keeps passing and the ones below stop testing anything —
+  // they would be asserting 401 against a fixture that hands out a principal,
+  // and they would fail loudly rather than silently, which is the point. This
+  // test fails first and says why.
+  it("authenticates nobody unless a test says otherwise", async () => {
+    const { authenticate } = buildDependencies();
+
+    expect(await authenticate(TEST_TOKEN)).toBeNull();
+    expect(await authenticate(undefined)).toBeNull();
+  });
+
+  it("refuses a credential that is not the one it was given", async () => {
+    // The stub must compare, not assume. One that returned a principal for
+    // anything would authenticate a request with no header at all.
+    const authenticate = authenticates();
+
+    expect(await authenticate(TEST_TOKEN)).toEqual(TEST_PRINCIPAL);
+    expect(await authenticate(undefined)).toBeNull();
+    expect(await authenticate(`${TEST_TOKEN}x`)).toBeNull();
+  });
+});
+
 describe("the write routes refuse a request with no credential", () => {
   const PRESENTED: readonly (readonly [string, Record<string, string>])[] = [
-    ["no header at all", {}],
+    ["no header at all", withoutCredential()],
     ["an empty header", { authorization: "" }],
     ["a scheme with nothing after it", { authorization: "Bearer" }],
     ["another scheme", { authorization: `Basic ${TEST_TOKEN}` }],

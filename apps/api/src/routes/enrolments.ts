@@ -75,6 +75,13 @@ const enrolRoute = createRoute({
       description: "The record now exists. Nothing about the product has been verified.",
       content: { "application/json": { schema: EnrolledProductSchema } },
     },
+    401: {
+      description:
+        "No credential, or one this request may not use. Absent, malformed, unknown, " +
+        "expired, revoked and minted for another environment all return this same " +
+        "response: saying which applied would tell a caller whether a credential exists.",
+      content: { "application/json": { schema: ApiErrorSchema } },
+    },
     409: {
       description:
         "A live enrolment already holds this serial. The response does not say which one: " +
