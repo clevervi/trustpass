@@ -367,25 +367,35 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
         origin: "holder",
       });
 
-      await db.execute(sql`
+      // `RETURNING` rather than a count afterwards. The row this insert wrote
+      // is named, so the assertion is about that row and not about a
+      // population that happens to contain it.
+      //
+      // The count it replaces was already scoped to the suspension, because
+      // `insertProductWithProvenance` also writes an event with no actor and
+      // counting every unattributed row for this product would have passed
+      // whether or not this insert did anything. Scoping fixed that; naming
+      // the row removes the inference entirely.
+      const inserted = (await db.execute(sql`
         INSERT INTO lifecycle_event (product_id, type, actor_kind, actor_id, organization_id, reason, occurred_at)
         VALUES (${created.id}, 'product_suspended', 'authority', NULL, NULL, 'theft_report', now())
-      `);
+        RETURNING id
+      `)) as unknown as { id: string }[];
 
-      // Scoped to the suspension, not to the product. `insertProductWithProvenance`
-      // also writes an event with no actor, so counting every unattributed row
-      // for this product would pass whether or not the INSERT above did
-      // anything — a count that is already true before the thing under test
-      // runs is not a measurement.
-      const rows = (await db.execute(sql`
-        SELECT count(*) AS unattributed
+      const eventId = inserted[0]?.id;
+
+      expect(eventId).toBeDefined();
+
+      const stored = (await db.execute(sql`
+        SELECT actor_id, actor_kind, type
         FROM lifecycle_event
-        WHERE product_id = ${created.id}
-          AND type = 'product_suspended'
-          AND actor_id IS NULL
-      `)) as unknown as { unattributed: string }[];
+        WHERE id = ${eventId}
+      `)) as unknown as { actor_id: string | null; actor_kind: string; type: string }[];
 
-      expect(Number(rows[0]?.unattributed)).toBe(1);
+      expect(stored).toHaveLength(1);
+      expect(stored[0]?.actor_id).toBeNull();
+      expect(stored[0]?.actor_kind).toBe("authority");
+      expect(stored[0]?.type).toBe("product_suspended");
     });
   });
 
