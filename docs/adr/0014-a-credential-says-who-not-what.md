@@ -112,9 +112,14 @@ whose leak through a log or an error message is more interesting than it needs
 to be. It is stored in clear on purpose: it identifies a credential and proves
 nothing.
 
-**`UNIQUE` on the handle, and a collision regenerates.** 64 bits will not collide
-in this system's lifetime, and the constraint is not there because it is likely
-— it is there because the alternative behaviours are both silent. A collision
+**`UNIQUE` on the handle, and a collision regenerates.** An earlier draft said 64
+bits "will not collide in this system's lifetime", which is an assertion about
+probability standing in for a guarantee — and the birthday bound grows with the
+square of the number issued, so it is an assertion that gets weaker with use.
+
+The guarantee is the constraint and the retry, not the arithmetic. The
+constraint is not there because a collision is likely; it is there because both
+alternative behaviours are silent. A collision
 that overwrites loses a credential; a collision that returns the wrong row
 authenticates the wrong actor. Issuance retries with a fresh handle, up to a
 small bound, and fails loudly rather than reusing one.
@@ -129,6 +134,11 @@ The prefix is not decoration. A token pasted into the wrong environment should
 fail because it is not a credential there, not because the environment happened
 to reject it for some other reason — and a secret scanner can be taught one
 literal string.
+
+The prefix is a context separation and not a cryptographic boundary. A leaked
+production token is a valid production secret; the prefix only stops it being
+used somewhere it was never meant to work, and stops somebody pasting a staging
+token into production and spending an afternoon on the wrong question.
 
 A wrong prefix is an authentication failure, indistinguishable from every other
 one, and the credential is never looked up. "This is a staging token" is a
@@ -207,6 +217,12 @@ This matches what the runtime is already allowed to do: #119's grant matrix give
 it `SELECT` on `credential` and nothing else. **Issuance through the API would
 need an `INSERT` grant**, which is a migration and a decision, and neither
 belongs in the issue that introduces verification.
+
+**A lost secret cannot be recovered, and that is the design working.** There is
+no path that returns a plaintext secret from the database because there is no
+plaintext secret in the database. Losing one is revocation followed by issuance,
+which is the same procedure as rotation and is why `label` exists — so an actor
+with several can say which one to revoke.
 
 Rotation is issuing a second credential and revoking the first — which the table
 already supports, and which is why `label` exists. Loss is revocation followed by
