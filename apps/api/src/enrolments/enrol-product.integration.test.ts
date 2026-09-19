@@ -154,6 +154,25 @@ describe.skipIf(!databaseUrl)("POST /enrolments against a real database", () => 
     expect(event?.actorKind).toBe("holder");
   });
 
+  it("attributes the record when the body says nothing about identity at all", async () => {
+    // The complement of the forgery tests, and the one that is easy to leave
+    // out. Those show the body is ignored when it lies. This shows the body is
+    // not *needed*: the four fields it is allowed to carry say nothing about
+    // who is asking, and the record is attributed anyway.
+    //
+    // A system that attributed correctly only when the body happened to be
+    // present would pass every other test in this file.
+    const serial = `${run}-SILENT`;
+    const response = await post({ brand: "ASUS", model: "ROG", serial, category: "gpu" });
+
+    expect(response.status).toBe(201);
+
+    const { event } = await storedFor(serial);
+
+    expect(event?.actorId).toBe(alice.actorId);
+    expect(event?.actorId).not.toBeNull();
+  });
+
   it("writes the same row when the body claims to be somebody else", async () => {
     // The confused deputy, at the far end. Every field here is one the record
     // actually has, so a handler spreading its input into the repository would
