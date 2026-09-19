@@ -1,9 +1,9 @@
-import { createDatabase, type Database, schema } from "@trustpass/db";
+import { type AuthenticatedPrincipal, createDatabase, type Database, schema } from "@trustpass/db";
 import { moveProductStatus } from "@trustpass/db/testing";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
-import { authenticates, buildDependencies, credentialHeaders } from "../testing/dependencies.js";
+import { buildDependencies, credentialHeaders, TEST_TOKEN } from "../testing/dependencies.js";
 import { registerProduct } from "./register-product.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -20,6 +20,17 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
   let app: ReturnType<typeof createApp>;
 
   const issuerReference = { country: "CO", registrationNumber: `${run}-9001` };
+
+  /**
+   * A real actor row, because `lifecycle_event.actor_id` references one.
+   *
+   * `TEST_PRINCIPAL` is a plausible-looking pair of numbers and is right for a
+   * test whose service is stubbed. Here the service reaches Postgres, so the
+   * principal has to name something that exists — and a fixture that passed
+   * only because actor 1 happened to be in the developer's database is the
+   * kind of test that fails on a virgin volume and nowhere else.
+   */
+  let caller: AuthenticatedPrincipal;
 
   function body(overrides: Record<string, unknown> = {}) {
     return {
@@ -44,10 +55,17 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
     db = createDatabase(databaseUrl as string, { maxConnections: 4 });
     app = createApp(
       buildDependencies({
-        authenticate: authenticates(),
-        registerProduct: (input) => registerProduct(db, input),
+        authenticate: async (presented) => (presented === TEST_TOKEN ? caller : null),
+        registerProduct: (input, principal) => registerProduct(db, input, principal),
       }),
     );
+
+    const [person] = await db
+      .insert(schema.actor)
+      .values({ kind: "service", displayName: `${run} caller` })
+      .returning({ id: schema.actor.id });
+
+    caller = { actorId: person?.id as number, credentialId: person?.id as number };
 
     await db.insert(schema.organization).values({
       companyName: "Andes Tech Imports",
@@ -155,6 +173,12 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
     expect(events).toHaveLength(1);
     expect(events[0]?.actorKind).toBe("issuer");
     expect(events[0]?.organizationId).toBe(organization?.id);
+
+    // **Who** is the credential's actor, and the body sent a different one.
+    // **Which organization** still comes from the body, and that is #152.
+    // The two travel separately and this asserts both halves of that sentence.
+    expect(events[0]?.actorId).toBe(caller.actorId);
+    expect(events[0]?.actorId).not.toBe(999);
   });
 
   it("issues a different identifier for every registration", async () => {

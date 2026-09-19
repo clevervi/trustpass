@@ -100,7 +100,10 @@ const enrolRoute = createRoute({
 export function registerEnrolmentRoutes(app: OpenAPIHono, dependencies: AppDependencies): void {
   app.openapi(enrolRoute, async (c) => {
     const body = c.req.valid("json");
-    const result = await dependencies.enrolProduct(body);
+    // `c.get("principal")` and never `body`. The middleware put it there and
+    // nothing between here and the row can substitute it — that is what the
+    // integration tests assert against the persisted event.
+    const result = await dependencies.enrolProduct(body, c.get("principal"));
 
     if (!result.ok) {
       return c.json(

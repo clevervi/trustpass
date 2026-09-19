@@ -65,6 +65,7 @@ export {
   type EnrolProductResult,
   enrolProduct,
   findLiveHolderEnrolment,
+  type RecordingActor,
 } from "./repositories/enrolment-repository.js";
 export {
   findHistoryByTrustPassId,

@@ -2,6 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
+import { actor } from "../schema/actor.js";
 import { lifecycleEvent } from "../schema/lifecycle-event.js";
 import { organization } from "../schema/organization.js";
 import { type NewProduct, product } from "../schema/product.js";
@@ -23,6 +24,12 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   let db: Database;
   let organizationId: number;
   let sequence = 0;
+
+  /**
+   * Whoever is recording these. A real row, because `lifecycle_event.actor_id`
+   * references `actor` and a write with no identified actor no longer compiles.
+   */
+  let caller: { actorId: number };
 
   function build(overrides: Partial<NewProduct> = {}): NewProduct {
     sequence += 1;
@@ -52,6 +59,13 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
       })
       .returning({ id: organization.id });
     organizationId = created?.id as number;
+
+    const [person] = await db
+      .insert(actor)
+      .values({ kind: "service", displayName: `${run} caller` })
+      .returning({ id: actor.id });
+
+    caller = { actorId: person?.id as number };
   });
 
   afterAll(async () => {
@@ -59,7 +73,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   });
 
   it("writes exactly one event when a product is registered", async () => {
-    const result = await insertProduct(db, build());
+    const result = await insertProduct(db, build(), caller);
     if (!result.ok) throw new Error(`expected success, got ${result.reason}`);
 
     const history = await findProductHistory(db, result.product.id);
@@ -74,7 +88,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   });
 
   it("records the issuer as the actor, not an anonymous write", async () => {
-    const result = await insertProduct(db, build());
+    const result = await insertProduct(db, build(), caller);
     if (!result.ok) throw new Error("expected success");
 
     // The length assertion is what makes the `[0]` valid. `product_id` is not
@@ -96,7 +110,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   });
 
   it("dates the event to the product's own creation, not to a second clock", async () => {
-    const result = await insertProduct(db, build());
+    const result = await insertProduct(db, build(), caller);
     if (!result.ok) throw new Error("expected success");
 
     // Asked of Postgres, not compared in JavaScript.
@@ -117,7 +131,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   });
 
   it("says the record began rather than that an issuer committed, for a draft", async () => {
-    const result = await insertProduct(db, build({ status: "draft" }));
+    const result = await insertProduct(db, build({ status: "draft" }), caller);
     if (!result.ok) throw new Error("expected success");
 
     const history = await findProductHistory(db, result.product.id);
@@ -129,10 +143,14 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
 
   it("leaves no product behind when the serial is already live", async () => {
     const values = build();
-    const first = await insertProduct(db, values);
+    const first = await insertProduct(db, values, caller);
     if (!first.ok) throw new Error("expected the first insert to succeed");
 
-    const second = await insertProduct(db, { ...values, trustpassId: generateTrustPassId() });
+    const second = await insertProduct(
+      db,
+      { ...values, trustpassId: generateTrustPassId() },
+      caller,
+    );
 
     expect(second).toEqual({ ok: false, reason: "duplicate_live_serial" });
 
@@ -148,8 +166,8 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   });
 
   it("gives each product its own history", async () => {
-    const one = await insertProduct(db, build());
-    const two = await insertProduct(db, build());
+    const one = await insertProduct(db, build(), caller);
+    const two = await insertProduct(db, build(), caller);
     if (!one.ok || !two.ok) throw new Error("expected both to succeed");
 
     expect(await findProductHistory(db, one.product.id)).toHaveLength(1);
@@ -177,7 +195,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   });
 
   it("orders history by when things happened, not by when they were recorded", async () => {
-    const result = await insertProduct(db, build());
+    const result = await insertProduct(db, build(), caller);
     if (!result.ok) throw new Error("expected success");
 
     const march = new Date("2026-03-04T10:00:00Z");
@@ -200,7 +218,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   });
 
   it("does not expose internal keys to a reader", async () => {
-    const result = await insertProduct(db, build());
+    const result = await insertProduct(db, build(), caller);
     if (!result.ok) throw new Error("expected success");
 
     const [entry] = await findProductHistory(db, result.product.id);
@@ -217,6 +235,7 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
   let organizationId: number;
+  let caller: { actorId: number };
 
   beforeAll(async () => {
     db = createDatabase(databaseUrl as string);
@@ -230,6 +249,13 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
       })
       .returning({ id: organization.id });
     organizationId = created?.id as number;
+
+    const [person] = await db
+      .insert(actor)
+      .values({ kind: "service", displayName: `${run} caller` })
+      .returning({ id: actor.id });
+
+    caller = { actorId: person?.id as number };
   });
 
   afterAll(async () => {
@@ -237,15 +263,19 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
   });
 
   it("finds a product's history without the caller holding its internal key", async () => {
-    const result = await insertProduct(db, {
-      trustpassId: generateTrustPassId(),
-      organizationId,
-      brand: "ASUS",
-      model: "ROG Strix RTX 5070 Ti",
-      serial: `${run}-BYID`,
-      category: "gpu",
-      status: "registered",
-    });
+    const result = await insertProduct(
+      db,
+      {
+        trustpassId: generateTrustPassId(),
+        organizationId,
+        brand: "ASUS",
+        model: "ROG Strix RTX 5070 Ti",
+        serial: `${run}-BYID`,
+        category: "gpu",
+        status: "registered",
+      },
+      caller,
+    );
     if (!result.ok) throw new Error("expected success");
 
     const history = await findHistoryByTrustPassId(db, result.product.trustpassId);
@@ -262,24 +292,32 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
 
   it("does not mix one product's history into another's", async () => {
     const [one, two] = await Promise.all([
-      insertProduct(db, {
-        trustpassId: generateTrustPassId(),
-        organizationId,
-        brand: "ASUS",
-        model: "A",
-        serial: `${run}-MIX-1`,
-        category: "gpu",
-        status: "registered",
-      }),
-      insertProduct(db, {
-        trustpassId: generateTrustPassId(),
-        organizationId,
-        brand: "ASUS",
-        model: "B",
-        serial: `${run}-MIX-2`,
-        category: "gpu",
-        status: "registered",
-      }),
+      insertProduct(
+        db,
+        {
+          trustpassId: generateTrustPassId(),
+          organizationId,
+          brand: "ASUS",
+          model: "A",
+          serial: `${run}-MIX-1`,
+          category: "gpu",
+          status: "registered",
+        },
+        caller,
+      ),
+      insertProduct(
+        db,
+        {
+          trustpassId: generateTrustPassId(),
+          organizationId,
+          brand: "ASUS",
+          model: "B",
+          serial: `${run}-MIX-2`,
+          category: "gpu",
+          status: "registered",
+        },
+        caller,
+      ),
     ]);
     if (!one.ok || !two.ok) throw new Error("expected both");
 
