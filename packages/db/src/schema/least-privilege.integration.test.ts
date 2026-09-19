@@ -331,6 +331,64 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
     });
   });
 
+  describe("what the grant matrix does not decide", () => {
+    it("records an event that names nobody, because no constraint asks it to", async () => {
+      // **This asserts a gap, deliberately, and it is the honest half of a
+      // claim I nearly overstated.**
+      //
+      // `lifecycle_event.actor_id` arrived in 0026 and the API cannot omit it:
+      // the repository parameter is required and the compiler enforces it at
+      // twenty-five call sites. That is a code guarantee. It is not a database
+      // one, and the difference is easy to lose.
+      //
+      // Two earlier probes as this role were refused — by
+      // `lifecycle_event_correction_targets` and by TP003 — and neither refusal
+      // was about `actor_id`, so neither proved anything. This combination is
+      // the one the authority trigger permits, and it is accepted with no
+      // actor at all.
+      //
+      // So the boundary reads:
+      //
+      //   the API              an actor is mandatory
+      //   a direct SQL write   it is not
+      //
+      // The day a NOT NULL or a trigger closes that, this test fails, and the
+      // failure is the notification. Closing it needs every write path —
+      // `insertProductWithProvenance` and the status transitions included — to
+      // satisfy it at once, which is why it is a phase rather than an oversight.
+      const created = await insertProductWithProvenance(db, {
+        trustpassId: generateTrustPassId(),
+        organizationId: null,
+        brand: "ASUS",
+        model: "ROG Strix RTX 5070 Ti",
+        serial: `NA-${Math.random().toString(36).slice(2, 10).toUpperCase()}`,
+        category: "gpu",
+        status: "registered",
+        origin: "holder",
+      });
+
+      await db.execute(sql`
+        INSERT INTO lifecycle_event (product_id, type, actor_kind, actor_id, organization_id, reason, occurred_at)
+        VALUES (${created.id}, 'product_suspended', 'authority', NULL, NULL, 'theft_report', now())
+      `);
+
+      // Scoped to the suspension, not to the product. `insertProductWithProvenance`
+      // also writes an event with no actor, so counting every unattributed row
+      // for this product would pass whether or not the INSERT above did
+      // anything — a count that is already true before the thing under test
+      // runs is not a measurement.
+      const rows = (await db.execute(sql`
+        SELECT count(*) AS unattributed
+        FROM lifecycle_event
+        WHERE product_id = ${created.id}
+          AND type = 'product_suspended'
+          AND actor_id IS NULL
+      `)) as unknown as { unattributed: string }[];
+
+      expect(Number(rows[0]?.unattributed)).toBe(1);
+    });
+  });
+
   describe("and the application still works", () => {
     it("registers a product with its provenance", async () => {
       // A privilege model that also stops the application is not a security

@@ -207,14 +207,19 @@ export const lifecycleEvent = pgTable(
      *   the API            mandatory. The repository parameter is required, so
      *                      a write with no identified actor does not compile.
      *   history            may be null. 13,171 events predate authentication.
-     *   a direct SQL write governed by the authority triggers and the #119
-     *                      grant matrix, and not by anything on this column.
-     *                      Measured as `trustpass_runtime`: two inserts naming
-     *                      no actor were refused, one by
-     *                      `lifecycle_event_correction_targets` and one by
-     *                      TP003 — "a system cannot record product_suspended".
-     *                      Neither refusal mentions `actor_id`, which is the
-     *                      point: nothing here requires one.
+     *   a direct SQL write **can name nobody, and this was measured rather
+     *                      than assumed.** As `trustpass_runtime`:
+     *
+     *                        INSERT product_suspended, actor_kind authority,
+     *                        actor_id NULL  ->  ACCEPTED
+     *
+     *                      Two earlier attempts were refused, by
+     *                      `lifecycle_event_correction_targets` and by TP003,
+     *                      and neither refusal was about `actor_id` — which is
+     *                      why they proved nothing and why the accepted one was
+     *                      worth finding. What governs a direct writer is the
+     *                      authority trigger and the #119 grant matrix. Nothing
+     *                      on this column requires an actor.
      *
      * A `NOT NULL` would collapse them the other way and break the history. A
      * trigger could enforce the first rule inside the database, and cannot yet:
