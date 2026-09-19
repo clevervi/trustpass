@@ -87,6 +87,76 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
     expect(stored?.status).toBe("registered");
   });
 
+  it("records the issuer the body named, which is the boundary #141 does not cross", async () => {
+    // The honest state of this endpoint, pinned so it is visible rather than
+    // inferred, and so the day it changes something fails.
+    //
+    //   who is calling       the credential, and only the credential
+    //   which organization   `body.issuer`, looked up by a public registration
+    //                        number, with no check that the caller has any
+    //                        relationship with it
+    //
+    // A second organization exists here for exactly one reason: to be named by
+    // a caller whose credential has nothing to do with it, and to be recorded
+    // anyway. That is not a defect in this commit — it is the authorization
+    // model, ADR 0009 and ADR 0011, which ADR 0014 says it does not decide.
+    //
+    // When actor -> membership -> organization lands, this test fails, and the
+    // failure is the notification.
+    const other = { country: "CO", registrationNumber: `${run}-9003` };
+
+    await db.insert(schema.organization).values({
+      companyName: "Somebody Else Entirely",
+      legalName: `OTHER REGISTER ${run} SAS`,
+      registrationNumber: other.registrationNumber,
+      country: other.country,
+    });
+
+    const response = await post({
+      ...body({ serial: `${run}-NOT-MINE` }),
+      issuer: other,
+      // Everything a caller might try alongside it. None of these is a field
+      // any schema on this path declares, and none may reach the row.
+      actorId: 999,
+      actor_id: 999,
+      actorKind: "authority",
+      actor_kind: "authority",
+      credentialId: 999,
+      credential_id: 999,
+      organizationId: 999,
+      principal: { actorId: 999, credentialId: 999 },
+    });
+
+    expect(response.status).toBe(201);
+    const created = (await response.json()) as { trustpassId: string };
+
+    const [stored] = await db
+      .select()
+      .from(schema.product)
+      .where(eq(schema.product.trustpassId, created.trustpassId as never));
+
+    const [organization] = await db
+      .select()
+      .from(schema.organization)
+      .where(eq(schema.organization.registrationNumber, other.registrationNumber));
+
+    // The organization comes from the body, today. Asserted rather than
+    // avoided: a limitation nobody wrote down is a limitation nobody fixes.
+    expect(stored?.organizationId).toBe(organization?.id);
+
+    const events = await db
+      .select()
+      .from(schema.lifecycleEvent)
+      .where(eq(schema.lifecycleEvent.productId, stored?.id as number));
+
+    // And `actor_kind` does not come from the body, even though the body sent
+    // one. It is a literal in `insertProduct`, which is what ADR 0014 §6 means
+    // by identity not being an input.
+    expect(events).toHaveLength(1);
+    expect(events[0]?.actorKind).toBe("issuer");
+    expect(events[0]?.organizationId).toBe(organization?.id);
+  });
+
   it("issues a different identifier for every registration", async () => {
     const first = (await (await post(body({ serial: `${run}-A` }))).json()) as {
       trustpassId: string;
