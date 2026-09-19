@@ -45,6 +45,17 @@ describe("bearerToken", () => {
       expect(bearerToken(header)).toBeUndefined();
     });
   }
+
+  it("yields an empty credential for a scheme with a trailing space", () => {
+    // Not `undefined`, and deliberately not special-cased. `"Bearer "` splits
+    // into two parts, the second of which is empty, and an empty string is
+    // refused by the verifier for the same reason every other malformed value
+    // is. A branch here would add code that changes no outcome.
+    //
+    // Pinned rather than left implicit, because "it does not crash" is the
+    // claim being made and an empty credential is where a parser would.
+    expect(bearerToken("Bearer ")).toBe("");
+  });
 });
 
 describe("the principal comes from the credential", () => {
@@ -79,6 +90,39 @@ describe("the principal comes from the credential", () => {
     });
 
     expect(await response.json()).toEqual({ principal: TEST_PRINCIPAL });
+  });
+
+  it("is not overwritten by a body that names the variable itself", async () => {
+    // The direct attempt, rather than the oblique one above. #141 exists
+    // because the body used to be the authority, and a request field called
+    // `principal` is the shape somebody would reach for if any part of this
+    // ever merged request data into the context.
+    const response = await probe().request("/whoami", {
+      method: "POST",
+      headers: { ...credentialHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        principal: { actorId: 999, credentialId: 999 },
+        actorId: 999,
+        actor: { id: 999 },
+      }),
+    });
+
+    expect(await response.json()).toEqual({ principal: TEST_PRINCIPAL });
+  });
+
+  it("refuses rather than falling back when there is no credential", async () => {
+    // The failure mode point 8 of the review names: `principal ?? body.actor`.
+    // A fallback would turn every unauthenticated request into an
+    // authenticated one carrying whatever identity it asked for, and it would
+    // look like graceful degradation in a diff.
+    const response = await probe().request("/whoami", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ principal: { actorId: 999, credentialId: 999 } }),
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.text()).not.toContain("999");
   });
 });
 
@@ -149,6 +193,11 @@ describe("the write routes refuse a request with no credential", () => {
     ],
     ["a token for another environment", credentialHeaders(TEST_TOKEN.replace("dev", "live"))],
     ["something that is not a token", credentialHeaders("nonsense")],
+    ["a scheme with a trailing space and nothing else", { authorization: "Bearer " }],
+    // Right shape, right handle, one character different in the secret. The
+    // case a forger actually has: everything correct except the part that
+    // cannot be guessed.
+    ["the right handle with the wrong secret", credentialHeaders(`${TEST_TOKEN.slice(0, -1)}C`)],
   ];
 
   for (const path of ["/products", "/enrolments"]) {
@@ -163,6 +212,21 @@ describe("the write routes refuse a request with no credential", () => {
       });
     }
   }
+
+  it("never answers a bad header with a server error", async () => {
+    // 401 and 500 are both refusals from a caller's point of view and are not
+    // the same thing at all: a 500 says the header reached something that did
+    // not expect it, and the difference between 500 and 401 is itself an
+    // oracle — it separates "malformed" from "wrong", which §7 exists to keep
+    // indistinguishable.
+    for (const path of ["/products", "/enrolments"]) {
+      for (const [label, headers] of PRESENTED) {
+        const response = await write(path, headers);
+
+        expect(response.status, `${path} with ${label}`).toBeLessThan(500);
+      }
+    }
+  });
 
   it("gives one identical answer to every one of them", async () => {
     // ADR 0014 §7. Absent, malformed, unknown, expired, revoked and the wrong
