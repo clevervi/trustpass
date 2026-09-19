@@ -2,8 +2,9 @@ import { desc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
-import { expectSqlState, SqlState } from "../testing/sql-state.js";
+import { expectSqlState, SqlState, sqlStateOf } from "../testing/sql-state.js";
 import { insertProductWithProvenance } from "../testing/with-provenance.js";
+import { actor } from "./actor.js";
 import { lifecycleEvent, type NewLifecycleEvent } from "./lifecycle-event.js";
 import { organization } from "./organization.js";
 import { product } from "./product.js";
@@ -24,6 +25,10 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
   let organizationId: number;
   let productId: number;
   let sequence = 0;
+
+  /** Two of them, so "it kept alice" is distinguishable from "it kept a value". */
+  let alice: number;
+  let bob: number;
 
   function build(overrides: Partial<NewLifecycleEvent> = {}): NewLifecycleEvent {
     return {
@@ -62,6 +67,17 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
       status: "registered",
     });
     productId = registered?.id as number;
+
+    const people = await db
+      .insert(actor)
+      .values([
+        { kind: "service", displayName: `${run} alice` },
+        { kind: "service", displayName: `${run} bob` },
+      ])
+      .returning({ id: actor.id });
+
+    alice = people[0]?.id as number;
+    bob = people[1]?.id as number;
   });
 
   afterAll(async () => {
@@ -127,6 +143,159 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
         .where(eq(lifecycleEvent.id, event?.id as number));
 
       expect(after?.reason).toBe("issuer_request");
+    });
+  });
+
+  describe("attribution, once written, is not a field anybody may revise", () => {
+    // `actor_id` arrived in 0026 and holds identity, so the append-only
+    // guarantee is checked against it specifically rather than assumed to
+    // extend. A column added after a trigger was written is exactly the case
+    // where "it is covered by the existing guard" is a belief.
+
+    it("refuses to change who an event names", async () => {
+      const [event] = await db
+        .insert(lifecycleEvent)
+        .values(build({ actorId: alice }))
+        .returning();
+
+      await expectSqlState(
+        db
+          .update(lifecycleEvent)
+          .set({ actorId: bob })
+          .where(eq(lifecycleEvent.id, event?.id as number)),
+        SqlState.HISTORY_IS_APPEND_ONLY,
+      );
+
+      const [after] = await db
+        .select()
+        .from(lifecycleEvent)
+        .where(eq(lifecycleEvent.id, event?.id as number));
+
+      expect(after?.actorId).toBe(alice);
+    });
+
+    it("refuses to attribute an event that named nobody", async () => {
+      // The one that matters most for the 13,171 events written before
+      // authentication existed. A null `actor_id` means "recorded before the
+      // system knew who was asking", which is true of those rows — and filling
+      // one in later would turn an honest gap into a fabricated fact, which is
+      // the same argument ADR 0011 §7 makes about revocation.
+      const [historical] = await db
+        .insert(lifecycleEvent)
+        .values(build({ actorId: null }))
+        .returning();
+
+      await expectSqlState(
+        db
+          .update(lifecycleEvent)
+          .set({ actorId: alice })
+          .where(eq(lifecycleEvent.id, historical?.id as number)),
+        SqlState.HISTORY_IS_APPEND_ONLY,
+      );
+    });
+
+    it("refuses to renumber an actor that history names", async () => {
+      // The cascade door. The foreign key is ON UPDATE CASCADE, so an actor
+      // whose id changed would drag every event it is named in along with it —
+      // rewriting attribution without ever touching `lifecycle_event`.
+      //
+      // The door is shut before that, by the identity column: 428C9, "column
+      // can only be updated to DEFAULT".
+      await db
+        .insert(lifecycleEvent)
+        .values(build({ actorId: alice }))
+        .returning();
+
+      await expectSqlState(
+        db.execute(sql`UPDATE actor SET id = id + 1000000 WHERE id = ${alice}`),
+        SqlState.GENERATED_ALWAYS,
+      );
+    });
+
+    it("refuses the cascade even with the identity guard taken away", async () => {
+      // An earlier version of the test above claimed the guarantee rested on
+      // `generatedAlwaysAsIdentity`, and that a migration relaxing it would
+      // open the cascade silently. That was reasoning, and it was wrong.
+      //
+      // Measured instead: relax the identity column, then renumber. The update
+      // cascades into `lifecycle_event` and the append-only trigger fires on
+      // it, because a cascaded UPDATE is an UPDATE. TP002, not a rewritten
+      // history.
+      //
+      // So the two guards are independent rather than stacked, and this test
+      // exists to keep the second one honest. The DDL is real and the
+      // transaction is rolled back; `ALTER TABLE` is transactional in
+      // Postgres, which is what makes this measurable at all.
+      await db
+        .insert(lifecycleEvent)
+        .values(build({ actorId: alice }))
+        .returning();
+
+      // **The rollback is unconditional, and that is not fussiness.**
+      //
+      // The first version let the failing UPDATE abort the transaction, which
+      // rolls back the DDL with it. That works exactly while the test passes.
+      // Running it with `lifecycle_event_no_update` dropped, to check the test
+      // was not decoration, the UPDATE succeeded — so the transaction committed
+      // and left `actor.id` writable for every run afterwards. A test that
+      // weakens the database when its subject is broken is worse than no test.
+      //
+      // So the outcome is captured and a sentinel is always thrown. The DDL
+      // cannot commit whatever the database decides.
+      const ROLLBACK = Symbol("roll this back whatever happened");
+      let outcome: unknown = "the update was accepted";
+
+      await db
+        .transaction(async (tx) => {
+          await tx.execute(sql`ALTER TABLE actor ALTER COLUMN id SET GENERATED BY DEFAULT`);
+
+          try {
+            // A free id rather than a memorable one. The first version used a
+            // literal, and it collided with a row an earlier run of this very
+            // test had left behind — so the UPDATE failed with 23505 before it
+            // could reach the cascade, and the test asserted the wrong refusal.
+            await tx.execute(
+              sql`UPDATE actor SET id = (SELECT max(id) + 1 FROM actor) WHERE id = ${alice}`,
+            );
+          } catch (error) {
+            outcome = error;
+          }
+
+          throw ROLLBACK;
+        })
+        .catch((error) => {
+          if (error !== ROLLBACK) {
+            throw error;
+          }
+        });
+
+      expect(sqlStateOf(outcome)).toBe(SqlState.HISTORY_IS_APPEND_ONLY);
+
+      // And the column is back the way it was, because the transaction that
+      // relaxed it did not commit. Asserted rather than assumed: a test that
+      // left `actor.id` writable would weaken every run after it.
+      const rows = (await db.execute(sql`
+        SELECT is_identity || ':' || coalesce(identity_generation, 'none') AS identity
+        FROM information_schema.columns
+        WHERE table_name = 'actor' AND column_name = 'id'
+      `)) as unknown as { identity: string }[];
+
+      expect(rows[0]?.identity).toBe("YES:ALWAYS");
+    });
+
+    it("refuses to delete an actor that history names", async () => {
+      await db
+        .insert(lifecycleEvent)
+        .values(build({ actorId: alice }))
+        .returning();
+
+      // RESTRICT, not cascade. Deleting the actor would erase who did what,
+      // which is the same erasure the append-only trigger prevents through a
+      // different door.
+      await expectSqlState(
+        db.execute(sql`DELETE FROM actor WHERE id = ${alice}`),
+        SqlState.RESTRICT_VIOLATION,
+      );
     });
   });
 

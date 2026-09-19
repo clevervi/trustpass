@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
 import type { AppDependencies } from "./dependencies.js";
+import { requireCredential } from "./http/authenticate.js";
 import { type CorsPolicy, writeOrigins } from "./http/cors-policy.js";
 import { ApiErrorCode, validationError } from "./http/errors.js";
 import { registerEnrolmentRoutes } from "./routes/enrolments.js";
@@ -64,6 +65,19 @@ export function createApp(
 
   app.use("/products", write);
   app.use("/enrolments", write);
+
+  // After CORS and not before, deliberately. Hono's `cors()` answers a
+  // preflight and returns without calling the next handler, so an OPTIONS —
+  // which carries no Authorization header, by specification — never reaches
+  // this. Registered first, every preflight would be refused with a 401 and the
+  // allowlist settled in #121 would silently stop working for every browser.
+  //
+  // Only the two that write. `/passports/*` is public because a QR on an object
+  // has to resolve from whatever page scanned it, and that is the product.
+  const credentialed = requireCredential(deps.authenticate);
+
+  app.use("/products", credentialed);
+  app.use("/enrolments", credentialed);
 
   registerHealthRoutes(app, deps);
   registerProductRoutes(app, deps);

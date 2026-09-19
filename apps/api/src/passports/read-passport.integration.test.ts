@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { registerProduct } from "../products/register-product.js";
-import { buildDependencies } from "../testing/dependencies.js";
+import { authenticates, buildDependencies, credentialHeaders } from "../testing/dependencies.js";
 import { readPassport } from "./read-passport.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -32,7 +32,7 @@ describe.skipIf(!databaseUrl)("GET /passports/{trustpassId} against a real datab
   ): Promise<string> {
     const response = await app.request("/products", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...credentialHeaders() },
       body: JSON.stringify({
         issuer,
         brand: "ASUS",
@@ -55,7 +55,8 @@ describe.skipIf(!databaseUrl)("GET /passports/{trustpassId} against a real datab
     db = createDatabase(databaseUrl as string, { maxConnections: 4 });
     app = createApp(
       buildDependencies({
-        registerProduct: (input) => registerProduct(db, input),
+        authenticate: authenticates(),
+        registerProduct: (input, principal) => registerProduct(db, input, principal),
         readPassport: (trustpassId) => readPassport(db, trustpassId),
       }),
     );

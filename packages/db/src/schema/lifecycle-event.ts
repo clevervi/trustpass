@@ -10,6 +10,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
+import { actor } from "./actor.js";
 import { lifecycleActorKind } from "./actor-capacity.js";
 import { capacityGrant } from "./capacity-grant.js";
 import { organization } from "./organization.js";
@@ -149,6 +150,60 @@ export const lifecycleEvent = pgTable(
     type: lifecycleEventType("type").notNull(),
 
     actorKind: lifecycleActorKind("actor_kind").notNull(),
+
+    /**
+     * **Who** acted, as opposed to what kind of thing they were acting as.
+     *
+     * The two are deliberately separate columns and the distinction is the
+     * whole point of ADR 0014 §6:
+     *
+     *   actor_id     **who** acted: the authenticated principal, from the
+     *                credential that was presented and from nowhere else. A
+     *                request cannot set it, suggest it, or influence it.
+     *   actor_kind   **as what**: the capacity an actor is acting under. Still
+     *                a literal chosen by the code path that writes the event,
+     *                and still never read from a request.
+     *
+     * An earlier version of this comment called `actor_kind` "what the
+     * operation is". That is wrong and the imprecision matters: `type` is what
+     * the operation is, and `actor_kind` is the capacity the actor holds while
+     * doing it — which is why it lines up with `grant_id` and `organization_id`
+     * rather than with `type`.
+     *
+     * A body saying `actor_kind: "authority"` does not make its sender an
+     * authority. Whether an actor may act under a given capacity is a grant
+     * lookup, it runs after authentication, and it is not decided here (#152).
+     *
+     * **Which layer writes this.** The repository, from a parameter the service
+     * passes from the principal the middleware resolved. Not a trigger, and the
+     * boundary is stated rather than left to be discovered:
+     *
+     *   app  ->  principal  ->  repository parameter  ->  this column
+     *
+     * `recorded_at` and `recorded_in_xact` are server-controlled by triggers
+     * because a writer must not be able to choose when it claims to have
+     * written. This column is different: there is no value the database could
+     * derive on its own, because the credential is verified in Node and the
+     * connection carries no identity. Making it server-controlled would mean
+     * the application first telling the database who it is — a session
+     * variable — and a session variable the runtime sets is not a stronger
+     * guarantee than a parameter the runtime passes. It would be the same trust
+     * with more moving parts.
+     *
+     * What would change that: an issuance path that gives each actor its own
+     * database role. That is not this system, and if it ever is, this comment
+     * is where the decision should be revisited.
+     *
+     * Nullable, because every event written before authentication existed has
+     * no principal to name. Inventing one would be worse than the gap: it
+     * would make history say a specific actor did something nobody recorded.
+     * A null here means "written before the system knew who was asking", and
+     * that is a true statement about those rows.
+     */
+    actorId: bigint("actor_id", { mode: "number" }).references(() => actor.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
 
     /**
      * Which party acted, when one did.
@@ -306,6 +361,9 @@ export const lifecycleEvent = pgTable(
 
     // The same lookup, against the identity that will outlive issuer_id.
     index("lifecycle_event_organization_idx").on(table.organizationId),
+
+    /** "What did this actor do" is a question an audit asks. */
+    index("lifecycle_event_actor_idx").on(table.actorId),
 
     // An event is past-tense by ADR 0008. Something recorded as having happened
     // after it was recorded is not an event, it is a schedule, and a schedule

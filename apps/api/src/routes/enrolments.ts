@@ -75,6 +75,13 @@ const enrolRoute = createRoute({
       description: "The record now exists. Nothing about the product has been verified.",
       content: { "application/json": { schema: EnrolledProductSchema } },
     },
+    401: {
+      description:
+        "No credential, or one this request may not use. Absent, malformed, unknown, " +
+        "expired, revoked and minted for another environment all return this same " +
+        "response: saying which applied would tell a caller whether a credential exists.",
+      content: { "application/json": { schema: ApiErrorSchema } },
+    },
     409: {
       description:
         "A live enrolment already holds this serial. The response does not say which one: " +
@@ -93,7 +100,10 @@ const enrolRoute = createRoute({
 export function registerEnrolmentRoutes(app: OpenAPIHono, dependencies: AppDependencies): void {
   app.openapi(enrolRoute, async (c) => {
     const body = c.req.valid("json");
-    const result = await dependencies.enrolProduct(body);
+    // `c.get("principal")` and never `body`. The middleware put it there and
+    // nothing between here and the row can substitute it — that is what the
+    // integration tests assert against the persisted event.
+    const result = await dependencies.enrolProduct(body, c.get("principal"));
 
     if (!result.ok) {
       return c.json(

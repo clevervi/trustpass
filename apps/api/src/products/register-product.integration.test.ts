@@ -1,9 +1,9 @@
-import { createDatabase, type Database, schema } from "@trustpass/db";
+import { type AuthenticatedPrincipal, createDatabase, type Database, schema } from "@trustpass/db";
 import { moveProductStatus } from "@trustpass/db/testing";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
-import { buildDependencies } from "../testing/dependencies.js";
+import { buildDependencies, credentialHeaders, TEST_TOKEN } from "../testing/dependencies.js";
 import { registerProduct } from "./register-product.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -21,6 +21,17 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
 
   const issuerReference = { country: "CO", registrationNumber: `${run}-9001` };
 
+  /**
+   * A real actor row, because `lifecycle_event.actor_id` references one.
+   *
+   * `TEST_PRINCIPAL` is a plausible-looking pair of numbers and is right for a
+   * test whose service is stubbed. Here the service reaches Postgres, so the
+   * principal has to name something that exists — and a fixture that passed
+   * only because actor 1 happened to be in the developer's database is the
+   * kind of test that fails on a virgin volume and nowhere else.
+   */
+  let caller: AuthenticatedPrincipal;
+
   function body(overrides: Record<string, unknown> = {}) {
     return {
       issuer: issuerReference,
@@ -35,14 +46,26 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
   function post(payload: unknown) {
     return app.request("/products", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...credentialHeaders() },
       body: JSON.stringify(payload),
     });
   }
 
   beforeAll(async () => {
     db = createDatabase(databaseUrl as string, { maxConnections: 4 });
-    app = createApp(buildDependencies({ registerProduct: (input) => registerProduct(db, input) }));
+    app = createApp(
+      buildDependencies({
+        authenticate: async (presented) => (presented === TEST_TOKEN ? caller : null),
+        registerProduct: (input, principal) => registerProduct(db, input, principal),
+      }),
+    );
+
+    const [person] = await db
+      .insert(schema.actor)
+      .values({ kind: "service", displayName: `${run} caller` })
+      .returning({ id: schema.actor.id });
+
+    caller = { actorId: person?.id as number, credentialId: person?.id as number };
 
     await db.insert(schema.organization).values({
       companyName: "Andes Tech Imports",
@@ -80,6 +103,82 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
     expect(stored).toBeDefined();
     expect(stored?.brand).toBe("ASUS");
     expect(stored?.status).toBe("registered");
+  });
+
+  it("records the issuer the body named, which is the boundary #141 does not cross", async () => {
+    // The honest state of this endpoint, pinned so it is visible rather than
+    // inferred, and so the day it changes something fails.
+    //
+    //   who is calling       the credential, and only the credential
+    //   which organization   `body.issuer`, looked up by a public registration
+    //                        number, with no check that the caller has any
+    //                        relationship with it
+    //
+    // A second organization exists here for exactly one reason: to be named by
+    // a caller whose credential has nothing to do with it, and to be recorded
+    // anyway. That is not a defect in this commit — it is the authorization
+    // model, ADR 0009 and ADR 0011, which ADR 0014 says it does not decide.
+    //
+    // When actor -> membership -> organization lands, this test fails, and the
+    // failure is the notification.
+    const other = { country: "CO", registrationNumber: `${run}-9003` };
+
+    await db.insert(schema.organization).values({
+      companyName: "Somebody Else Entirely",
+      legalName: `OTHER REGISTER ${run} SAS`,
+      registrationNumber: other.registrationNumber,
+      country: other.country,
+    });
+
+    const response = await post({
+      ...body({ serial: `${run}-NOT-MINE` }),
+      issuer: other,
+      // Everything a caller might try alongside it. None of these is a field
+      // any schema on this path declares, and none may reach the row.
+      actorId: 999,
+      actor_id: 999,
+      actorKind: "authority",
+      actor_kind: "authority",
+      credentialId: 999,
+      credential_id: 999,
+      organizationId: 999,
+      principal: { actorId: 999, credentialId: 999 },
+    });
+
+    expect(response.status).toBe(201);
+    const created = (await response.json()) as { trustpassId: string };
+
+    const [stored] = await db
+      .select()
+      .from(schema.product)
+      .where(eq(schema.product.trustpassId, created.trustpassId as never));
+
+    const [organization] = await db
+      .select()
+      .from(schema.organization)
+      .where(eq(schema.organization.registrationNumber, other.registrationNumber));
+
+    // The organization comes from the body, today. Asserted rather than
+    // avoided: a limitation nobody wrote down is a limitation nobody fixes.
+    expect(stored?.organizationId).toBe(organization?.id);
+
+    const events = await db
+      .select()
+      .from(schema.lifecycleEvent)
+      .where(eq(schema.lifecycleEvent.productId, stored?.id as number));
+
+    // And `actor_kind` does not come from the body, even though the body sent
+    // one. It is a literal in `insertProduct`, which is what ADR 0014 §6 means
+    // by identity not being an input.
+    expect(events).toHaveLength(1);
+    expect(events[0]?.actorKind).toBe("issuer");
+    expect(events[0]?.organizationId).toBe(organization?.id);
+
+    // **Who** is the credential's actor, and the body sent a different one.
+    // **Which organization** still comes from the body, and that is #152.
+    // The two travel separately and this asserts both halves of that sentence.
+    expect(events[0]?.actorId).toBe(caller.actorId);
+    expect(events[0]?.actorId).not.toBe(999);
   });
 
   it("issues a different identifier for every registration", async () => {

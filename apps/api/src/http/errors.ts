@@ -46,6 +46,12 @@ export const ApiErrorCode = {
   /** The value is not a TrustPass ID in any version this build understands. */
   MALFORMED_TRUSTPASS_ID: "malformed_trustpass_id",
   PASSPORT_NOT_FOUND: "passport_not_found",
+  /**
+   * No credential, or one this request may not use. Deliberately one code for
+   * absent, malformed, unknown, expired, revoked and the wrong environment:
+   * a caller learning which applied would learn whether a credential exists.
+   */
+  UNAUTHENTICATED: "unauthenticated",
 } as const;
 
 /**

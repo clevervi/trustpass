@@ -96,15 +96,32 @@ at rest:            SHA-256 of the secret
 **The format is part of the decision, not of the implementation.**
 
 ```
-tp_<env>_<handle>_<secret>
+tp.<env>.<handle>.<secret>
 
-tp_live_7f3a91c4_9mK2x…          46 characters after the prefix
-   |     |         |
-   |     |         └─ 256 bits from crypto.randomBytes(32), base64url
-   |     └─────────── 64 bits, the indexed lookup handle, stored in clear
-   └───────────────── environment, so a staging secret pasted into production
-                      fails as a secret rather than as a permission
+tp.live.7f3a91c4.9mK2x…          63 characters, for "live"
+   |    |        |
+   |    |        └─ 256 bits from crypto.randomBytes(32), base64url
+   |    └───────── 64 bits, the indexed lookup handle, stored in clear
+   └────────────── environment, so a staging secret pasted into production
+                   fails as a secret rather than as a permission
 ```
+
+**The delimiter is `.`, and it is a correction to this ADR's first version.**
+That version wrote `tp_<env>_<handle>_<secret>` — and `_` is in the base64url
+alphabet (`A-Z a-z 0-9 - _`). A secret containing one split into five parts and
+was refused by the parser that had just produced it. Measured before changing
+anything: **481 of 1000** random 32-byte secrets contain an underscore.
+
+The rule that outlives the specific fix: **a delimiter may not be a character
+the payload alphabet can produce.** `sk_live_…` works for Stripe because its
+payload is alphanumeric; taking the shape without taking that constraint is
+what went wrong here.
+
+It is recorded because of how it presented. Half the tokens worked, so a
+round-trip test run once passes more often than it fails, and it reads as
+flakiness rather than as a format that cannot read itself. The test that found
+it issues five hundred and asserts the sample actually contained the dangerous
+character — otherwise a lucky run proves nothing.
 
 The handle is why verification is an indexed lookup and not a scan. Without it
 the hash becomes the index, and a hash used as a primary lookup key is a value
@@ -112,9 +129,14 @@ whose leak through a log or an error message is more interesting than it needs
 to be. It is stored in clear on purpose: it identifies a credential and proves
 nothing.
 
-**`UNIQUE` on the handle, and a collision regenerates.** 64 bits will not collide
-in this system's lifetime, and the constraint is not there because it is likely
-— it is there because the alternative behaviours are both silent. A collision
+**`UNIQUE` on the handle, and a collision regenerates.** An earlier draft said 64
+bits "will not collide in this system's lifetime", which is an assertion about
+probability standing in for a guarantee — and the birthday bound grows with the
+square of the number issued, so it is an assertion that gets weaker with use.
+
+The guarantee is the constraint and the retry, not the arithmetic. The
+constraint is not there because a collision is likely; it is there because both
+alternative behaviours are silent. A collision
 that overwrites loses a credential; a collision that returns the wrong row
 authenticates the wrong actor. Issuance retries with a fresh handle, up to a
 small bound, and fails loudly rather than reusing one.
@@ -130,6 +152,11 @@ fail because it is not a credential there, not because the environment happened
 to reject it for some other reason — and a secret scanner can be taught one
 literal string.
 
+The prefix is a context separation and not a cryptographic boundary. A leaked
+production token is a valid production secret; the prefix only stops it being
+used somewhere it was never meant to work, and stops somebody pasting a staging
+token into production and spending an afternoon on the wrong question.
+
 A wrong prefix is an authentication failure, indistinguishable from every other
 one, and the credential is never looked up. "This is a staging token" is a
 sentence about which environment exists and holds what, and a refusal has no
@@ -143,8 +170,13 @@ row. Nothing compares raw secrets.
 ### 4. Transport: `Authorization: Bearer`, and not a cookie
 
 ```
-Authorization: Bearer <credential-id>.<secret>
+Authorization: Bearer tp.<env>.<handle>.<secret>
 ```
+
+The whole token, exactly as §3 defines it. An earlier draft wrote
+`<credential-id>.<secret>` here, naming a different pair of values than §3 did.
+Two sections of one ADR disagreeing about the wire format is resolved by
+whoever implements it first, which is not a decision procedure.
 
 **Not a cookie.** A browser-attached credential brings CSRF, `SameSite`, and
 turns the CORS policy settled in #121 from a boundary into load-bearing security.
@@ -208,6 +240,12 @@ it `SELECT` on `credential` and nothing else. **Issuance through the API would
 need an `INSERT` grant**, which is a migration and a decision, and neither
 belongs in the issue that introduces verification.
 
+**A lost secret cannot be recovered, and that is the design working.** There is
+no path that returns a plaintext secret from the database because there is no
+plaintext secret in the database. Losing one is revocation followed by issuance,
+which is the same procedure as rotation and is why `label` exists — so an actor
+with several can say which one to revoke.
+
 Rotation is issuing a second credential and revoking the first — which the table
 already supports, and which is why `label` exists. Loss is revocation followed by
 issuance. Neither needs a new mechanism.
@@ -268,8 +306,15 @@ from the credential or from the body, and proves nothing about which.
 
 - A migration adds the lookup handle and the hash to `credential`. The table's
   existing shape is unchanged: this fills the hole v0.5.0 left open on purpose.
-- Every write endpoint gains a principal and stops reading identity from its
-  body. `POST /enrolments` and `POST /products` are the two that exist.
+- Every write endpoint gains a principal. `POST /enrolments` and
+  `POST /products` are the two that exist, and they are not in the same place:
+  `/enrolments` reads no identity from its body and cannot, because the type its
+  body becomes has nowhere to put one; `/products` still takes `issuer` from
+  its body, and closing that needs actor to organization through membership,
+  which is ADR 0009 and ADR 0011 and is not decided here. **Until it is, an
+  authenticated caller may still name an organization it has no relationship
+  with.** Authentication is enforced on both. Authorisation is enforced on
+  neither, and the route says so where a consumer will read it.
 - **#120's remaining criterion becomes buildable, and not by authentication
   alone.** Recovering your own enrolment identifier needs proof of entitlement to
   *that* enrolment; being the same actor does not establish it. What this ADR

@@ -176,6 +176,20 @@
       "when": 1789750175368,
       "tag": "0024_three_roles_one_database",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789778106680,
+      "tag": "0025_a_credential_can_prove_itself",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789781459269,
+      "tag": "0026_history_records_who_asked",
+      "breakpoints": true
     }
   ]
 }

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createApp } from "../app.js";
 import type { AppDependencies } from "../dependencies.js";
 import type { RegisterProductResult } from "../products/register-product.js";
-import { buildDependencies } from "../testing/dependencies.js";
+import { authenticates, buildDependencies, credentialHeaders } from "../testing/dependencies.js";
 
 const VALID_BODY = {
   issuer: { country: "CO", registrationNumber: "900123456-7" },
@@ -34,14 +34,16 @@ const REGISTERED: RegisterProductResult = {
 function post(app: ReturnType<typeof createApp>, body: unknown) {
   return app.request("/products", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...credentialHeaders() },
     body: JSON.stringify(body),
   });
 }
 
 describe("POST /products — success", () => {
   it("returns 201 with the created product", async () => {
-    const app = createApp(buildDependencies({ registerProduct: async () => REGISTERED }));
+    const app = createApp(
+      buildDependencies({ authenticate: authenticates(), registerProduct: async () => REGISTERED }),
+    );
     const response = await post(app, VALID_BODY);
 
     expect(response.status).toBe(201);
@@ -53,7 +55,9 @@ describe("POST /products — success", () => {
   });
 
   it("serialises createdAt as an ISO string", async () => {
-    const app = createApp(buildDependencies({ registerProduct: async () => REGISTERED }));
+    const app = createApp(
+      buildDependencies({ authenticate: authenticates(), registerProduct: async () => REGISTERED }),
+    );
     const body = (await (await post(app, VALID_BODY)).json()) as { createdAt: string };
 
     expect(body.createdAt).toBe("2026-09-17T16:45:00.000Z");
@@ -62,7 +66,9 @@ describe("POST /products — success", () => {
   it("never exposes the internal key", async () => {
     // ADR 0005: the identity key never crosses the API boundary. Nothing in the
     // type system enforces that, so it is asserted here.
-    const app = createApp(buildDependencies({ registerProduct: async () => REGISTERED }));
+    const app = createApp(
+      buildDependencies({ authenticate: authenticates(), registerProduct: async () => REGISTERED }),
+    );
     const body = (await (await post(app, VALID_BODY)).json()) as Record<string, unknown>;
 
     expect(body).not.toHaveProperty("id");
@@ -74,7 +80,7 @@ describe("POST /products — success", () => {
     // A caller that could choose its own identifier could collide with a label
     // already printed, or reuse one it had seen elsewhere.
     const registerProduct = vi.fn<AppDependencies["registerProduct"]>(async () => REGISTERED);
-    const app = createApp(buildDependencies({ registerProduct }));
+    const app = createApp(buildDependencies({ authenticate: authenticates(), registerProduct }));
 
     await post(app, { ...VALID_BODY, trustpassId: "TP1-ATTACKERCHOSENVALUEHERE0" });
 
@@ -87,7 +93,7 @@ describe("POST /products — validation", () => {
   it("returns 422 rather than Hono's default 400", async () => {
     // The documented envelope has to apply to the response a caller is most
     // likely to hit, not to every response except that one.
-    const app = createApp(buildDependencies());
+    const app = createApp(buildDependencies({ authenticate: authenticates() }));
     const response = await post(app, {});
 
     expect(response.status).toBe(422);
@@ -97,7 +103,7 @@ describe("POST /products — validation", () => {
   it("names every offending field, not just the first", async () => {
     // Fixing one field per round trip is a worse experience than strict
     // validation in the first place.
-    const app = createApp(buildDependencies());
+    const app = createApp(buildDependencies({ authenticate: authenticates() }));
     const response = await post(app, { brand: "", model: "", serial: "x", category: "spaceship" });
     const body = (await response.json()) as { details: Array<{ path: string }> };
 
@@ -110,14 +116,14 @@ describe("POST /products — validation", () => {
     ["a three-letter country", { ...VALID_BODY.issuer, country: "COL" }],
     ["a registration number with spaces", { ...VALID_BODY.issuer, registrationNumber: "900 123" }],
   ])("rejects %s", async (_label, issuer) => {
-    const app = createApp(buildDependencies());
+    const app = createApp(buildDependencies({ authenticate: authenticates() }));
     const response = await post(app, { ...VALID_BODY, issuer });
 
     expect(response.status).toBe(422);
   });
 
   it("rejects a category outside the enum", async () => {
-    const app = createApp(buildDependencies());
+    const app = createApp(buildDependencies({ authenticate: authenticates() }));
     const response = await post(app, { ...VALID_BODY, category: "spaceship" });
 
     expect(response.status).toBe(422);
@@ -125,7 +131,7 @@ describe("POST /products — validation", () => {
 
   it("does not reach the service when the body is invalid", async () => {
     const registerProduct = vi.fn<AppDependencies["registerProduct"]>(async () => REGISTERED);
-    const app = createApp(buildDependencies({ registerProduct }));
+    const app = createApp(buildDependencies({ authenticate: authenticates(), registerProduct }));
 
     await post(app, {});
 
@@ -137,6 +143,7 @@ describe("POST /products — unknown issuer", () => {
   it("returns a structured 422, not a database message", async () => {
     const app = createApp(
       buildDependencies({
+        authenticate: authenticates(),
         registerProduct: async () => ({ ok: false, reason: "issuer_not_found" }),
       }),
     );
@@ -155,7 +162,7 @@ describe("POST /products — unknown issuer", () => {
 
 describe("POST /products — documentation", () => {
   it("appears in the OpenAPI document with both schemas", async () => {
-    const app = createApp(buildDependencies());
+    const app = createApp(buildDependencies({ authenticate: authenticates() }));
     const doc = (await (await app.request("/openapi.json")).json()) as {
       paths: Record<
         string,

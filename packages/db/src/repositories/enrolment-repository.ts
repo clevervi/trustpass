@@ -14,14 +14,31 @@ export type EnrolProductResult =
 /**
  * What a caller may set when enrolling a product they hold.
  *
- * `organizationId` and `origin` are absent on purpose rather than optional: an
- * enrolment is a holder enrolment, and letting either be passed in would let a
- * caller claim a company's standing through this path.
+ * `organizationId`, `origin` and `status` are absent on purpose rather than
+ * optional: an enrolment is a holder enrolment, and letting any of them be
+ * passed in would let a caller claim a company's standing through this path.
+ *
+ * This is the structural half of ADR 0014 §6. The request body carries no
+ * identity because the type it becomes has nowhere to put one — which is a
+ * stronger guarantee than a handler remembering not to read one.
  */
-export type EnrolProductInput = Omit<
-  NewProduct,
-  "organizationId" | "organizationId" | "origin" | "status"
->;
+export type EnrolProductInput = Omit<NewProduct, "organizationId" | "origin" | "status">;
+
+/**
+ * Who is recording this, as distinct from what is being recorded.
+ *
+ * A separate parameter rather than a field on the input, deliberately. The
+ * input type's whole purpose is having nowhere to put an identity — ADR 0014
+ * §6 — and adding one to it would undo that at the only layer where it is
+ * structural rather than a habit.
+ *
+ * Required, not optional. An optional identity is one that gets forgotten, and
+ * being forgotten is precisely the state #141 exists to end.
+ */
+export interface RecordingActor {
+  /** The authenticated principal. Never a value from a request body. */
+  readonly actorId: number;
+}
 
 /**
  * Enrols a product nobody registered.
@@ -37,6 +54,7 @@ export type EnrolProductInput = Omit<
 export async function enrolProduct(
   db: Database,
   values: EnrolProductInput,
+  actor: RecordingActor,
 ): Promise<EnrolProductResult> {
   try {
     return await db.transaction(async (tx) => {
@@ -59,7 +77,14 @@ export async function enrolProduct(
         // Per ADR 0007 as amended: what begins here is the TrustPass record,
         // not the product. The object is older than this row.
         type: "record_enrolled",
+        // What kind of operation this is: a literal, never read from a request.
         actorKind: "holder",
+        // Who did it: the authenticated principal, and the one value here that
+        // is not a literal. The two are separate columns for the reason ADR
+        // 0014 §6 gives — a body saying "authority" does not make its sender
+        // one, and whether this actor may act as a holder is a grant lookup
+        // that runs elsewhere (#152).
+        actorId: actor.actorId,
         organizationId: null,
         reason: "holder_request",
         // `now()` rather than a JavaScript Date: `timestamptz` keeps

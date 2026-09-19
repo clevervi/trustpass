@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import type { EnrolProductResult } from "../enrolments/enrol-product.js";
-import { buildDependencies } from "../testing/dependencies.js";
+import { authenticates, buildDependencies, credentialHeaders } from "../testing/dependencies.js";
 
 /**
  * What a stranger holding a serial can find out.
@@ -54,14 +54,57 @@ const TAKEN: EnrolProductResult = { ok: false, reason: "duplicate_serial" };
 function post(app: ReturnType<typeof createApp>, body: unknown) {
   return app.request("/enrolments", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...credentialHeaders() },
     body: JSON.stringify(body),
   });
 }
 
 describe("POST /enrolments", () => {
+  it("hands the service four fields, whatever the body contained", async () => {
+    // The layer, on its own. Three things stop a body's identity reaching a
+    // row — the schema stripping unknown keys, the service naming its fields,
+    // and the repository writing literals — and each is sufficient by itself,
+    // so no end-to-end test can go red when one of them is removed. Measured:
+    // making this schema `.passthrough()` left every integration test green.
+    //
+    // This one covers the first layer and nothing else.
+    let received: unknown;
+
+    const app = createApp(
+      buildDependencies({
+        authenticate: authenticates(),
+        enrolProduct: async (input) => {
+          received = input;
+          return ENROLLED;
+        },
+      }),
+    );
+
+    await post(app, {
+      ...BODY,
+      actorId: 999,
+      actorKind: "issuer",
+      actor_kind: "issuer",
+      credentialId: 999,
+      organizationId: 999,
+      issuer: { country: "CO", registrationNumber: "999" },
+      origin: "supply_chain",
+      status: "verified",
+      trustpassId: "TP1-ATTACKER-CHOSE-THIS",
+    });
+
+    expect(Object.keys(received as object).sort()).toEqual([
+      "brand",
+      "category",
+      "model",
+      "serial",
+    ]);
+  });
+
   it("returns 201 and the identifier to the caller that created it", async () => {
-    const app = createApp(buildDependencies({ enrolProduct: async () => ENROLLED }));
+    const app = createApp(
+      buildDependencies({ authenticate: authenticates(), enrolProduct: async () => ENROLLED }),
+    );
     const response = await post(app, BODY);
 
     expect(response.status).toBe(201);
@@ -71,7 +114,9 @@ describe("POST /enrolments", () => {
   it("names no identifier when the serial is taken", async () => {
     // The disclosure. It was deliberate — a client that timed out and retried
     // learned what it had already created — and it was the wrong trade.
-    const app = createApp(buildDependencies({ enrolProduct: async () => TAKEN }));
+    const app = createApp(
+      buildDependencies({ authenticate: authenticates(), enrolProduct: async () => TAKEN }),
+    );
     const response = await post(app, BODY);
 
     expect(response.status).toBe(409);
@@ -86,7 +131,9 @@ describe("POST /enrolments", () => {
     // Smaller than the identifier and the same kind of thing: a response that
     // repeats the serial confirms which one was asked about, and a sweep sees
     // little else.
-    const app = createApp(buildDependencies({ enrolProduct: async () => TAKEN }));
+    const app = createApp(
+      buildDependencies({ authenticate: authenticates(), enrolProduct: async () => TAKEN }),
+    );
     const raw = await (await post(app, BODY)).text();
 
     expect(raw).not.toContain(BODY.serial);
@@ -101,6 +148,7 @@ describe("what a sweep over a serial range learns", () => {
   async function sweep(taken: ReadonlySet<string>) {
     const app = createApp(
       buildDependencies({
+        authenticate: authenticates(),
         enrolProduct: async (input): Promise<EnrolProductResult> =>
           taken.has(input.serial)
             ? TAKEN

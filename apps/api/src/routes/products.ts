@@ -3,6 +3,29 @@ import type { AppDependencies } from "../dependencies.js";
 import { ApiErrorCode, ApiErrorSchema } from "../http/errors.js";
 import { ProductCategorySchema } from "./product-category.js";
 
+/**
+ * **Authentication is enforced here. Issuer authorization is not.**
+ *
+ * As of #141 a request must carry a valid credential, and the principal comes
+ * from that credential and from nowhere else. What has not happened yet is the
+ * lookup that connects the principal to this organization:
+ *
+ * ```
+ * credential -> actor          done, ADR 0014
+ * actor -> membership -> organization -> grant    not done, ADR 0009 / ADR 0011
+ * ```
+ *
+ * So `issuer` below is still what the caller says it is. **It is input naming
+ * the organization a record belongs to, and it is not proof of any authority
+ * over that organization.** A registration number is public — national
+ * registries publish it, and `apps/web` shows it on every passport — so naming
+ * one establishes nothing.
+ *
+ * Written here rather than left to be inferred, because the inference somebody
+ * will make is the wrong one: "there is authentication now, so the issuer in
+ * the body can be trusted". Authenticated is not authorized, and the gap
+ * between them is a whole model that has not been built.
+ */
 const IssuerReferenceSchema = z
   .object({
     country: z
@@ -64,6 +87,14 @@ const registerProductRoute = createRoute({
   path: "/products",
   tags: ["products"],
   summary: "Register a product and issue its TrustPass ID",
+  description:
+    "Requires a credential: `Authorization: Bearer <token>`. Every failure — absent, " +
+    "malformed, unknown, expired, revoked, or minted for another environment — returns " +
+    "the same 401.\n\n" +
+    "**The credential authenticates the caller. It does not yet authorise the issuer.** " +
+    "`issuer` names the organization a record belongs to and is not proof of authority " +
+    "over it: a registration number is public, and this API does not check that the " +
+    "authenticated actor has any relationship with the organization named.",
   request: {
     body: {
       content: { "application/json": { schema: RegisterProductRequestSchema } },
@@ -74,6 +105,13 @@ const registerProductRoute = createRoute({
     201: {
       content: { "application/json": { schema: RegisteredProductSchema } },
       description: "The product was registered and given a TrustPass ID",
+    },
+    401: {
+      description:
+        "No credential, or one this request may not use. Absent, malformed, unknown, " +
+        "expired, revoked and minted for another environment all return this same " +
+        "response: saying which applied would tell a caller whether a credential exists.",
+      content: { "application/json": { schema: ApiErrorSchema } },
     },
     409: {
       content: { "application/json": { schema: ApiErrorSchema } },
@@ -92,15 +130,21 @@ const registerProductRoute = createRoute({
 export function registerProductRoutes(app: OpenAPIHono, deps: AppDependencies): void {
   app.openapi(registerProductRoute, async (c) => {
     const body = c.req.valid("json");
-    const result = await deps.registerProduct(body);
+    const result = await deps.registerProduct(body, c.get("principal"));
 
     if (!result.ok && result.reason === "duplicate_serial") {
       // 409, not 422: the request is entirely valid and would have been
       // accepted a moment ago. It conflicts with state that already exists.
       //
-      // The existing identifier is returned deliberately. A client that timed
-      // out mid-registration and retried needs to learn what it already
-      // created, or it has no way to recover except by guessing.
+      // The existing identifier is deliberately NOT returned. It used to be,
+      // so a client that timed out mid-registration could learn what it had
+      // already created — and #143 removed it, because it turned a serial
+      // printed on the outside of an object into a lookup for the identifier
+      // ADR 0004 spends its whole Context keeping unguessable.
+      //
+      // This comment said the opposite until now. The code has been right
+      // since #143 and the sentence describing it was not, which is the kind
+      // of stale claim that gets read as intent by whoever changes this next.
       return c.json(
         {
           error: ApiErrorCode.DUPLICATE_SERIAL,

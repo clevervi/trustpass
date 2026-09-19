@@ -1,3 +1,18 @@
+export {
+  digestOf,
+  digestsMatch,
+  ENVIRONMENTS,
+  type Environment,
+  type IssuedCredential,
+  issueToken,
+  type ParsedToken,
+  parseToken,
+  TOKEN_PREFIX,
+} from "./auth/credential-token.js";
+export {
+  type AuthenticatedPrincipal,
+  verifyCredential,
+} from "./auth/verify-credential.js";
 export { createDatabase, type Database, type DatabaseOptions } from "./client.js";
 export {
   assertConnectionIsUnprivileged,
@@ -50,6 +65,7 @@ export {
   type EnrolProductResult,
   enrolProduct,
   findLiveHolderEnrolment,
+  type RecordingActor,
 } from "./repositories/enrolment-repository.js";
 export {
   findHistoryByTrustPassId,
