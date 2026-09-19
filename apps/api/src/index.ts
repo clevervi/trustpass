@@ -1,5 +1,10 @@
 import { serve } from "@hono/node-server";
-import { assertConnectionIsUnprivileged, createDatabase, isDatabaseReachable } from "@trustpass/db";
+import {
+  assertConnectionIsUnprivileged,
+  createDatabase,
+  isDatabaseReachable,
+  verifyCredential,
+} from "@trustpass/db";
 import { createApp } from "./app.js";
 import { enrolProduct } from "./enrolments/enrol-product.js";
 import { loadEnv } from "./env.js";
@@ -57,6 +62,9 @@ const app = createApp(
   {
     version,
     checkDatabase: () => isDatabaseReachable(db),
+    // The environment is bound here, once, from configuration — not passed per
+    // request where a caller could influence it.
+    authenticate: (presented) => verifyCredential(db, presented, env.TRUSTPASS_ENV),
     registerProduct: (input) => registerProduct(db, input),
     enrolProduct: (input) => enrolProduct(db, input),
     readPassport: (trustpassId) => readPassport(db, trustpassId),

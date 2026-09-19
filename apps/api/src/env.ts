@@ -1,9 +1,21 @@
+import { ENVIRONMENTS } from "@trustpass/db";
 import { z } from "zod";
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   API_PORT: z.coerce.number().int().positive().max(65535).default(3001),
   DATABASE_URL: z.string().min(1, "DATABASE_URL must not be empty"),
+
+  /**
+   * Which environment a credential must have been minted for — ADR 0014 §3.
+   *
+   * Required, with no default, for the reason the field below spells out at
+   * length: a default is what a forgotten variable falls back to, and the
+   * forgetting is the thing worth catching. A production deploy that omitted
+   * this would otherwise accept tokens minted for staging, which is the one
+   * mistake the prefix exists to prevent.
+   */
+  TRUSTPASS_ENV: z.enum(ENVIRONMENTS),
 
   /**
    * Starts against a database connection that can dismantle its own guarantees.

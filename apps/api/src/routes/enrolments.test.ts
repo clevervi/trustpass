@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import type { EnrolProductResult } from "../enrolments/enrol-product.js";
-import { buildDependencies } from "../testing/dependencies.js";
+import { authenticates, buildDependencies, credentialHeaders } from "../testing/dependencies.js";
 
 /**
  * What a stranger holding a serial can find out.
@@ -54,14 +54,16 @@ const TAKEN: EnrolProductResult = { ok: false, reason: "duplicate_serial" };
 function post(app: ReturnType<typeof createApp>, body: unknown) {
   return app.request("/enrolments", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...credentialHeaders() },
     body: JSON.stringify(body),
   });
 }
 
 describe("POST /enrolments", () => {
   it("returns 201 and the identifier to the caller that created it", async () => {
-    const app = createApp(buildDependencies({ enrolProduct: async () => ENROLLED }));
+    const app = createApp(
+      buildDependencies({ authenticate: authenticates(), enrolProduct: async () => ENROLLED }),
+    );
     const response = await post(app, BODY);
 
     expect(response.status).toBe(201);
@@ -71,7 +73,9 @@ describe("POST /enrolments", () => {
   it("names no identifier when the serial is taken", async () => {
     // The disclosure. It was deliberate — a client that timed out and retried
     // learned what it had already created — and it was the wrong trade.
-    const app = createApp(buildDependencies({ enrolProduct: async () => TAKEN }));
+    const app = createApp(
+      buildDependencies({ authenticate: authenticates(), enrolProduct: async () => TAKEN }),
+    );
     const response = await post(app, BODY);
 
     expect(response.status).toBe(409);
@@ -86,7 +90,9 @@ describe("POST /enrolments", () => {
     // Smaller than the identifier and the same kind of thing: a response that
     // repeats the serial confirms which one was asked about, and a sweep sees
     // little else.
-    const app = createApp(buildDependencies({ enrolProduct: async () => TAKEN }));
+    const app = createApp(
+      buildDependencies({ authenticate: authenticates(), enrolProduct: async () => TAKEN }),
+    );
     const raw = await (await post(app, BODY)).text();
 
     expect(raw).not.toContain(BODY.serial);
@@ -101,6 +107,7 @@ describe("what a sweep over a serial range learns", () => {
   async function sweep(taken: ReadonlySet<string>) {
     const app = createApp(
       buildDependencies({
+        authenticate: authenticates(),
         enrolProduct: async (input): Promise<EnrolProductResult> =>
           taken.has(input.serial)
             ? TAKEN

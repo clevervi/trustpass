@@ -3,7 +3,7 @@ import { moveProductStatus } from "@trustpass/db/testing";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
-import { buildDependencies } from "../testing/dependencies.js";
+import { authenticates, buildDependencies, credentialHeaders } from "../testing/dependencies.js";
 import { registerProduct } from "./register-product.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -35,14 +35,19 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
   function post(payload: unknown) {
     return app.request("/products", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...credentialHeaders() },
       body: JSON.stringify(payload),
     });
   }
 
   beforeAll(async () => {
     db = createDatabase(databaseUrl as string, { maxConnections: 4 });
-    app = createApp(buildDependencies({ registerProduct: (input) => registerProduct(db, input) }));
+    app = createApp(
+      buildDependencies({
+        authenticate: authenticates(),
+        registerProduct: (input) => registerProduct(db, input),
+      }),
+    );
 
     await db.insert(schema.organization).values({
       companyName: "Andes Tech Imports",
