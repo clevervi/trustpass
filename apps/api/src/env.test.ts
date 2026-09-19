@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { loadEnv } from "./env.js";
 
-const validEnv = { DATABASE_URL: "postgresql://user:pass@localhost:5432/db" };
+const validEnv = {
+  DATABASE_URL: "postgresql://user:pass@localhost:5432/db",
+  TRUSTPASS_ENV: "dev",
+};
 
 describe("loadEnv", () => {
   it("applies defaults for optional values", () => {

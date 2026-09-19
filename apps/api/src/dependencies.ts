@@ -1,4 +1,4 @@
-import type { TrustPassId } from "@trustpass/db";
+import type { AuthenticatedPrincipal, TrustPassId } from "@trustpass/db";
 import type { EnrolProductInput, EnrolProductResult } from "./enrolments/enrol-product.js";
 import type { ReadPassportResult } from "./passports/read-passport.js";
 import type { RegisterProductInput, RegisterProductResult } from "./products/register-product.js";
@@ -14,6 +14,13 @@ export interface AppDependencies {
   version: string;
   /** Resolves false when the database is unreachable; must never throw. */
   checkDatabase: () => Promise<boolean>;
+  /**
+   * Resolves a presented credential to the actor it belongs to, or to null.
+   *
+   * Returns null for every reason a credential can fail, so the HTTP layer has
+   * nothing to leak even if it wanted to — ADR 0014 §7.
+   */
+  authenticate: (presented: string | undefined) => Promise<AuthenticatedPrincipal | null>;
   /** Registers a product against an existing issuer. */
   registerProduct: (input: RegisterProductInput) => Promise<RegisterProductResult>;
   /**
