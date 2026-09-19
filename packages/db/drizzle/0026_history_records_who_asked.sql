@@ -7,10 +7,18 @@
 --
 -- #141 produced an identified actor, so the column can hold a fact now.
 --
---   actor_id     the authenticated principal, from the presented credential
---                and from nowhere else. No request can set it or influence it.
---   actor_kind   what the operation is. A literal in the code path that writes
---                the event, and also never read from a request.
+--   actor_id     WHO acted: the authenticated principal, from the presented
+--                credential and from nowhere else. No request can set it.
+--   actor_kind   AS WHAT: the capacity the actor is acting under. Still a
+--                literal in the code path, still never read from a request.
+--                (`type` is what the operation is; this is not that.)
+--
+-- Written by the repository, from a parameter the service passes from the
+-- principal the middleware resolved. Not by a trigger, unlike `recorded_at`
+-- and `recorded_in_xact` — those are server-controlled because a writer must
+-- not choose when it claims to have written, and there is no equivalent value
+-- the database could derive here: the credential is verified in Node and the
+-- connection carries no identity of its own.
 --
 -- The separation is ADR 0014 §6 and it is not cosmetic. A body saying
 -- `actor_kind: "authority"` does not make its sender an authority; whether an

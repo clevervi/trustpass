@@ -4,6 +4,7 @@ import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
 import { insertProductWithProvenance } from "../testing/with-provenance.js";
+import { actor } from "./actor.js";
 import { lifecycleEvent, type NewLifecycleEvent } from "./lifecycle-event.js";
 import { organization } from "./organization.js";
 import { product } from "./product.js";
@@ -24,6 +25,10 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
   let organizationId: number;
   let productId: number;
   let sequence = 0;
+
+  /** Two of them, so "it kept alice" is distinguishable from "it kept a value". */
+  let alice: number;
+  let bob: number;
 
   function build(overrides: Partial<NewLifecycleEvent> = {}): NewLifecycleEvent {
     return {
@@ -62,6 +67,17 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
       status: "registered",
     });
     productId = registered?.id as number;
+
+    const people = await db
+      .insert(actor)
+      .values([
+        { kind: "service", displayName: `${run} alice` },
+        { kind: "service", displayName: `${run} bob` },
+      ])
+      .returning({ id: actor.id });
+
+    alice = people[0]?.id as number;
+    bob = people[1]?.id as number;
   });
 
   afterAll(async () => {
@@ -127,6 +143,91 @@ describe.skipIf(!databaseUrl)("lifecycle_event table", () => {
         .where(eq(lifecycleEvent.id, event?.id as number));
 
       expect(after?.reason).toBe("issuer_request");
+    });
+  });
+
+  describe("attribution, once written, is not a field anybody may revise", () => {
+    // `actor_id` arrived in 0026 and holds identity, so the append-only
+    // guarantee is checked against it specifically rather than assumed to
+    // extend. A column added after a trigger was written is exactly the case
+    // where "it is covered by the existing guard" is a belief.
+
+    it("refuses to change who an event names", async () => {
+      const [event] = await db
+        .insert(lifecycleEvent)
+        .values(build({ actorId: alice }))
+        .returning();
+
+      await expectSqlState(
+        db
+          .update(lifecycleEvent)
+          .set({ actorId: bob })
+          .where(eq(lifecycleEvent.id, event?.id as number)),
+        SqlState.HISTORY_IS_APPEND_ONLY,
+      );
+
+      const [after] = await db
+        .select()
+        .from(lifecycleEvent)
+        .where(eq(lifecycleEvent.id, event?.id as number));
+
+      expect(after?.actorId).toBe(alice);
+    });
+
+    it("refuses to attribute an event that named nobody", async () => {
+      // The one that matters most for the 13,171 events written before
+      // authentication existed. A null `actor_id` means "recorded before the
+      // system knew who was asking", which is true of those rows — and filling
+      // one in later would turn an honest gap into a fabricated fact, which is
+      // the same argument ADR 0011 §7 makes about revocation.
+      const [historical] = await db
+        .insert(lifecycleEvent)
+        .values(build({ actorId: null }))
+        .returning();
+
+      await expectSqlState(
+        db
+          .update(lifecycleEvent)
+          .set({ actorId: alice })
+          .where(eq(lifecycleEvent.id, historical?.id as number)),
+        SqlState.HISTORY_IS_APPEND_ONLY,
+      );
+    });
+
+    it("refuses to renumber an actor that history names", async () => {
+      // The cascade door. The foreign key is ON UPDATE CASCADE, so an actor
+      // whose id changed would drag every event it is named in along with it —
+      // rewriting attribution without ever touching `lifecycle_event`.
+      //
+      // Closed by the identity column rather than by the trigger, and measured
+      // rather than reasoned about: 428C9, "column can only be updated to
+      // DEFAULT". Recorded here because the guarantee comes from a different
+      // mechanism than the one two tests above, and a future migration that
+      // relaxed `generatedAlwaysAsIdentity` would open it silently.
+      await db
+        .insert(lifecycleEvent)
+        .values(build({ actorId: alice }))
+        .returning();
+
+      await expectSqlState(
+        db.execute(sql`UPDATE actor SET id = id + 1000000 WHERE id = ${alice}`),
+        SqlState.GENERATED_ALWAYS,
+      );
+    });
+
+    it("refuses to delete an actor that history names", async () => {
+      await db
+        .insert(lifecycleEvent)
+        .values(build({ actorId: alice }))
+        .returning();
+
+      // RESTRICT, not cascade. Deleting the actor would erase who did what,
+      // which is the same erasure the append-only trigger prevents through a
+      // different door.
+      await expectSqlState(
+        db.execute(sql`DELETE FROM actor WHERE id = ${alice}`),
+        SqlState.RESTRICT_VIOLATION,
+      );
     });
   });
 

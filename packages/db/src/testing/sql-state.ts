@@ -87,6 +87,18 @@ export const SqlState = {
    * TP002. Two answers to the same attack, from two independent layers.
    */
   INSUFFICIENT_PRIVILEGE: "42501",
+
+  /**
+   * A `GENERATED ALWAYS AS IDENTITY` column was given a value.
+   *
+   * It matters to `lifecycle_event.actor_id`, whose foreign key is
+   * `ON UPDATE CASCADE`: an actor whose id could change would drag every event
+   * naming it along, rewriting attribution without touching the history table
+   * at all. This is the code that closes that door, and it comes from the
+   * identity column rather than from the append-only trigger — a different
+   * mechanism, which is why it is asserted by name.
+   */
+  GENERATED_ALWAYS: "428C9",
 } as const;
 
 export type SqlStateCode = (typeof SqlState)[keyof typeof SqlState];
