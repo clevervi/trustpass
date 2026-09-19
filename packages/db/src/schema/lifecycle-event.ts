@@ -199,6 +199,28 @@ export const lifecycleEvent = pgTable(
      * would make history say a specific actor did something nobody recorded.
      * A null here means "written before the system knew who was asking", and
      * that is a true statement about those rows.
+     *
+     * **Nullable is not a statement about what may be written now.** Three
+     * different rules apply to three different writers, and reading the column
+     * definition alone would collapse them into the weakest one:
+     *
+     *   the API            mandatory. The repository parameter is required, so
+     *                      a write with no identified actor does not compile.
+     *   history            may be null. 13,171 events predate authentication.
+     *   a direct SQL write governed by the authority triggers and the #119
+     *                      grant matrix, and not by anything on this column.
+     *                      Measured as `trustpass_runtime`: two inserts naming
+     *                      no actor were refused, one by
+     *                      `lifecycle_event_correction_targets` and one by
+     *                      TP003 — "a system cannot record product_suspended".
+     *                      Neither refusal mentions `actor_id`, which is the
+     *                      point: nothing here requires one.
+     *
+     * A `NOT NULL` would collapse them the other way and break the history. A
+     * trigger could enforce the first rule inside the database, and cannot yet:
+     * `insertProductWithProvenance` and the status-transition paths also write
+     * events, and all of them would have to satisfy it at once. That is a
+     * phase, not an oversight.
      */
     actorId: bigint("actor_id", { mode: "number" }).references(() => actor.id, {
       onDelete: "restrict",
