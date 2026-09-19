@@ -112,10 +112,28 @@ whose leak through a log or an error message is more interesting than it needs
 to be. It is stored in clear on purpose: it identifies a credential and proves
 nothing.
 
+**`UNIQUE` on the handle, and a collision regenerates.** 64 bits will not collide
+in this system's lifetime, and the constraint is not there because it is likely
+— it is there because the alternative behaviours are both silent. A collision
+that overwrites loses a credential; a collision that returns the wrong row
+authenticates the wrong actor. Issuance retries with a fresh handle, up to a
+small bound, and fails loudly rather than reusing one.
+
+**The digest is computed in one place: Node.** Not `pgcrypto`, not sometimes one
+and sometimes the other. Hashing in SQL means the raw secret travels in a query
+string, where `log_statement` can catch it and where it is one careless
+`console.log` of a prepared statement away from a file. The verifier hashes,
+then queries by handle, then compares — and the secret never leaves the process.
+
 The prefix is not decoration. A token pasted into the wrong environment should
 fail because it is not a credential there, not because the environment happened
 to reject it for some other reason — and a secret scanner can be taught one
 literal string.
+
+A wrong prefix is an authentication failure, indistinguishable from every other
+one, and the credential is never looked up. "This is a staging token" is a
+sentence about which environment exists and holds what, and a refusal has no
+business saying it.
 
 **Comparison is `timingSafeEqual` over the two digests**, not `===` over
 strings. Both are 32 bytes, which is the length requirement that function has,
@@ -198,10 +216,14 @@ issuance. Neither needs a new mechanism.
 known weakness.** Terminal scrollback persists, and a session in this repository
 has already had a live API key pasted into a transcript and needed rotating. So:
 
-- the command writes the secret to stdout and to nothing else — no file, no log,
-  no state, and never a return value another process captures;
-- it refuses to run when `CI` is set, because a secret in a build log is a
-  secret in an artefact that outlives the build;
+- **the command refuses to run unless stdout is a TTY.** Writing to stdout is not
+  the same as being uncapturable, which the first version of this section quietly
+  assumed. `credential:create > token.txt` and `TOKEN=$(credential:create)` both
+  work perfectly, and both put a secret somewhere it was never meant to be.
+  `process.stdout.isTTY` closes the pipe and the redirect, and `CI` being set
+  closes what remains;
+- it writes the secret to stdout and to nothing else — no file, no log, no
+  state, and never a value another process can read back;
 - `provision-roles.ts` already sets `log_statement = 'none'` for its own session
   and the same applies here;
 - the operator is told, in the output, that scrollback is not storage.
@@ -222,7 +244,9 @@ middleware exists to satisfy it.
 | Credential A, body asserting A's own values | principal is A — **because of the credential**, not because the body agreed |
 | A revoked credential | refused, and still refused after a restart |
 | A credential expiring exactly at `now()` | expired |
-| No header, a malformed header, an unknown handle, a right handle with a wrong secret | one indistinguishable refusal |
+| Credential A, body omitting identity entirely | principal is A |
+| Credential A presented with `credential_id` and `actor_id` of B in the body | principal is A — a principal assembled from a token plus somebody else's metadata is a confused deputy |
+| No header, a malformed header, an unknown handle, a right handle with a wrong secret, **a right credential with the wrong environment prefix** | one indistinguishable refusal |
 | Any of the above | the presented secret appears in no log, error body, exception or test artefact |
 
 The second row is the one that is easy to skip and the one that matters. A test
