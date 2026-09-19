@@ -96,15 +96,32 @@ at rest:            SHA-256 of the secret
 **The format is part of the decision, not of the implementation.**
 
 ```
-tp_<env>_<handle>_<secret>
+tp.<env>.<handle>.<secret>
 
-tp_live_7f3a91c4_9mK2x…          46 characters after the prefix
-   |     |         |
-   |     |         └─ 256 bits from crypto.randomBytes(32), base64url
-   |     └─────────── 64 bits, the indexed lookup handle, stored in clear
-   └───────────────── environment, so a staging secret pasted into production
-                      fails as a secret rather than as a permission
+tp.live.7f3a91c4.9mK2x…          63 characters, for "live"
+   |    |        |
+   |    |        └─ 256 bits from crypto.randomBytes(32), base64url
+   |    └───────── 64 bits, the indexed lookup handle, stored in clear
+   └────────────── environment, so a staging secret pasted into production
+                   fails as a secret rather than as a permission
 ```
+
+**The delimiter is `.`, and it is a correction to this ADR's first version.**
+That version wrote `tp_<env>_<handle>_<secret>` — and `_` is in the base64url
+alphabet (`A-Z a-z 0-9 - _`). A secret containing one split into five parts and
+was refused by the parser that had just produced it. Measured before changing
+anything: **481 of 1000** random 32-byte secrets contain an underscore.
+
+The rule that outlives the specific fix: **a delimiter may not be a character
+the payload alphabet can produce.** `sk_live_…` works for Stripe because its
+payload is alphanumeric; taking the shape without taking that constraint is
+what went wrong here.
+
+It is recorded because of how it presented. Half the tokens worked, so a
+round-trip test run once passes more often than it fails, and it reads as
+flakiness rather than as a format that cannot read itself. The test that found
+it issues five hundred and asserts the sample actually contained the dangerous
+character — otherwise a lucky run proves nothing.
 
 The handle is why verification is an indexed lookup and not a scan. Without it
 the hash becomes the index, and a hash used as a primary lookup key is a value
@@ -153,8 +170,13 @@ row. Nothing compares raw secrets.
 ### 4. Transport: `Authorization: Bearer`, and not a cookie
 
 ```
-Authorization: Bearer <credential-id>.<secret>
+Authorization: Bearer tp.<env>.<handle>.<secret>
 ```
+
+The whole token, exactly as §3 defines it. An earlier draft wrote
+`<credential-id>.<secret>` here, naming a different pair of values than §3 did.
+Two sections of one ADR disagreeing about the wire format is resolved by
+whoever implements it first, which is not a decision procedure.
 
 **Not a cookie.** A browser-attached credential brings CSRF, `SameSite`, and
 turns the CORS policy settled in #121 from a boundary into load-bearing security.
