@@ -224,8 +224,11 @@ export const lifecycleEvent = pgTable(
      * A `NOT NULL` would collapse them the other way and break the history. A
      * trigger could enforce the first rule inside the database, and cannot yet:
      * `insertProductWithProvenance` and the status-transition paths also write
-     * events, and all of them would have to satisfy it at once. That is a
-     * phase, not an oversight.
+     * events, and all of them would have to satisfy it at once.
+     *
+     * **That is a phase, and #153 is the issue that ends it.** Tracked rather
+     * than left as a comment, because a gap nobody filed is a gap that gets
+     * read as a decision. Two of the three lines above change when it closes.
      */
     actorId: bigint("actor_id", { mode: "number" }).references(() => actor.id, {
       onDelete: "restrict",
