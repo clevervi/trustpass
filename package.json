@@ -24,7 +24,8 @@
     "db:restore-drill": "pnpm --filter @trustpass/db db:restore-drill",
     "db:generate": "pnpm --filter @trustpass/db db:generate",
     "db:studio": "pnpm --filter @trustpass/db db:studio",
-    "db:reset": "docker compose down -v && docker compose up -d --wait && pnpm db:migrate",
+    "db:setup": "pnpm --filter @trustpass/db db:setup",
+    "db:reset": "docker compose down -v && pnpm db:setup",
     "db:preflight": "pnpm --filter @trustpass/db db:preflight",
     "db:issue-credential": "pnpm --filter @trustpass/db db:issue-credential",
     "verify-credential": "pnpm --filter @trustpass/api verify-credential"
