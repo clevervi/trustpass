@@ -65,9 +65,10 @@ A version's section lists only what that tag actually contains. Work merged to
   changes underneath it, rewriting history without an event being touched.
   Actor, Organization, Credential and Grant stay four separate things, and an
   event pins the grant it acted under rather than only the capacity. Also states
-  the limit this repository has about itself — ADR 0010 asks for two distinct
-  actors, and this repository is one person with two accounts, which no model
-  here can detect.
+  a limit the model has about itself — ADR 0010 asks for two distinct actors,
+  and no access model that identifies actors by credential can tell two actors
+  apart from one party holding both sets, so separation of duties is procedural
+  here rather than technical.
 - **[ADR 0010](docs/adr/0010-two-records-one-object.md) amended: the state rules
   as a table, and one contradiction they surfaced.** The semantics were spread
   across three sections, and the likely misreading was the expensive one —

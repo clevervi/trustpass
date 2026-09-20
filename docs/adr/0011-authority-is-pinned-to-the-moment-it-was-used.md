@@ -302,17 +302,19 @@ authority's is scoped to a jurisdiction. There is no global form.
 ## The limit this repository has to state about itself
 
 ADR 0010 §7 requires at least two distinct actors across proposer, evidence
-provider and verifier. That rule assumes two actors are two people.
+provider and verifier. That rule assumes two actor records are two independent
+decision-makers.
 
-**This repository is run by one person with two GitHub accounts.**
-`CONTRIBUTING.md` says so, and the history shows both. No model in this document
-can detect that arrangement: two actors, two credentials, two memberships, and
-one human deciding both.
+**Nothing in this model can check that assumption, and nothing can.** Two
+actors, two credentials and two memberships are indistinguishable from one party
+holding all of them, because every signal the database has — the rows — is
+written by whoever holds the credentials. The same is true of any access model
+that identifies actors by credential, which is all of them.
 
 Separation of duties is therefore a **procedural** control here, not a
-technical one — exactly like the self-review bar, which `CONTRIBUTING.md`
-already describes as weaker than an independent reader and says so rather than
-dressing it up. Anything built on `TP-141` inherits that limit, and a document
+technical one — exactly like the review bar, which `CONTRIBUTING.md` already
+describes as weaker than an independent reader and says so rather than dressing
+it up. Anything built on `TP-141` inherits that limit, and a document
 that let the rule read as enforced would be making the first false claim in the
 model.
 
