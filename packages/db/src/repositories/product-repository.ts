@@ -66,9 +66,19 @@ export async function insertProduct(
         // still never read from a request.
         actorKind: "issuer",
         // The person, which TP-141 made nameable. It is the authenticated
-        // principal and nothing else: `organizationId` below still comes from
-        // the request, and that gap is #152.
+        // principal and nothing else.
         actorId: actor.actorId,
+        // **Which authority, not which capacity.** `actorKind` above says
+        // `issuer`, and that is a claim about a role. ADR 0011 §3 asks for the
+        // grant that authorised this specific act, and the difference is the one
+        // this issue's title draws: naming an issuer is not being one, and
+        // recording "an issuer did this" is not recording under what authority.
+        //
+        // It matters at the moment it is hardest to reconstruct. A grant is
+        // revoked or expires, `grantsHeldAt` will never return it again, and
+        // without this column the event says `issuer` while nothing can say
+        // which grant was held — or whether one was.
+        grantId: actor.grantId,
         organizationId: created.organizationId,
         // `now()` rather than the returned `created.createdAt`, and the
         // difference is not cosmetic. Postgres stores `timestamptz` to

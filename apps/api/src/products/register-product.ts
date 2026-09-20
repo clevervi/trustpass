@@ -118,12 +118,25 @@ export async function registerProduct(
   // that capacity. Accepting any grant would let an actor holding only
   // `authority` produce a record saying `issuer`, which nobody granted.
   // Authorise the claim the record will make, not a weaker one.
+  // `find`, not `some`. The grant that authorises this write is the grant the
+  // event has to name, per ADR 0011 §3, and a boolean throws away the only
+  // thing that can answer "under what authority" once the grant is revoked.
+  // Asking twice — once to decide, once to record — would be asking at two
+  // different instants and could disagree.
+  //
+  // **And this instant is not the one the event claims.** `new Date()` is this
+  // process's clock; `insertProduct` stamps `occurred_at` with the database's
+  // `now()`, inside a transaction this lookup has already returned from. A
+  // grant revoked in that window produces an event whose `occurred_at` is later
+  // than the moment its own `grant_id` stopped being valid. Naming the grant is
+  // what turned that from an invisible stale read into a claim in the record,
+  // so it is #174 rather than a comment nobody filed.
   const held = await grantsHeldAt(db, principal.actorId, new Date());
-  const mayActAsIssuer = held.some(
+  const authorising = held.find(
     (grant) => grant.capacity === "issuer" && grant.organizationId === party.id,
   );
 
-  if (!mayActAsIssuer) {
+  if (!authorising) {
     return { ok: false, reason: "not_authorised_for_issuer" };
   }
 
@@ -131,8 +144,9 @@ export async function registerProduct(
     db,
     {
       trustpassId: generateTrustPassId(),
-      // From the body, by lookup, and still not proof of any relationship
-      // between the caller and this organization. That gap is #152.
+      // From the body, by lookup, and now proof of a relationship: the grant
+      // found above is over this organization, so a caller can no longer name
+      // one it has nothing to do with.
       organizationId: party.id,
       brand: input.brand,
       model: input.model,
@@ -140,8 +154,9 @@ export async function registerProduct(
       category: input.category,
       status: "registered",
     },
-    // From the credential, and from nowhere else.
-    { actorId: principal.actorId },
+    // From the credential and from the grant that authorised this write, and
+    // from nowhere else. Neither value can come from the request body.
+    { actorId: principal.actorId, grantId: authorising.id },
   );
 
   if (!inserted.ok) {
