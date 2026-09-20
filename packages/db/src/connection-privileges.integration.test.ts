@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "./client.js";
 import {
   assertConnectionIsUnprivileged,
+  privilegeFailures,
   readConnectionPrivileges,
 } from "./connection-privileges.js";
 
@@ -314,6 +315,50 @@ describe.skipIf(!runtimeUrl)("the runtime connection is allowed to run the appli
       replication: false,
       bypassRowLevelSecurity: false,
       reachableOwnership: 0,
+      forbiddenHeld: [],
     });
+  });
+
+  it("holds none of the privileges the migrations withheld", async () => {
+    // The question the five attributes never asked. A role owning nothing and
+    // carrying no attribute passed every one of them while holding
+    // `UPDATE ON TABLE product` — which is the posture this application was in
+    // before `0027`, and the posture any database is in where `0027` has not
+    // been applied.
+    //
+    // Asked of the catalogue here, against the real role, so this fails if a
+    // future migration grants one back.
+    const privileges = await readConnectionPrivileges(db);
+
+    expect(privileges.forbiddenHeld).toEqual([]);
+  });
+
+  it("would refuse this connection if the product grant came back", async () => {
+    // The mutation, run as a test rather than by hand, because the guard is
+    // only worth having if it reacts. Restored unconditionally: a rollback that
+    // depends on an assertion failing is one this repository has already been
+    // bitten by.
+    const owner = createDatabase(databaseUrl as string, { maxConnections: 1 });
+
+    try {
+      await owner.execute(sql.raw("GRANT UPDATE ON TABLE product TO trustpass_runtime"));
+
+      const widened = await readConnectionPrivileges(db);
+
+      expect(widened.forbiddenHeld.join(" ")).toMatch(/UPDATE product/);
+      expect(privilegeFailures(widened).length).toBeGreaterThan(0);
+    } finally {
+      await owner.execute(
+        sql.raw(
+          "REVOKE UPDATE ON TABLE product FROM trustpass_runtime; " +
+            "GRANT UPDATE (status, updated_at) ON TABLE product TO trustpass_runtime",
+        ),
+      );
+      await owner.$client.end();
+    }
+
+    // Read again through the runtime's own connection, because the restore
+    // above is the thing that has to have worked.
+    expect((await readConnectionPrivileges(db)).forbiddenHeld).toEqual([]);
   });
 });
