@@ -37,6 +37,40 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The pairing `dependabot.yml` describes, checked rather than remembered.
+      #
+      # `@types/node`'s major is the Node it describes: 26 declares 697 symbols
+      # that 24 does not, `node:quic` among them. Typing against a Node the
+      # runtime is not lets `tsc` accept calls that fail at runtime with every
+      # gate green, which is why #168 was closed rather than merged.
+      #
+      # The ignore rule in `dependabot.yml` stops the bad direction arriving by
+      # robot. It does nothing the day NODE_VERSION moves and the types are left
+      # behind — and nothing would have said so. This does, in both directions.
+      - name: Node's major and its types agree
+        run: |
+          set -euo pipefail
+          mismatched=0
+          for manifest in apps/api/package.json apps/web/package.json packages/db/package.json; do
+            declared=$(node -p "((require('./$manifest').devDependencies||{})['@types/node']||'').replace(/[^0-9.]/g,'').split('.')[0] || ''")
+            if [ -z "$declared" ]; then
+              echo "  $manifest declares no @types/node"
+              continue
+            fi
+            if [ "$declared" != "${{ env.NODE_VERSION }}" ]; then
+              echo "  $manifest wants @types/node ^$declared, CI runs Node ${{ env.NODE_VERSION }}"
+              mismatched=1
+            else
+              echo "  $manifest @types/node ^$declared matches Node ${{ env.NODE_VERSION }}"
+            fi
+          done
+          if [ "$mismatched" -ne 0 ]; then
+            echo ""
+            echo "The types describe a Node this workflow does not run."
+            echo "Move both together, in one pull request, or neither."
+            exit 1
+          fi
+
       - name: Lint and format check
         run: pnpm lint
 
