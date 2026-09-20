@@ -8,7 +8,7 @@ import {
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
-import { buildDependencies } from "../testing/dependencies.js";
+import { buildDependencies, NO_RATE_LIMIT } from "../testing/dependencies.js";
 import { enrolProduct } from "./enrol-product.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -49,6 +49,8 @@ describe.skipIf(!databaseUrl)("a credential issued by the operator command", () 
         authenticate: (presented) => verifyCredential(db, presented, "dev"),
         enrolProduct: (input, principal) => enrolProduct(db, input, principal),
       }),
+      { kind: "none" },
+      NO_RATE_LIMIT,
     );
   });
 

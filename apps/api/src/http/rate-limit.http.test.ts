@@ -40,6 +40,34 @@ describe("what a caller meets when they write too often", () => {
     });
   }
 
+  it("limits an app built the way the process builds it, with no limit named", async () => {
+    // Every other test here names a limit, which is correct — a test about the
+    // limiter should say what it is subject to. The gap that leaves is that
+    // nothing exercised the default, and the default is the only one a caller
+    // ever meets.
+    //
+    // Measured: raising `WRITE_RATE_LIMIT` to a million left all 178 tests
+    // green. Five integration files now pass a deliberately generous limit, so
+    // the way to break this in future is to "fix" a 429 in a test by widening
+    // the shipping constant, and nothing would have objected.
+    //
+    // Twenty-one written out rather than `WRITE_RATE_LIMIT.burst + 1`, because a
+    // bound derived from the value under test passes whatever that value becomes.
+    const under = createApp(
+      buildDependencies({
+        authenticate: async (presented) =>
+          presented === TEST_TOKEN ? { actorId: 1, credentialId: 1 } : null,
+        enrolProduct: async () => ({ ok: false, reason: "duplicate_serial" }) as const,
+      }),
+    );
+
+    for (let index = 0; index < 20; index += 1) {
+      expect((await post(under)).status).toBe(409);
+    }
+
+    expect((await post(under)).status).toBe(429);
+  });
+
   it("answers 429 once the burst is spent", async () => {
     const under = app({ burst: 3, perSecond: 0.001 });
 

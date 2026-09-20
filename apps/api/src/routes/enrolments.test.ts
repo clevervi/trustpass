@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import type { EnrolProductResult } from "../enrolments/enrol-product.js";
-import { authenticates, buildDependencies, credentialHeaders } from "../testing/dependencies.js";
+import {
+  authenticates,
+  buildDependencies,
+  credentialHeaders,
+  NO_RATE_LIMIT,
+} from "../testing/dependencies.js";
 
 /**
  * What a stranger holding a serial can find out.
@@ -155,13 +160,11 @@ describe("what a sweep over a serial range learns", () => {
             : { ok: true, product: { ...PRODUCT, serial: input.serial } },
       }),
       { kind: "none" },
-      // A limit this sweep will not trip, named rather than inherited.
-      //
       // The default burst is 20 and this walks 20 serials, so it fit by
       // arithmetic rather than by intent — one more serial and the test would
       // have been measuring the rate limiter while claiming to measure
       // disclosure. What the limiter does has its own tests.
-      { burst: 1_000, perSecond: 1_000 },
+      NO_RATE_LIMIT,
     );
 
     const observations = [];

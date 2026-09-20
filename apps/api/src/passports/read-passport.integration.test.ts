@@ -8,7 +8,12 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { registerProduct } from "../products/register-product.js";
-import { buildDependencies, credentialHeaders, TEST_TOKEN } from "../testing/dependencies.js";
+import {
+  buildDependencies,
+  credentialHeaders,
+  NO_RATE_LIMIT,
+  TEST_TOKEN,
+} from "../testing/dependencies.js";
 import { readPassport } from "./read-passport.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -74,6 +79,8 @@ describe.skipIf(!databaseUrl)("GET /passports/{trustpassId} against a real datab
         registerProduct: (input, principal) => registerProduct(db, input, principal),
         readPassport: (trustpassId) => readPassport(db, trustpassId),
       }),
+      { kind: "none" },
+      NO_RATE_LIMIT,
     );
 
     const organizations = await db

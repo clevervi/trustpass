@@ -3,7 +3,12 @@ import { grantAuthorityOver, moveProductStatus } from "@trustpass/db/testing";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
-import { buildDependencies, credentialHeaders, TEST_TOKEN } from "../testing/dependencies.js";
+import {
+  buildDependencies,
+  credentialHeaders,
+  NO_RATE_LIMIT,
+  TEST_TOKEN,
+} from "../testing/dependencies.js";
 import { registerProduct } from "./register-product.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -58,6 +63,8 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
         authenticate: async (presented) => (presented === TEST_TOKEN ? caller : null),
         registerProduct: (input, principal) => registerProduct(db, input, principal),
       }),
+      { kind: "none" },
+      NO_RATE_LIMIT,
     );
 
     const [person] = await db

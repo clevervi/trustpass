@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { WRITE_RATE_LIMIT } from "../app.js";
 import { bucketKey, createRateLimiter } from "./rate-limit.js";
 
 /**
@@ -244,8 +245,14 @@ describe("what a token bucket allows", () => {
     // The point of the whole thing, stated as the number it produces. #120 is
     // explicit that the yes-or-no cannot be removed from an unauthenticated
     // write endpoint — so what changes is the price.
+    //
+    // **The shipping constant, not a copy of it.** Written with `{ burst: 20,
+    // perSecond: 0.2 }` inline this passed against an `app.ts` whose limit had
+    // been raised to a million — measured, not feared. A test that restates the
+    // numbers it is checking proves the arithmetic and nothing about the
+    // product.
     const time = clock();
-    const limiter = createRateLimiter({ burst: 20, perSecond: 0.2 }, time.now);
+    const limiter = createRateLimiter(WRITE_RATE_LIMIT, time.now);
 
     let allowed = 0;
     let seconds = 0;
