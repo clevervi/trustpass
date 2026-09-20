@@ -37,6 +37,10 @@ function matchingRules(contract = CONTRACT) {
   ];
 }
 
+/** Built from codes, so a formatter cannot turn them into invisible literals. */
+const NEWLINE = String.fromCharCode(10);
+const BELL = String.fromCharCode(7);
+
 const checksIn = (rules) => rules.find((r) => r.type === "required_status_checks");
 const pullRequestIn = (rules) => rules.find((r) => r.type === "pull_request");
 
@@ -155,6 +159,37 @@ describe("comparing the merge bar against what GitHub applies", () => {
     checksIn(rules).parameters.strict_required_status_checks_policy = false;
 
     assert.ok(compareMergeBar(CONTRACT, rules).length >= 3);
+  });
+
+  it("does not let a check name forge a line in the log", () => {
+    // A ruleset's check names are set in a web interface and printed into a CI
+    // log. A newline in one is a fabricated log line saying whatever the person
+    // who named the check wanted. Flagged as jssecurity:S5145 and fixed rather
+    // than waived, because "the only person who can set it is the person
+    // reading it" is an argument that stops being true the day it matters.
+    const rules = matchingRules();
+    checksIn(rules).parameters.required_status_checks.push({
+      context: `innocent${NEWLINE}  required: Something that is not required${BELL}`,
+    });
+
+    const problems = compareMergeBar(CONTRACT, rules);
+    const reported = problems.join(" ");
+
+    assert.ok(!reported.includes(NEWLINE), "a newline reached the message");
+    assert.ok(!reported.includes(BELL), "a control character reached the message");
+    assert.match(reported, /innocent/);
+  });
+
+  it("truncates a check name long enough to bury the rest of the output", () => {
+    const rules = matchingRules();
+    checksIn(rules).parameters.required_status_checks.push({ context: "x".repeat(5000) });
+
+    const problems = compareMergeBar(CONTRACT, rules);
+
+    assert.ok(
+      problems.every((p) => p.length < 300),
+      "a message grew without bound",
+    );
   });
 
   it("holds the contract file to the shape the comparison assumes", () => {
