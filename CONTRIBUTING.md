@@ -136,7 +136,7 @@ Branch protection on `develop`, read from the API rather than from memory:
 | Setting                    | Value                                                   |
 | -------------------------- | ------------------------------------------------------- |
 | Required approving reviews | **0**                                                   |
-| Required checks            | Lint, typecheck and build; Test against Postgres; Secret scan; No approval from the maintainer's own accounts |
+| Required checks            | Lint, typecheck and build; Test against Postgres; Secret scan; No approval from a listed account |
 | Enforced for admins        | yes                                                     |
 
 **Read on 2026-09-20, and nothing verifies it.** These settings live in the

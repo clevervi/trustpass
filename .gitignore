@@ -42,9 +42,18 @@ Thumbs.db
 # this machine is a security control and belongs under review. The owner's call
 # is that development tooling stays on the machine it runs on. Nothing is
 # deleted locally — this only stops it being uploaded.
+#
+# `AGENTS.md` and `.agents/` are listed for a second reason as well. Instructions
+# written for an assistant are not documentation of this project, and if they
+# ever contradict what the repository can demonstrate — the accounts, the
+# checks, what the merge bar accepts and refuses — the repository is the record
+# and they are not. Keeping them unversioned means `git add -A` cannot make one
+# look like the other.
 .claude/
 apps/web/AGENTS.md
 apps/web/CLAUDE.md
+AGENTS.md
+.agents/
 
 # Backups are evidence of a drill, not artefacts of the repository.
 .backups/

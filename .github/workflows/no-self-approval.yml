@@ -21,7 +21,7 @@
 # satisfied. If the accounts ever stop needing to be listed here, remove the
 # check rather than hollowing it out.
 
-name: No self-approval
+name: No listed-account approval
 
 on:
   pull_request:
@@ -36,7 +36,7 @@ permissions:
 
 jobs:
   no-self-approval:
-    name: No approval from the maintainer's own accounts
+    name: No approval from a listed account
     runs-on: ubuntu-latest
 
     steps:
