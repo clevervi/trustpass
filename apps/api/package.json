@@ -13,7 +13,7 @@
     "verify-credential": "tsx src/scripts/verify-credential.ts"
   },
   "devDependencies": {
-    "@types/node": "^24.13.5",
+    "@types/node": "^26.6.1",
     "drizzle-orm": "^0.45.2",
     "tsup": "^8.5.1",
     "tsx": "^4.23.13",
