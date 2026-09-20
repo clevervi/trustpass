@@ -190,6 +190,13 @@
       "when": 1789781459269,
       "tag": "0026_history_records_who_asked",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1789875801599,
+      "tag": "0027_the_runtime_changes_two_columns",
+      "breakpoints": true
     }
   ]
 }
