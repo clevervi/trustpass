@@ -20,6 +20,47 @@ const databaseUrl = process.env.DATABASE_URL;
  * The property under test is that registering a product and recording where it
  * came from are one act. A mock would let them be two.
  */
+/**
+ * An organization, an actor, and the grant that lets it register for them.
+ *
+ * Both suites below need exactly this, and the second one needed it only after
+ * #152 made an issuer write record its authority. Written out twice it was
+ * 47% duplication on new code by SonarCloud's count, which is a fair reading:
+ * two identical fixtures drift apart one edit at a time, and the edit that
+ * matters is the one somebody makes in only one of them.
+ */
+async function issuerFixture(
+  db: Database,
+  prefix: string,
+  run: string,
+): Promise<{ organizationId: number; caller: { actorId: number; grantId: number } }> {
+  const [company] = await db
+    .insert(organization)
+    .values({
+      companyName: `${prefix} ${run}`,
+      legalName: `${prefix} ${run} SAS`,
+      registrationNumber: `${run}-${prefix.slice(0, 2).toUpperCase()}`,
+      country: "CO",
+    })
+    .returning({ id: organization.id });
+
+  const organizationId = company?.id as number;
+
+  const [person] = await db
+    .insert(actor)
+    .values({ kind: "service", displayName: `${run} caller` })
+    .returning({ id: actor.id });
+
+  const actorId = person?.id as number;
+
+  // Carries the grant, because #152 made an issuer write record which authority
+  // it acted under. `grantId: null` here would compile and would reproduce
+  // inside the tests the exact gap the change closes.
+  const grantId = await grantAuthorityOver(db, actorId, organizationId);
+
+  return { organizationId, caller: { actorId, grantId } };
+}
+
 describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
@@ -30,9 +71,6 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
    * Whoever is recording these. A real row, because `lifecycle_event.actor_id`
    * references `actor` and a write with no identified actor no longer compiles.
    */
-  // Carries the grant, because #152 made an issuer write record which
-  // authority it acted under. `grantId: null` here would compile and would
-  // reproduce inside the tests the exact gap the change closes.
   let caller: { actorId: number; grantId: number };
 
   function build(overrides: Partial<NewProduct> = {}): NewProduct {
@@ -53,26 +91,10 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   beforeAll(async () => {
     db = createDatabase(databaseUrl as string);
 
-    const [created] = await db
-      .insert(organization)
-      .values({
-        companyName: `Prov ${run}`,
-        legalName: `Prov ${run} SAS`,
-        registrationNumber: `${run}-PV`,
-        country: "CO",
-      })
-      .returning({ id: organization.id });
-    organizationId = created?.id as number;
+    const fixture = await issuerFixture(db, "Prov", run);
 
-    const [person] = await db
-      .insert(actor)
-      .values({ kind: "service", displayName: `${run} caller` })
-      .returning({ id: actor.id });
-
-    const actorId = person?.id as number;
-    const grantId = await grantAuthorityOver(db, actorId, organizationId);
-
-    caller = { actorId, grantId };
+    organizationId = fixture.organizationId;
+    caller = fixture.caller;
   });
 
   afterAll(async () => {
@@ -242,33 +264,14 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
   let organizationId: number;
-  // Carries the grant, because #152 made an issuer write record which
-  // authority it acted under. `grantId: null` here would compile and would
-  // reproduce inside the tests the exact gap the change closes.
   let caller: { actorId: number; grantId: number };
 
   beforeAll(async () => {
     db = createDatabase(databaseUrl as string);
-    const [created] = await db
-      .insert(organization)
-      .values({
-        companyName: `ById ${run}`,
-        legalName: `ById ${run} SAS`,
-        registrationNumber: `${run}-BI`,
-        country: "CO",
-      })
-      .returning({ id: organization.id });
-    organizationId = created?.id as number;
+    const fixture = await issuerFixture(db, "ById", run);
 
-    const [person] = await db
-      .insert(actor)
-      .values({ kind: "service", displayName: `${run} caller` })
-      .returning({ id: actor.id });
-
-    const actorId = person?.id as number;
-    const grantId = await grantAuthorityOver(db, actorId, organizationId);
-
-    caller = { actorId, grantId };
+    organizationId = fixture.organizationId;
+    caller = fixture.caller;
   });
 
   afterAll(async () => {
