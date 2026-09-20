@@ -173,6 +173,11 @@ describe("privilegeFailures", () => {
     it("gives every entry a reason somebody can act on", () => {
       // The message a deploy sees is built from `because`. An entry without one
       // would tell an operator a privilege is wrong and not why it matters.
+      //
+      // ponytail: a character count, which catches an empty string and passes
+      // for two dozen letters of nothing. The field ends up in what somebody
+      // reads at 3am and no assertion over prose is better than this — so it is
+      // a placeholder, and saying so is the honest version of leaving it.
       for (const entry of FORBIDDEN_PRIVILEGES) {
         expect(entry.because.length).toBeGreaterThan(20);
       }
