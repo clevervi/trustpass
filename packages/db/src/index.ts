@@ -10,6 +10,18 @@ export {
   TOKEN_PREFIX,
 } from "./auth/credential-token.js";
 export {
+  canDeliverSecret,
+  type IssuanceRequest,
+  parseIssuanceArgs,
+  REFUSAL,
+  type RefusalReason,
+} from "./auth/issuance.js";
+export {
+  IssuanceFailed,
+  type IssuedFor,
+  issueCredentialFor,
+} from "./auth/issue-credential.js";
+export {
   type AuthenticatedPrincipal,
   verifyCredential,
 } from "./auth/verify-credential.js";

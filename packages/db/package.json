@@ -19,7 +19,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:preflight": "tsx src/scripts/issuer-preflight.ts"
+    "db:preflight": "tsx src/scripts/issuer-preflight.ts",
+    "db:issue-credential": "tsx src/scripts/issue-credential.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
