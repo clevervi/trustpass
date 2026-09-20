@@ -60,9 +60,17 @@ export type LocalDevDecision =
  * is the attack: `localhost.example.com` is a hostname somebody else controls
  * and it satisfies every loose test of the word. A resolver is not consulted
  * either — a name that resolves to 127.0.0.1 today is a name whose owner can
- * point it somewhere else tomorrow, and the question here is not where the
- * packets go but whether the operator is looking at the thing they are
- * changing.
+ * point it somewhere else tomorrow.
+ *
+ * **What this cannot see is a tunnel**, and that limit is real rather than
+ * theoretical. `ssh -L 5433:prod:5432` makes `localhost:5433` a true statement
+ * about the socket and a false one about the database, and this function says
+ * yes. See #178.
+ *
+ * `pnpm db:setup` is not exposed to it, because it never accepts a URL — it
+ * builds one carrying the published superuser password, which a real database
+ * rejects before anything is written. The exposure is `pnpm db:provision
+ * --local-dev` with a `DATABASE_URL` somebody supplied.
  */
 const LOCAL_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 

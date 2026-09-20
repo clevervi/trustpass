@@ -143,18 +143,23 @@ describe("whether a run may use the published development passwords", () => {
       return match[1];
     }
 
-    it.each([
-      ["POSTGRES_PORT", "port"],
-      ["POSTGRES_USER", "user"],
-      ["POSTGRES_PASSWORD", "password"],
-      ["POSTGRES_DB", "database"],
-    ])("uses the same default as docker-compose.yml for %s", (variable) => {
+    it("builds the superuser URL entirely from docker-compose.yml's defaults", () => {
       // The duplication named in `localDevUrls`, made into a failure instead of
       // a comment. Change a default in the compose file and this goes red
       // rather than `pnpm db:setup` handing out a URL to the wrong port — which
       // would present as "the database is not running" and send somebody to
       // look at Docker.
-      expect(localDevUrls({}).superuser).toContain(composeDefault(variable));
+      //
+      // Whole-string equality, not `toContain` on each part. Four substring
+      // checks pass when a port appears inside a password, when the user and
+      // the database name are the same word — which here they are, both
+      // `trustpass` — and when the pieces are assembled in the wrong order.
+      // This asserts the URL, which is the thing that is handed out.
+      const expected =
+        `postgres://${composeDefault("POSTGRES_USER")}:${composeDefault("POSTGRES_PASSWORD")}` +
+        `@localhost:${composeDefault("POSTGRES_PORT")}/${composeDefault("POSTGRES_DB")}`;
+
+      expect(localDevUrls({}).superuser).toBe(expected);
     });
 
     it("builds a superuser URL that the local-dev guard accepts", () => {

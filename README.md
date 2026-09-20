@@ -150,7 +150,7 @@ Every script runs from the repository root across all workspace packages.
 | `pnpm db:logs`    | Follows the Postgres container logs              |
 | `pnpm db:migrate` | Applies pending migrations                       |
 | `pnpm db:generate`| Generates a migration from schema changes        |
-| `pnpm db:reset`   | Destroys the local volume and runs `db:setup`    |
+| `pnpm db:reset`   | Destroys the local volume, then `db:setup` — which **rotates the role passwords to the published ones**, so an `.env` holding your own will stop matching |
 | `pnpm db:studio`  | Opens Drizzle Studio against the local database  |
 
 Integration tests that need Postgres skip themselves when `DATABASE_URL` is
