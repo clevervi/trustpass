@@ -29,6 +29,7 @@ export { createDatabase, type Database, type DatabaseOptions } from "./client.js
 export {
   assertConnectionIsUnprivileged,
   type ConnectionPrivileges,
+  FORBIDDEN_PRIVILEGES,
   privilegeFailures,
   readConnectionPrivileges,
   type UnprivilegedConnectionOptions,

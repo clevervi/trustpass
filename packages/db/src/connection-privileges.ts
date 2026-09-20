@@ -227,29 +227,44 @@ export function privilegeFailures(privileges: ConnectionPrivileges): string[] {
  * message, not the worse one.
  */
 async function heldForbiddenPrivileges(db: Database): Promise<string[]> {
+  // Issued together rather than one after another. Six sequential round trips
+  // before anything is served is invisible against a local database and is six
+  // times a latency somebody already chose pooling to avoid — and "startup is
+  // not a hot path" is the reasoning that produces slow startups, one
+  // defensible decision at a time. They are independent reads; nothing here
+  // needs ordering.
+  const answers = await Promise.all(
+    FORBIDDEN_PRIVILEGES.map(async (entry) => {
+      const [row] = await db.execute<{ missing: boolean; granted: boolean | null }>(sql`
+        SELECT to_regclass(${entry.relation}) IS NULL AS missing,
+               CASE
+                 WHEN to_regclass(${entry.relation}) IS NULL THEN NULL
+                 WHEN ${entry.column ?? null}::text IS NULL
+                   THEN has_table_privilege(current_user, ${entry.relation}, ${entry.privilege})
+                 ELSE has_column_privilege(
+                   current_user, ${entry.relation}, ${entry.column ?? ""}::text, ${entry.privilege}
+                 )
+               END AS granted
+      `);
+
+      return { entry, missing: row?.missing === true, granted: row?.granted === true };
+    }),
+  );
+
   const held: string[] = [];
   // Once per table, not once per entry. An empty database has three entries
   // naming `product` and reported the same sentence three times — six lines
   // saying three things, in the message somebody reads while a deploy is
   // failing. Found by pointing it at one.
+  //
+  // Built from `answers` in order, so the reporting stays deterministic even
+  // though the queries no longer complete in one.
   const reportedMissing = new Set<string>();
 
-  for (const entry of FORBIDDEN_PRIVILEGES) {
-    const [row] = await db.execute<{ missing: boolean; granted: boolean | null }>(sql`
-      SELECT to_regclass(${entry.relation}) IS NULL AS missing,
-             CASE
-               WHEN to_regclass(${entry.relation}) IS NULL THEN NULL
-               WHEN ${entry.column ?? null}::text IS NULL
-                 THEN has_table_privilege(current_user, ${entry.relation}, ${entry.privilege})
-               ELSE has_column_privilege(
-                 current_user, ${entry.relation}, ${entry.column ?? ""}::text, ${entry.privilege}
-               )
-             END AS granted
-    `);
-
+  for (const { entry, missing, granted } of answers) {
     const target = entry.column ? `${entry.relation}.${entry.column}` : entry.relation;
 
-    if (row?.missing) {
+    if (missing) {
       if (!reportedMissing.has(entry.relation)) {
         reportedMissing.add(entry.relation);
         held.push(
@@ -260,7 +275,7 @@ async function heldForbiddenPrivileges(db: Database): Promise<string[]> {
       continue;
     }
 
-    if (row?.granted) {
+    if (granted) {
       held.push(`it may ${entry.privilege} ${target} — ${entry.because}`);
     }
   }

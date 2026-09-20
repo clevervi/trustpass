@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import {
   assertConnectionIsUnprivileged,
   createDatabase,
+  FORBIDDEN_PRIVILEGES,
   isDatabaseReachable,
   verifyCredential,
 } from "@trustpass/db";
@@ -80,6 +81,12 @@ serve({ fetch: app.fetch, port: env.API_PORT }, (info) => {
     // Which role actually got through, so a log answers the question without
     // anyone having to reason about which DATABASE_URL was deployed.
     databaseRole: privileges.role,
+    // And how many privilege questions it answered, because a startup that
+    // reports nothing on success is indistinguishable from one that checked
+    // nothing. The set is a deliberate subset — `FORBIDDEN_PRIVILEGES` says
+    // which — so "it started" means those specific promises were not already
+    // broken, not that the privilege model is exhaustively correct.
+    databasePrivilegesChecked: FORBIDDEN_PRIVILEGES.length,
     cors: describeCorsPolicy(corsPolicy),
   });
 });
