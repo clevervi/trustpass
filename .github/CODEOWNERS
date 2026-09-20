@@ -1,4 +1,23 @@
-# One maintainer. Listing a second account would request review from the same
-# person under a different name, which is a review signal with nothing behind it.
+# Both accounts belong to one maintainer. Listing both is not a claim that two
+# people review this code. The intent is that GitHub requests a review from the
+# account that did not author the commits, as the prompt to write the objection
+# `CONTRIBUTING.md` requires.
+#
+# Not yet observed on a pull request: CODEOWNERS is read from the base branch,
+# so this file cannot take effect until it is on `develop`. Confirm it on the
+# first pull request after that and correct this comment if it does not.
+#
+# That request can only ever be answered with comments. `no-self-approval.yml`
+# is a required check on `develop` and fails when either account submits an
+# approving review, so an approval here blocks the merge rather than enabling
+# it. `develop` requires zero approving reviews, because there is nobody to
+# give one.
+#
+# Code-owner review is deliberately NOT required in branch protection
+# (`require_code_owner_reviews: false`). Requiring it would create a gate that
+# only an approval can open and that CI refuses to let either account open.
+#
+# One rule, because both accounts own everything and per-path lines listing the
+# same two owners say nothing the first line has not already said.
 
-*   @clevervi
+*   @clevervi @raishark

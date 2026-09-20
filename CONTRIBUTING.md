@@ -108,28 +108,46 @@ writing it:
 | CodeQL                    | Security and quality defects, refreshed weekly        |
 | Dependency review         | New dependencies with known vulnerabilities or copyleft licences |
 
-**Not independent.** A second pass over a diff by whoever wrote it is the same
-judgement running twice. It catches real things and is worth doing — two defects
-in the issuer model were found that way — but it is not a second opinion, and it
-must never be recorded as an approval. It goes in as review comments, labelled
-as a self-review.
+**Not independent, and the accounts do not change that.** One maintainer works
+from two accounts, [@clevervi](https://github.com/clevervi) and
+[@raishark](https://github.com/raishark). Both author commits and git attributes
+each to the one that wrote it. Neither is a second reader, because they are the
+same person.
 
-A second account belonging to the same person does not change this. The
-mechanism would pass; the review would not have happened.
+What the two accounts are for is the **argued review**: every pull request
+carries a *case* — why the design is what it is, including the option rejected
+and what it would have cost — and an *objection*, the strongest available
+argument against it, naming the evidence that would settle it. When both accounts
+are authenticated the objection is posted under the one that did not author the
+commits. That is a device for forcing the counter-argument into writing, not a
+second opinion, and every exchange says so in its first comment.
+
+**Neither account can approve, and that is mechanical rather than a promise.**
+`.github/workflows/no-self-approval.yml` fails when `clevervi` or `Raishark`
+submits an approving review, and it is a required check on `develop`. An
+approval from either account does not merely fail to count — it blocks the
+merge.
+
+Branch protection on `develop`, read from the API rather than from memory:
+
+| Setting                    | Value                                                   |
+| -------------------------- | ------------------------------------------------------- |
+| Required approving reviews | **0**                                                   |
+| Required checks            | Lint, typecheck and build; Test against Postgres; Secret scan; No approval from the maintainer's own accounts |
+| Enforced for admins        | yes                                                     |
+
+So there is no approval to wait for, and no third account that could give one.
+**Merging is the author's at every risk level.** What replaces a second reader
+is the bar below, and it is weaker than one. Say so rather than dressing it up.
 
 **Merge policy by risk label:**
 
 | Risk              | Merges when                                                              |
 | ----------------- | ------------------------------------------------------------------------ |
-| `low`, `medium`   | Every independent gate is green                                          |
-| `high`, `critical` | Every independent gate is green, **and** the self-review bar below is met |
+| `low`, `medium`   | Every independent gate is green and every thread is resolved             |
+| `high`, `critical` | The same, **and** the mutation table is in the pull request body        |
 
-The maintainer has delegated merging at every risk level to whoever authors the
-change. There is no second reader, and this document does not pretend there is.
-What replaces one is a bar the author has to clear in public, on the pull
-request, where anyone can check it was cleared.
-
-**The self-review bar for `high` and `critical`:**
+**The review bar for `high` and `critical`:**
 
 1. **Every guard that protects something is mutation-checked.** Break it on
    purpose — remove the check, loosen the constraint, add the forbidden field —
@@ -138,29 +156,23 @@ request, where anyone can check it was cleared.
 2. **The mutations and their results are listed in the pull request body.** Not
    summarised as "tested thoroughly": which guard, what was broken, how many
    tests went red.
-3. **An inline self-review is posted** on the lines worth disagreeing with,
-   labelled as a self-review and never recorded as an approval.
-4. **Review threads are resolved** before merging. Branch protection enforces it.
+3. **The case is posted** on the lines worth disagreeing with: why the design is
+   what it is, which option was rejected, and what that would have cost.
+4. **The objection is posted** under the other account, arguing against the
+   change and naming what evidence would settle it. If there is nothing real to
+   say, say that and say why the change was simple enough not to need one — a
+   manufactured objection is as dishonest as a manufactured approval and harder
+   to spot.
+5. **The objection is answered.** The design changes, or the answer is written
+   down, or it is recorded as an accepted limitation with an issue behind it. A
+   thread closes when one of those three has happened, never because nobody
+   replied.
+6. **Review threads are resolved** before merging. Branch protection enforces it.
 
-This is weaker than an independent reader, and saying so is the point. A mutation
-check proves a test can fail; it cannot prove the author tested the right thing.
-The bar makes the author's reasoning inspectable, which is the most a single
-author can honestly offer.
-
-### A pull request whose commits are not yours is rebase-merged
-
-The default is a squash merge. **Squashing erases authorship**: GitHub
-attributes the squashed commit to whoever pressed merge, not to whoever wrote
-the code. Measured rather than assumed — three commits authored by the second
-account went in under #70 and the contributor count did not move.
-
-So when a pull request carries commits authored by a different account, merge it
-with **rebase**, which keeps each commit and its author while still producing a
-linear history. Squash the rest.
-
-This repository has one maintainer working from two accounts, and the history
-should say which one wrote what. Losing that to a merge strategy is a small lie
-told by a default.
+A mutation check proves a test can fail. The argued review is the only part of
+this that asks whether the right things were tested, and it is one person
+arguing with themselves in writing — which catches less than a second reader
+and more than a second read-through.
 
 ### Every guard ships with a test that dies without it
 

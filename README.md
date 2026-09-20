@@ -159,13 +159,19 @@ One person, working from two accounts:
 [@clevervi](https://github.com/clevervi) and
 [@raishark](https://github.com/raishark). Both write code — the foundation
 commits are Raishark's — and GitHub attributes each to the account that authored
-it.
+it. There is no split by area; both accounts work across the whole codebase.
 
-**Neither ever reviews the other.** They are the same person, so an approval
-between them would be a review signal with nothing behind it.
-[`.github/CODEOWNERS`](.github/CODEOWNERS) records one maintainer for that
-reason, and [`CONTRIBUTING.md`](CONTRIBUTING.md) builds the merge bar around
-having no second reader rather than pretending to have one.
+**Neither ever approves the other**, and this is enforced rather than promised:
+[`no-self-approval.yml`](.github/workflows/no-self-approval.yml) is a required
+check on `develop` and fails when either account submits an approving review. So
+an approval from either does not merely carry no weight — it blocks the merge.
+`develop` requires **zero** approving reviews, because there is nobody to give
+one.
+
+What the second account is for is the argued review: one voice states the case,
+the other makes the strongest objection it can, and the objection has to be
+answered before a thread closes. [`CONTRIBUTING.md`](CONTRIBUTING.md) builds the
+merge bar around having no second reader rather than pretending to have one.
 
 ## Contributing
 

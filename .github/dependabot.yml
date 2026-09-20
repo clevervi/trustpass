@@ -15,6 +15,7 @@ updates:
       - dependencies
     reviewers:
       - clevervi
+      - raishark
     open-pull-requests-limit: 10
 
   - package-ecosystem: github-actions
@@ -32,4 +33,5 @@ updates:
       - ci
     reviewers:
       - clevervi
+      - raishark
     open-pull-requests-limit: 5
