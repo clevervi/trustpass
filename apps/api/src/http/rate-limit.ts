@@ -206,7 +206,20 @@ export function bucketKey(address: string): string {
   // interface on this host rather than the caller, and it is always written on
   // the last group — which the truncation below discards. Stripping it was
   // written first and removed: a mutation proved nothing depended on it.
-  return `${groupsOf(address).slice(0, 4).join(":")}::/64`;
+  return `${groupsOf(address).slice(0, 4).map(canonicalGroup).join(":")}::/64`;
+}
+
+/**
+ * One group, written the one way.
+ *
+ * `2001:0DB8:…` and `2001:db8:…` are the same address, and without this they are
+ * two buckets. Node hands over the canonical form today, so nothing reaches this
+ * in the wrong shape — which is exactly the argument that was wrong about
+ * `::ffff:`. An exported function that takes a string does not get to assume its
+ * caller.
+ */
+function canonicalGroup(group: string): string {
+  return group.replace(/^0+(?=.)/, "").toLowerCase();
 }
 
 /**
