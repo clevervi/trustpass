@@ -22,7 +22,7 @@ export async function grantAuthorityOver(
   actorId: number,
   organizationId: number,
   capacity: LifecycleActorKind = "issuer",
-): Promise<void> {
+): Promise<number> {
   const aDayAgo = new Date(Date.now() - 24 * 3_600_000);
 
   await db.insert(membership).values({
@@ -35,12 +35,21 @@ export async function grantAuthorityOver(
     endedAt: null,
   });
 
-  await db.insert(capacityGrant).values({
-    actorId,
-    organizationId,
-    capacity,
-    scopeKind: "own_organization",
-    effectiveFrom: aDayAgo,
-    expiresAt: null,
-  });
+  // Returns the grant's id, because #152 made that the thing an issuer write
+  // has to record. A fixture that only established authority could not build a
+  // `RecordingActor`, and a test that made one up would be naming a grant that
+  // authorised nothing.
+  const [granted] = await db
+    .insert(capacityGrant)
+    .values({
+      actorId,
+      organizationId,
+      capacity,
+      scopeKind: "own_organization",
+      effectiveFrom: aDayAgo,
+      expiresAt: null,
+    })
+    .returning({ id: capacityGrant.id });
+
+  return granted?.id as number;
 }

@@ -26,7 +26,11 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
    * Whoever is recording these. A real row, because `lifecycle_event.actor_id`
    * references `actor` and a write with no identified actor no longer compiles.
    */
-  let caller: { actorId: number };
+  // `grantId: null` is the right answer here and not a placeholder. A holder
+  // enrolment is somebody entering a serial on nobody's authority, so there
+  // is no grant to name — which is what distinguishes it from an issuer
+  // event whose grant went unrecorded.
+  let caller: { actorId: number; grantId: null };
 
   function values(serial?: string) {
     n += 1;
@@ -46,7 +50,7 @@ describe.skipIf(!databaseUrl)("enrolling a product you hold", () => {
       .values({ kind: "service", displayName: `${run} caller` })
       .returning({ id: actor.id });
 
-    caller = { actorId: created?.id as number };
+    caller = { actorId: created?.id as number, grantId: null };
   });
 
   afterAll(async () => {
