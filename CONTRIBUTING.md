@@ -139,20 +139,29 @@ Branch protection on `develop`, read from the API rather than from memory:
 | Required checks            | Lint, typecheck and build; Test against Postgres; Secret scan; No approval from a listed account |
 | Enforced for admins        | yes                                                     |
 
-**Read on 2026-09-20, and nothing verifies it.** These settings live in the
-GitHub interface, not in this repository: they can be changed without a commit,
-a diff or a review, and no workflow reads them back. So this table is a dated
-observation and not a guarantee — which is the same weakness it exists to
-describe, one level up, and is recorded here rather than left for a reader to
-discover. Re-read it with:
+**Checked, on every pull request and once a day.** The same requirements are
+also expressed as a ruleset on `develop`, and
+[`.github/merge-bar.json`](.github/merge-bar.json) states what that ruleset must
+contain. The `Merge bar` workflow compares the two and fails when they differ,
+naming the condition that moved.
 
 ```bash
-gh api repos/clevervi/trustpass/branches/develop/protection
+pnpm ci:merge-bar        # compare the live rules against the contract
+pnpm ci:merge-bar:test   # check the comparison can tell a difference
 ```
 
-Making it checkable needs a token with `administration: read`, which is a
-credential this repository would have to store. That trade is #165, not a thing
-to do quietly.
+It reads the **ruleset** rather than the classic protection above, and that is
+measured rather than preferred: a workflow-scoped token gets `403 Resource not
+accessible by integration` on `/branches/develop/protection`, because
+`administration` is not among the permissions a workflow may request.
+`/rules/branches/develop` needs none. Verifying the classic rules would have
+meant storing a token with administrative read access to check a configuration
+that is already public.
+
+Both are in force. GitHub applies the most restrictive result, so the ruleset
+adds a second enforcement rather than replacing one — and the classic rules
+above remain a dated observation, read on 2026-09-20, which is why removing them
+is #165's separate question rather than a tidy-up.
 
 So there is no approval to wait for, and no third account that could give one.
 **Merging is the author's at every risk level.** What replaces a second reader

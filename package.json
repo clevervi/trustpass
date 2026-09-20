@@ -24,6 +24,8 @@
     "db:restore-drill": "pnpm --filter @trustpass/db db:restore-drill",
     "db:generate": "pnpm --filter @trustpass/db db:generate",
     "db:studio": "pnpm --filter @trustpass/db db:studio",
+    "ci:merge-bar": "node scripts/merge-bar.mjs",
+    "ci:merge-bar:test": "node --test scripts/merge-bar.test.mjs",
     "db:setup": "pnpm --filter @trustpass/db db:setup",
     "db:reset": "docker compose down -v && pnpm db:setup",
     "db:preflight": "pnpm --filter @trustpass/db db:preflight",

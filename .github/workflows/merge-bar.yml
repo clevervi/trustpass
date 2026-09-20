@@ -1,0 +1,60 @@
+# Turns "GitHub has to be configured like this" into "if GitHub stops being
+# configured like this, CI goes red."
+#
+# The merge bar lives outside the repository. Branch protection and rulesets are
+# edited in a web interface, without a commit, a diff or a review, and until now
+# nothing compared them to what `CONTRIBUTING.md` and `.github/merge-bar.json`
+# claim. That gap was found three times in a week and filed as #165.
+#
+# **It reads the ruleset, not classic branch protection**, and the reason is
+# measured rather than preferred: a workflow-scoped token gets
+# `403 Resource not accessible by integration` on
+# `/branches/develop/protection`, because `administration` is not among the
+# permissions a workflow may request. `/rules/branches/develop` needs none of
+# that. Checking the classic rules would have meant storing a token with
+# administrative read access — the first long-lived credential this repository
+# holds — to verify a configuration that is already public.
+#
+# Scheduled as well as per-pull-request, because the drift this catches does not
+# arrive with a commit. Nobody pushes when they change a setting in a browser.
+
+name: Merge bar
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [develop, main]
+  schedule:
+    # Daily. A setting changed in a browser is found within a day rather than
+    # whenever somebody next opens a pull request.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: The merge bar matches its contract
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      # The comparison first, with no network involved. A comparison that cannot
+      # detect a difference would let the step below pass while checking
+      # nothing, and that failure is silent in exactly the way this whole
+      # workflow exists to prevent.
+      - name: The comparison can tell a difference
+        run: node --test scripts/merge-bar.test.mjs
+
+      - name: What GitHub applies to develop
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/merge-bar.mjs
