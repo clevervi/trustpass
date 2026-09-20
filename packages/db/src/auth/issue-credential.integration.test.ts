@@ -97,21 +97,32 @@ describe.skipIf(!databaseUrl)("issuing a credential", () => {
   it("refuses an actor that does not exist, and writes nothing", async () => {
     // Both halves. A refusal that still left a credential row would be worse
     // than no refusal: an orphan with a digest nobody holds the secret for.
-    const [{ before }] = (await raw`SELECT count(*)::int AS before FROM credential`) as unknown as [
-      { before: number },
-    ];
-
+    //
+    // Counted by label rather than over the table. The first version read
+    // `count(*) FROM credential` before and after, and failed roughly one run
+    // in three: vitest runs test files in parallel and three of them issue
+    // credentials, so the count moved because another file wrote, not because
+    // this refusal did. It measured the database instead of the operation, and
+    // the failure it produced accused the wrong code.
+    //
+    // By label and not by `actor_id`, which would have been the easy scope and
+    // a tautology: `credential.actor_id` references `actor`, so a row naming an
+    // actor that does not exist is one the foreign key already makes
+    // impossible. The label catches a credential written under *any* actor,
+    // including one this call invented on the way — which is the orphan the
+    // test is named for.
+    const label = "never issued";
     const missing = 2_000_000_000;
 
     await expect(
-      issueCredentialFor(raw, { label: "never issued", actor: { existing: missing } }, "dev"),
+      issueCredentialFor(raw, { label, actor: { existing: missing } }, "dev"),
     ).rejects.toThrow(IssuanceFailed);
 
-    const [{ after }] = (await raw`SELECT count(*)::int AS after FROM credential`) as unknown as [
-      { after: number },
-    ];
+    const [{ written }] = (await raw`
+      SELECT count(*)::int AS written FROM credential WHERE label = ${label}
+    `) as unknown as [{ written: number }];
 
-    expect(after).toBe(before);
+    expect(written).toBe(0);
   });
 
   it("refuses with a reason, not merely by throwing", async () => {
