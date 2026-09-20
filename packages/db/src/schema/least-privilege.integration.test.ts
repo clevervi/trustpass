@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
+import { changeProductStatus } from "../repositories/product-status-repository.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
 import { insertProductWithProvenance } from "../testing/with-provenance.js";
 
@@ -52,7 +53,10 @@ const EXPECTED: Record<string, readonly Grant[]> = {
   lifecycle_event: ["SELECT", "INSERT"],
   membership: ["SELECT"],
   organization: ["SELECT"],
-  product: ["SELECT", "INSERT", "UPDATE"],
+  // No table-level UPDATE. The runtime updates two columns and the grant says
+  // so — see the column matrix below. `has_table_privilege` reports false for
+  // a column grant, measured, so this row is the truth rather than a downgrade.
+  product: ["SELECT", "INSERT"],
 };
 
 const ALL_GRANTS: readonly Grant[] = ["SELECT", "INSERT", "UPDATE"];
@@ -328,6 +332,215 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
       );
 
       expect(row?.granted).toBe(false);
+    });
+  });
+
+  describe("what the runtime may change on a product, column by column", () => {
+    // The table matrix above answers "may the runtime update `product`". Once
+    // that is a column-level decision the question stops having a single
+    // answer, and this block is where the real one lives.
+    //
+    // **The invariant cannot be a CHECK constraint**, and that was settled by
+    // measurement before the design was chosen rather than argued afterwards.
+    // A constraint asks whether the values in a row agree with each other. The
+    // question here is which columns may change at all, and no arrangement of
+    // values answers it — see "the coherent lie" below.
+
+    /** A row of this block's own, so no test depends on what a previous run left. */
+    let victim: number;
+
+    beforeAll(async () => {
+      const created = await insertProductWithProvenance(db, {
+        trustpassId: generateTrustPassId(),
+        organizationId: null,
+        brand: "ASUS",
+        model: "ROG Strix RTX 5070 Ti",
+        serial: `COL-${Math.random().toString(36).slice(2, 10).toUpperCase()}`,
+        category: "gpu",
+        status: "registered",
+        origin: "holder",
+      });
+
+      victim = created.id;
+    });
+
+    /** The literal requirement from #157, derived from nothing. */
+    const MAY_UPDATE = ["status", "updated_at"] as const;
+
+    /**
+     * Every other column, listed rather than computed — for the same reason
+     * `covers every table` lists tables. A set derived from the catalogue at
+     * run time would assert whatever the catalogue happened to say and could
+     * not fail; this one fails when a column appears that nobody decided
+     * about, which is the drift the table matrix above already guards against.
+     *
+     * **That guard was missing at column granularity and it had already let
+     * something through.** Writing this found a `tp_probe text` column on
+     * `product` in the development database: in no migration, in no schema
+     * file, holding no data, and matching one statement exactly — the
+     * `alter a table` row of ATTACKS above. `refused()` runs each attack
+     * directly against the live database, so an attack that is ever *not*
+     * refused commits, and that one did. It has been dropped.
+     *
+     * Two of its neighbours leave residue the same way and were caught by
+     * design: a leftover `tp_probe` table fails `covers every table`, and a
+     * leftover `tp_probe()` function fails `can execute no function`. A
+     * leftover column failed nothing, because nothing here looked at columns.
+     *
+     * Under column-level grants that stops being untidiness. An out-of-band
+     * column is a column no GRANT ever named, and what a role may do with a
+     * column nobody decided about is now a question with an answer.
+     */
+    const MAY_NOT_UPDATE = [
+      "id",
+      "trustpass_id",
+      "brand",
+      "model",
+      "serial",
+      "category",
+      "created_at",
+      "origin",
+      "organization_id",
+    ] as const;
+
+    it("covers every column of product", async () => {
+      const rows = await db.execute<{ attname: string }>(
+        sql`SELECT attname FROM pg_attribute
+            WHERE attrelid = 'product'::regclass AND attnum > 0 AND NOT attisdropped
+            ORDER BY attname`,
+      );
+
+      expect(rows.map((row) => row.attname)).toEqual([...MAY_UPDATE, ...MAY_NOT_UPDATE].sort());
+    });
+
+    it.each(MAY_UPDATE)("may update %s", async (column) => {
+      const [row] = await db.execute<{ allowed: boolean }>(
+        sql`SELECT has_column_privilege(current_user, 'product', ${column}::text, 'UPDATE') AS allowed`,
+      );
+
+      expect({ [column]: row?.allowed }).toEqual({ [column]: true });
+    });
+
+    it.each(MAY_NOT_UPDATE)("may not update %s", async (column) => {
+      const [row] = await db.execute<{ allowed: boolean }>(
+        sql`SELECT has_column_privilege(current_user, 'product', ${column}::text, 'UPDATE') AS allowed`,
+      );
+
+      expect({ [column]: row?.allowed }).toEqual({ [column]: false });
+    });
+
+    /**
+     * `id` is excluded, and the exclusion is the finding.
+     *
+     * `UPDATE product SET id = id` answers `428C9`, not `42501`, and it does so
+     * whether the column grant is in place or not — measured both ways.
+     * `GENERATED ALWAYS AS IDENTITY` is enforced during parse analysis, which
+     * runs before the executor checks any privilege, so on this one column the
+     * privilege is never consulted at all.
+     *
+     * Left in the loop it would have passed for the wrong reason before the
+     * migration existed and failed for the wrong reason after it. It gets its
+     * own case below, asserting the guard that actually answers.
+     */
+    const ATTEMPTABLE = MAY_NOT_UPDATE.filter((column) => column !== "id");
+
+    it.each(ATTEMPTABLE)("refuses an UPDATE of %s when it is attempted", async (column) => {
+      // The catalogue above and the attempt here answer different questions,
+      // and a disagreement between them is the thing worth finding. A privilege
+      // that reads correctly and does not hold is a shape this repository keeps
+      // discovering in its own measurements, so both are asked.
+      //
+      // Each column is set to itself. The refusal is a permission check on the
+      // target list, made before any row is examined and before any constraint
+      // or foreign key is consulted — so the statement needs no value that
+      // would be valid, and inventing one would only add a second reason it
+      // could fail.
+      await expectSqlState(
+        db.execute(
+          sql`UPDATE product SET ${sql.identifier(column)} = ${sql.identifier(column)} WHERE id = ${victim}`,
+        ),
+        SqlState.INSUFFICIENT_PRIVILEGE,
+      );
+    });
+
+    it("refuses an UPDATE of id, by identity rather than by privilege", async () => {
+      // Two independent guards cover this column and only one of them is this
+      // issue's. Asserting 42501 here would claim the grant protects `id` when
+      // the grant is never reached — and that claim would survive the grant
+      // being removed, which is the definition of a test that proves nothing.
+      await expectSqlState(
+        db.execute(sql`UPDATE product SET id = id WHERE id = ${victim}`),
+        SqlState.GENERATED_ALWAYS,
+      );
+    });
+
+    it("refuses a forbidden column smuggled in beside an allowed one", async () => {
+      // The shape a real attempt takes, and the case that separates a
+      // column-level grant from a guard that inspects the first assignment.
+      //
+      // `status = status`, not `status = 'suspended'`. Written the obvious way
+      // this test was red before the migration existed and red for the wrong
+      // reason: a real status change trips `product_requires_provenance` and
+      // answers TP004, so it would have gone green the day the grant arrived
+      // while proving only that the provenance trigger still works.
+      await expectSqlState(
+        db.execute(
+          sql`UPDATE product SET status = status, trustpass_id = 'TP1-NOPE' WHERE id = ${victim}`,
+        ),
+        SqlState.INSUFFICIENT_PRIVILEGE,
+      );
+    });
+
+    it("refuses the coherent lie no check constraint can catch", async () => {
+      // Measured before choosing this design, against a table-level grant:
+      //
+      //   UPDATE product SET origin='holder', organization_id=NULL   ACCEPTED
+      //
+      // An issuer-registered product becomes a holder enrolment and loses the
+      // company that registered it. `product_holder_has_no_organization` has no
+      // opinion because the resulting pair is internally consistent — it asks
+      // whether values agree, and they do.
+      //
+      // The privilege refuses the statement without reading the row, which is
+      // why this is written as a grant and not as a constraint.
+      await expectSqlState(
+        db.execute(
+          sql`UPDATE product SET origin = 'holder', organization_id = NULL WHERE id = ${victim}`,
+        ),
+        SqlState.INSUFFICIENT_PRIVILEGE,
+      );
+    });
+
+    it("still suspends a product through the path the application uses", async () => {
+      // The other half of the criterion, and the half a privilege change is
+      // most likely to break. The statement Drizzle emits here, read from its
+      // own logger rather than assumed:
+      //
+      //   update "product" set "status" = $1, "updated_at" = $2
+      //   where "product"."id" = $3
+      //
+      // `updated_at` is in it because `$onUpdate` injects it into every UPDATE
+      // this schema emits, and nothing in the application asks for it. A grant
+      // of `status` alone reads like the tighter, more careful decision and
+      // stops the application dead — measured, and it would have shipped,
+      // because no test in this file ran an UPDATE at all before this one.
+      //
+      // `changeProductStatus` rather than a hand-written UPDATE, because the
+      // status and its lifecycle event are one transaction: a bare UPDATE
+      // answers TP004 and would have reported a privilege failure as a
+      // provenance failure, or the reverse.
+      const result = await changeProductStatus(db, {
+        productId: victim,
+        to: "suspended",
+        // Only `authority` may record `product_suspended` — a holder cannot
+        // suspend, per `RECORDING_AUTHORITY`. Naming the wrong capacity here
+        // returns `unauthorised_actor` without ever issuing the UPDATE, which
+        // would have made this test green while measuring nothing.
+        actorKind: "authority",
+        reason: "theft_report",
+      });
+
+      expect(result).toMatchObject({ ok: true, product: { id: victim, status: "suspended" } });
     });
   });
 
