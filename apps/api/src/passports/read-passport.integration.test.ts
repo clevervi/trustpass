@@ -95,11 +95,16 @@ describe.skipIf(!databaseUrl)("GET /passports/{trustpassId} against a real datab
       ])
       .returning({ id: schema.organization.id });
 
-    // Both, because this file registers under each in turn — the verified one
-    // and the unverified one, which is what the passport is careful about.
-    for (const organization of organizations) {
-      await grantAuthorityOver(db, caller.actorId, organization.id);
-    }
+    const [verified, unverified] = organizations;
+
+    // Named one at a time rather than looped over whatever exists. Both are
+    // needed — this file registers under each in turn, which is the point it
+    // makes about an unverified issuer — but a loop grants authority over
+    // every organization the fixture happens to create, so the day somebody
+    // adds a third for a case that must *not* be able to register under it,
+    // the loop would hand it over in silence.
+    await grantAuthorityOver(db, caller.actorId, verified?.id as number);
+    await grantAuthorityOver(db, caller.actorId, unverified?.id as number);
   });
 
   afterAll(async () => {
