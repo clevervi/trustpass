@@ -3,7 +3,12 @@ import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { enrolProduct } from "../enrolments/enrol-product.js";
-import { buildDependencies, credentialHeaders, TEST_TOKEN } from "../testing/dependencies.js";
+import {
+  buildDependencies,
+  credentialHeaders,
+  NO_RATE_LIMIT,
+  TEST_TOKEN,
+} from "../testing/dependencies.js";
 import { registerProduct } from "./register-product.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -184,6 +189,8 @@ describe.skipIf(!databaseUrl)("acting for an organization you have authority ove
         // implementation that wrote a grant onto every event.
         enrolProduct: (input, who) => enrolProduct(db, input, who),
       }),
+      { kind: "none" },
+      NO_RATE_LIMIT,
     );
   }
 
@@ -402,6 +409,8 @@ describe.skipIf(!databaseUrl)("acting for an organization you have authority ove
           authenticate: async () => as,
           registerProduct: (input, who) => registerProduct(racing, input, who),
         }),
+        { kind: "none" },
+        NO_RATE_LIMIT,
       );
 
       return app.request("/products", {
@@ -483,6 +492,8 @@ describe.skipIf(!databaseUrl)("acting for an organization you have authority ove
               who,
             ),
         }),
+        { kind: "none" },
+        NO_RATE_LIMIT,
       );
 
       const response = await app.request("/products", {

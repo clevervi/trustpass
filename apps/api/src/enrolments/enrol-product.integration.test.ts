@@ -5,6 +5,7 @@ import { createApp } from "../app.js";
 import {
   buildDependencies,
   credentialHeaders,
+  NO_RATE_LIMIT,
   withoutCredential,
 } from "../testing/dependencies.js";
 import { enrolProduct } from "./enrol-product.js";
@@ -81,6 +82,8 @@ describe.skipIf(!databaseUrl)("POST /enrolments against a real database", () => 
           presented === TOKEN_A ? alice : presented === TOKEN_B ? bob : null,
         enrolProduct: (input, principal) => enrolProduct(db, input, principal),
       }),
+      { kind: "none" },
+      NO_RATE_LIMIT,
     );
   });
 

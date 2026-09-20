@@ -57,6 +57,25 @@ export function withoutCredential(): Record<string, string> {
 }
 
 /**
+ * A limit no test trips by accident, for a test that is not about the limit.
+ *
+ * `createApp` defaults to the shipping numbers on purpose — a test that quietly
+ * got a generous limit would prove nothing about the endpoint that ships. The
+ * cost is that a file which builds one app and shares it across every test in
+ * the file accumulates against one bucket, and the twenty-first write gets a 429
+ * from a limiter nobody in that file was thinking about.
+ *
+ * That is not hypothetical. `register-product.integration.test.ts` makes more
+ * than twenty writes, and the first CI run after the limiter landed failed there
+ * with `expected 429 to be 201` — in a test about two issuers sharing a serial,
+ * which has nothing to do with rate limiting.
+ *
+ * So it is passed explicitly, never defaulted. A test that does not want the
+ * limit says so, and one that does want it names its own numbers.
+ */
+export const NO_RATE_LIMIT = { burst: 1_000_000, perSecond: 1_000_000 } as const;
+
+/**
  * Builds the dependency set with working defaults, so a test states only what
  * it actually cares about. A test that has to spell out every dependency stops
  * saying what it is testing.

@@ -39,7 +39,7 @@ import { registerProductRoutes } from "./routes/products.js";
  * with nothing deployed, and the upgrade path is a shared store — not a
  * cleverer bucket.
  */
-const WRITE_RATE_LIMIT = { burst: 20, perSecond: 0.2 } as const;
+export const WRITE_RATE_LIMIT = { burst: 20, perSecond: 0.2 } as const;
 
 export function createApp(
   deps: AppDependencies,
