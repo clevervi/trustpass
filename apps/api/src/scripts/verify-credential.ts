@@ -23,9 +23,17 @@ import { loadEnv } from "../env.js";
  * command needs an interactive terminal, so the loop from a real terminal to a
  * real row has to be run by a person. This is the second half of that run.
  *
- * **It writes an enrolment.** That is not a side effect to apologise for — it
- * is the proof. A verification that only asked the verifier would show the
- * credential parses, not that a write attributed to it lands correctly.
+ * **It writes an enrolment, and that record is permanent.** The write is the
+ * proof: a check that only asked the verifier would show the credential parses,
+ * not that a write attributed to it lands on the right actor. But an enrolment
+ * carries a lifecycle event, events cannot be deleted and the product foreign
+ * key is RESTRICT, so what this leaves behind stays — which is the append-only
+ * guarantee working and is still a surprise from something called "verify".
+ *
+ * So it says so and asks first. A rolled-back transaction would avoid the row
+ * and cannot be done here: the write goes through the real HTTP handler on its
+ * own connection, and reaching around that to roll it back would mean the path
+ * under test is no longer the path.
  */
 
 async function main(): Promise<void> {
@@ -33,6 +41,22 @@ async function main(): Promise<void> {
   const db = createDatabase(env.DATABASE_URL);
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+  console.log("This writes a real enrolment to prove the credential works.");
+  console.log("The record is permanent: lifecycle events cannot be deleted, so the product");
+  console.log("it creates cannot be either. One product per run, serial prefixed TP177-PROOF-.");
+  console.log("");
+
+  const consent = (await rl.question("Type 'yes' to continue: ")).trim().toLowerCase();
+
+  if (consent !== "yes") {
+    // Exactly "yes". A check that accepted "y" or anything non-empty would be
+    // one that most people pass by pressing return.
+    console.log("Nothing was written.");
+    rl.close();
+    process.exit(1);
+  }
+
   const token = (
     await rl.question("Paste the token. It is used once and never stored or echoed: ")
   ).trim();
