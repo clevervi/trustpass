@@ -11,60 +11,108 @@
  * failure this exists to catch is a comparison that quietly passes.
  */
 
-/** A difference worth failing for, in the terms somebody has to act on. */
-export function compareMergeBar(contract, rules) {
-  const problems = [];
+/**
+ * Anything from the API, on its way into a message somebody will read.
+ *
+ * A ruleset's check names are external input: they are set in a web interface
+ * and this prints them into a CI log, which is the shape of a log injection —
+ * a newline and a fabricated line, and the log says whatever the person who
+ * named the check wanted it to say. Sonar flagged it as `jssecurity:S5145` and
+ * it is right: the value is untrusted even though the person setting it today
+ * is the person reading the log.
+ */
+function forLog(value) {
+  // Character codes rather than a regular expression range. The range was
+  // written as an escape sequence and the formatter rewrote it into the literal
+  // control characters it denotes — which still worked, was unreadable, and
+  // left a test that appeared to say `includes("")`. A guard nobody can read is
+  // a guard somebody deletes.
+  const readable = Array.from(String(value), (character) => {
+    const code = character.codePointAt(0);
+
+    return code < 0x20 || code === 0x7f ? " " : character;
+  });
+
+  return readable.join("").slice(0, 120);
+}
+
+/** Rules the contract says must apply, that do not. */
+function missingRules(contract, rules) {
   const present = new Set(rules.map((rule) => rule.type));
 
-  for (const type of contract.must_be_present) {
-    if (!present.has(type)) {
-      problems.push(`the rule "${type}" is not applied to develop`);
-    }
-  }
+  return contract.must_be_present
+    .filter((type) => !present.has(type))
+    .map((type) => `the rule "${type}" is not applied to develop`);
+}
 
+/** The two directions a required-check list can disagree, and the strict flag. */
+function statusCheckProblems(contract, rules) {
   const checks = rules.find((rule) => rule.type === "required_status_checks");
 
-  if (checks) {
-    const live = checks.parameters.required_status_checks.map((c) => c.context);
-    const expected = contract.required_status_checks;
-
-    for (const context of expected) {
-      if (!live.includes(context)) {
-        problems.push(`the check "${context}" is required by the contract and not by GitHub`);
-      }
-    }
-
-    for (const context of live) {
-      if (!expected.includes(context)) {
-        problems.push(`GitHub requires the check "${context}", which the contract does not list`);
-      }
-    }
-
-    // The property that let a rename break every merge in #181: a required
-    // check whose name matches nothing that reports is still "required".
-    if (
-      checks.parameters.strict_required_status_checks_policy !==
-      contract.strict_required_status_checks_policy
-    ) {
-      problems.push(
-        `branches must be up to date before merging: contract says ${contract.strict_required_status_checks_policy}, GitHub says ${checks.parameters.strict_required_status_checks_policy}`,
-      );
-    }
+  if (!checks) {
+    return [];
   }
 
-  const pullRequest = rules.find((rule) => rule.type === "pull_request");
+  const live = checks.parameters.required_status_checks.map((c) => c.context);
+  const expected = contract.required_status_checks;
 
-  if (pullRequest) {
-    for (const [key, want] of Object.entries(contract.pull_request)) {
-      const got = pullRequest.parameters[key];
+  const problems = [
+    ...expected
+      .filter((context) => !live.includes(context))
+      .map(
+        (context) => `the check "${forLog(context)}" is required by the contract and not by GitHub`,
+      ),
+    ...live
+      .filter((context) => !expected.includes(context))
+      .map(
+        (context) =>
+          `GitHub requires the check "${forLog(context)}", which the contract does not list`,
+      ),
+  ];
 
-      if (got !== want) {
-        problems.push(`pull request rule "${key}": contract says ${want}, GitHub says ${got}`);
-      }
-    }
+  // The property that let a rename break every merge in #181: a required check
+  // whose name matches nothing that reports is still "required".
+  const strict = checks.parameters.strict_required_status_checks_policy;
+
+  if (strict !== contract.strict_required_status_checks_policy) {
+    problems.push(
+      `branches must be up to date before merging: contract says ${contract.strict_required_status_checks_policy}, GitHub says ${forLog(strict)}`,
+    );
   }
 
   return problems;
+}
+
+/** Every pull request parameter the contract names, compared one by one. */
+function pullRequestProblems(contract, rules) {
+  const rule = rules.find((r) => r.type === "pull_request");
+
+  if (!rule) {
+    return [];
+  }
+
+  return Object.entries(contract.pull_request)
+    .filter(([key, want]) => rule.parameters[key] !== want)
+    .map(
+      ([key, want]) =>
+        `pull request rule "${key}": contract says ${want}, GitHub says ${forLog(rule.parameters[key])}`,
+    );
+}
+
+/**
+ * Every difference worth failing for, in the terms somebody has to act on.
+ *
+ * Three functions rather than one body, because the first version was one and
+ * Sonar put its cognitive complexity at 22 against a limit of 15. It was right
+ * that the limit was the smaller problem: the three comparisons are independent
+ * and reading one meant reading past the other two.
+ */
+export function compareMergeBar(contract, rules) {
+  return [
+    ...missingRules(contract, rules),
+    ...statusCheckProblems(contract, rules),
+    ...pullRequestProblems(contract, rules),
+  ];
 }
 
 async function rulesForDevelop(repository, token) {
@@ -125,9 +173,11 @@ async function main() {
     process.exit(1);
   }
 
+  // From the contract file, not from the response, so what is printed is what
+  // this repository claims rather than what the API said about itself.
   console.log(`The merge bar matches the contract: ${rules.length} rules applying to develop.`);
   for (const context of contract.required_status_checks) {
-    console.log(`  required: ${context}`);
+    console.log(`  required: ${forLog(context)}`);
   }
 }
 
