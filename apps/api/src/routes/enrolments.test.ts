@@ -219,13 +219,18 @@ describe("what a sweep over a serial range learns", () => {
     //
     // 201 and 409 are different, and they have to be: a write endpoint that
     // will not say whether the write happened is unusable, and one that lies
-    // about it is worse. What an attacker gets from this endpoint today is a
-    // yes-or-no per serial, at one request each, and nothing that identifies
-    // the record behind a yes.
+    // about it is worse. What an attacker gets from this endpoint is a
+    // yes-or-no per serial, and nothing that identifies the record behind a
+    // yes.
     //
-    // The yes-or-no closes under #141, when enrolling requires being somebody.
-    // Rate limiting narrows it before then — #120 keeps that criterion open.
-    // This test exists so that neither is mistaken for done.
+    // What that costs them has changed, and this comment used to say "at one
+    // request each". It is now twenty at once and then one every five seconds,
+    // measured: ten thousand serials is 14.1 hours rather than as fast as a
+    // loop runs. The signal is narrower, not gone.
+    //
+    // The yes-or-no itself closes under #141, when enrolling requires being
+    // somebody. This test exists so that the narrowing is not mistaken for the
+    // closing.
     const taken = new Set(["SWEEP-0003", "SWEEP-0011", "SWEEP-0017"]);
     const observations = await sweep(taken);
 

@@ -7,15 +7,25 @@ import { ApiErrorCode } from "./errors.js";
  * How expensive it is to ask the same question a thousand times.
  *
  * `POST /enrolments` answers whether a serial already has a live record, and
- * #120 establishes why that cannot be hidden on an unauthenticated write
- * endpoint: a write endpoint that will not say whether the write happened is
- * unusable, and one that lies about it is worse. The identifier is gone —
- * that part closed — and what remains is a yes-or-no per serial at one request
- * each.
+ * #120 establishes why that answer cannot be withheld: a write endpoint that
+ * will not say whether the write happened is unusable, and one that lies about
+ * it is worse. That holds whether or not the caller is authenticated, which is
+ * why authentication does not close it — #141 closes it by deciding *who may
+ * ask*, not by changing the answer.
+ *
+ * The identifier is gone; that part closed. What remained was a yes-or-no per
+ * serial at one request each.
  *
  * This is the other half of #120's answer: not removing the signal, but making
  * a sweep cost something. A serial range off a product line is thousands of
- * guesses, and thousands of guesses at four an hour is not an afternoon.
+ * guesses, and the price is now twenty at once and then one every five seconds
+ * — about 710 an hour, measured, so ten thousand serials is 14.1 hours rather
+ * than as fast as a loop runs.
+ *
+ * An earlier version of this paragraph said "four an hour". The sustained rate
+ * is 0.2/s, which is 720 an hour; four an hour would be one every fifteen
+ * minutes. Wrong by a factor of 180, and arithmetic nobody had run — the same
+ * mistake, in the same file, as the "most of a fortnight" above `app.ts`.
  *
  * **It is not a defence against a determined attacker** and nothing here should
  * be read as one. It raises the price of enumeration from free to slow, and the

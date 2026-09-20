@@ -69,6 +69,12 @@ export const ApiErrorCode = {
    * a serial has a live record — #120 explains why a write endpoint cannot hide
    * that — so what a limit adds is price, and a limit that reported *what* it
    * was limiting would hand back the detail it exists to protect.
+   *
+   * Nothing about the caller either, which is a separate rule and was nearly
+   * missed. `actor.id` is a database key, and `never exposes the internal key`
+   * is asserted for products, for passports and for enrolments. A refusal is
+   * not exempt: the body is a constant, and a test refuses two actors with the
+   * same bytes to keep it one.
    */
   TOO_MANY_REQUESTS: "too_many_requests",
 } as const;
