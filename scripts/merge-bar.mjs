@@ -173,11 +173,17 @@ async function main() {
     process.exit(1);
   }
 
-  // From the contract file, not from the response, so what is printed is what
-  // this repository claims rather than what the API said about itself.
-  console.log(`The merge bar matches the contract: ${rules.length} rules applying to develop.`);
+  // Every number and string here comes from the contract file, and none from
+  // the response. Sonar flagged the earlier version for interpolating
+  // `rules.length` — a count, and still a value derived from an HTTP response
+  // reaching a log. Printing what this repository requires says the same thing
+  // and is sourced from something under review, which is the better sentence
+  // anyway: the finding is that the contract holds, not that the API replied.
+  const required = contract.must_be_present.length;
+
+  console.log(`The merge bar matches the contract: ${required} rules required on develop.`);
   for (const context of contract.required_status_checks) {
-    console.log(`  required: ${forLog(context)}`);
+    console.log(`  required check: ${forLog(context)}`);
   }
 }
 
