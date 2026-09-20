@@ -6,6 +6,7 @@ import { actor } from "../schema/actor.js";
 import { lifecycleEvent } from "../schema/lifecycle-event.js";
 import { organization } from "../schema/organization.js";
 import { type NewProduct, product } from "../schema/product.js";
+import { grantAuthorityOver } from "../testing/authority.js";
 import { expectSqlState, SqlState } from "../testing/sql-state.js";
 import { findHistoryByTrustPassId, findProductHistory } from "./lifecycle-event-repository.js";
 import { insertProduct } from "./product-repository.js";
@@ -29,7 +30,10 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
    * Whoever is recording these. A real row, because `lifecycle_event.actor_id`
    * references `actor` and a write with no identified actor no longer compiles.
    */
-  let caller: { actorId: number };
+  // Carries the grant, because #152 made an issuer write record which
+  // authority it acted under. `grantId: null` here would compile and would
+  // reproduce inside the tests the exact gap the change closes.
+  let caller: { actorId: number; grantId: number };
 
   function build(overrides: Partial<NewProduct> = {}): NewProduct {
     sequence += 1;
@@ -65,7 +69,10 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
       .values({ kind: "service", displayName: `${run} caller` })
       .returning({ id: actor.id });
 
-    caller = { actorId: person?.id as number };
+    const actorId = person?.id as number;
+    const grantId = await grantAuthorityOver(db, actorId, organizationId);
+
+    caller = { actorId, grantId };
   });
 
   afterAll(async () => {
@@ -235,7 +242,10 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
   let organizationId: number;
-  let caller: { actorId: number };
+  // Carries the grant, because #152 made an issuer write record which
+  // authority it acted under. `grantId: null` here would compile and would
+  // reproduce inside the tests the exact gap the change closes.
+  let caller: { actorId: number; grantId: number };
 
   beforeAll(async () => {
     db = createDatabase(databaseUrl as string);
@@ -255,7 +265,10 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
       .values({ kind: "service", displayName: `${run} caller` })
       .returning({ id: actor.id });
 
-    caller = { actorId: person?.id as number };
+    const actorId = person?.id as number;
+    const grantId = await grantAuthorityOver(db, actorId, organizationId);
+
+    caller = { actorId, grantId };
   });
 
   afterAll(async () => {
