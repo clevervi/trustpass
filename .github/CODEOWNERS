@@ -14,8 +14,13 @@
 # give one.
 #
 # Code-owner review is deliberately NOT required in branch protection
-# (`require_code_owner_reviews: false`). Requiring it would create a gate that
-# only an approval can open and that CI refuses to let either account open.
+# (`require_code_owner_reviews: false`, read 2026-09-20). Requiring it would
+# create a gate that only an approval can open and that CI refuses to let
+# either account open.
+#
+# That setting lives in the GitHub interface and nothing in this repository
+# reads it back, so it is a dated observation like the table in
+# CONTRIBUTING.md. See #165.
 #
 # One rule, because both accounts own everything and per-path lines listing the
 # same two owners say nothing the first line has not already said.

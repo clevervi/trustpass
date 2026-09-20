@@ -136,6 +136,21 @@ Branch protection on `develop`, read from the API rather than from memory:
 | Required checks            | Lint, typecheck and build; Test against Postgres; Secret scan; No approval from the maintainer's own accounts |
 | Enforced for admins        | yes                                                     |
 
+**Read on 2026-09-20, and nothing verifies it.** These settings live in the
+GitHub interface, not in this repository: they can be changed without a commit,
+a diff or a review, and no workflow reads them back. So this table is a dated
+observation and not a guarantee — which is the same weakness it exists to
+describe, one level up, and is recorded here rather than left for a reader to
+discover. Re-read it with:
+
+```bash
+gh api repos/clevervi/trustpass/branches/develop/protection
+```
+
+Making it checkable needs a token with `administration: read`, which is a
+credential this repository would have to store. That trade is #165, not a thing
+to do quietly.
+
 So there is no approval to wait for, and no third account that could give one.
 **Merging is the author's at every risk level.** What replaces a second reader
 is the bar below, and it is weaker than one. Say so rather than dressing it up.
