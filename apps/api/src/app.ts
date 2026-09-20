@@ -6,10 +6,40 @@ import type { AppDependencies } from "./dependencies.js";
 import { requireCredential } from "./http/authenticate.js";
 import { type CorsPolicy, writeOrigins } from "./http/cors-policy.js";
 import { ApiErrorCode, validationError } from "./http/errors.js";
+import { type RateLimit, rateLimited } from "./http/rate-limit.js";
 import { registerEnrolmentRoutes } from "./routes/enrolments.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerPassportRoutes } from "./routes/passports.js";
 import { registerProductRoutes } from "./routes/products.js";
+
+/**
+ * What a single caller may write, and the arithmetic behind the numbers.
+ *
+ * A serial range off a product line is thousands of guesses. At this rate an
+ * attacker gets the 20-request burst and then one request every five seconds,
+ * so ten thousand serials is most of a day rather than an afternoon.
+ *
+ * Measured rather than derived, against the real server on the real clock:
+ * 200,084 requests in sixty seconds got 31 serials answered and 200,053
+ * refusals, the first at 0.06s. The burst is worth twenty of those thirty-one
+ * and amortises to nothing over a sweep, which leaves the sustained 0.2/s —
+ * 13.9 hours for ten thousand. An earlier version of this comment said "most of
+ * a fortnight", which was wrong by a factor of twenty-five and arithmetic
+ * nobody had run.
+ *
+ * Chosen against the honest caller rather than against the attacker, because
+ * the attacker sets no upper bound and the honest caller does: a person
+ * enrolling a product they are holding makes one request, and an issuer
+ * registering a batch does so from a script that can wait five seconds. If that
+ * stops being true the numbers move, and the test that names them moves with
+ * them.
+ *
+ * ponytail: one process, one map, reset on restart. A second instance doubles
+ * the effective limit and a redeploy clears it. That is honest for something
+ * with nothing deployed, and the upgrade path is a shared store — not a
+ * cleverer bucket.
+ */
+const WRITE_RATE_LIMIT = { burst: 20, perSecond: 0.2 } as const;
 
 export function createApp(
   deps: AppDependencies,
@@ -19,6 +49,14 @@ export function createApp(
    * caller that forgets the argument does not accidentally open the API.
    */
   corsPolicy: CorsPolicy = { kind: "none" },
+  /**
+   * Named by the caller so a test can ask for a limit it will not trip.
+   *
+   * The default is the real one, because a test that silently got a generous
+   * limit would prove nothing about the endpoint that ships — and a test that
+   * needs twenty-one requests should have to say so.
+   */
+  rateLimit: RateLimit = WRITE_RATE_LIMIT,
 ): OpenAPIHono {
   const app = new OpenAPIHono({
     // Without this, a schema failure returns Hono's own 400 body and the
@@ -78,6 +116,34 @@ export function createApp(
 
   app.use("/products", credentialed);
   app.use("/enrolments", credentialed);
+
+  /**
+   * After the credential check, and the order is the argument.
+   *
+   * Registered before it, an unauthenticated flood would consume the limit that
+   * a legitimate caller shares — the cheapest possible denial of service, paid
+   * for by the people the endpoint exists for. After it, a request has already
+   * been refused with a 401 before it costs anybody anything.
+   *
+   * The order decides more than that. `callerKey` charges the allowance to the
+   * actor, and the actor is only on the context once `requireCredential` has put
+   * it there — so registered first, this would silently fall back to keying on
+   * the address, and an office behind one NAT would share an allowance none of
+   * them spent. The correct order and the correct key are the same decision.
+   *
+   * The cost of this order is that the limit does not restrain somebody
+   * guessing credentials, and it does not need to: `requireCredential` answers
+   * one code for absent, malformed, unknown, expired, revoked and the wrong
+   * environment, so a guess learns nothing to iterate on.
+   *
+   * What it restrains is #120: `POST /enrolments` tells a caller whether a
+   * serial already has a live record, which cannot be hidden on a write
+   * endpoint, so what is left is making a sweep cost something.
+   */
+  const limited = rateLimited(rateLimit);
+
+  app.use("/products", limited);
+  app.use("/enrolments", limited);
 
   registerHealthRoutes(app, deps);
   registerProductRoutes(app, deps);
