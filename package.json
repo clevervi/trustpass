@@ -25,7 +25,8 @@
     "db:generate": "pnpm --filter @trustpass/db db:generate",
     "db:studio": "pnpm --filter @trustpass/db db:studio",
     "db:reset": "docker compose down -v && docker compose up -d --wait && pnpm db:migrate",
-    "db:preflight": "pnpm --filter @trustpass/db db:preflight"
+    "db:preflight": "pnpm --filter @trustpass/db db:preflight",
+    "db:issue-credential": "pnpm --filter @trustpass/db db:issue-credential"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
