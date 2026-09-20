@@ -1,6 +1,7 @@
+import type { Context } from "hono";
 import { describe, expect, it } from "vitest";
 import { WRITE_RATE_LIMIT } from "../app.js";
-import { bucketKey, createRateLimiter } from "./rate-limit.js";
+import { bucketKey, callerKey, createRateLimiter } from "./rate-limit.js";
 
 /**
  * The decision, tested without HTTP and without waiting.
@@ -231,6 +232,36 @@ describe("what a token bucket allows", () => {
       // allowances. Node canonicalises today — which is precisely the argument
       // that turned out to be wrong about `::ffff:`.
       expect(bucketKey("2001:0DB8:1234:5678::1")).toBe(bucketKey("2001:db8:1234:5678::1"));
+    });
+
+    /**
+     * Just enough `Context` for `callerKey`, which reads one variable.
+     *
+     * A real request cannot answer the question this asks. Under Vitest every
+     * request has the same absent address, so an HTTP test cannot show that the
+     * address is *not* part of the key when an actor is — only that two actors
+     * come out different, which a composite key would also satisfy.
+     */
+    const contextWith = (principal?: { actorId: number; credentialId: number }) =>
+      ({
+        get: (name: string) => (name === "principal" ? principal : undefined),
+      }) as unknown as Context;
+
+    it("charges an authenticated caller to the actor and to nothing else", () => {
+      // The whole key, asserted as an equality rather than as a difference.
+      // `toContain("actor:7")` would pass for `actor:7|address:…`, which is the
+      // composite key that was rejected — it hands a caller a fresh allowance
+      // for every address they appear from.
+      expect(callerKey(contextWith({ actorId: 7, credentialId: 3 }))).toBe("actor:7");
+    });
+
+    it("falls back to the address, and says which space the key is in", () => {
+      // Two spaces, never mixed: actor 1 and a caller at the address "1" are
+      // different callers. Without the prefix they would share an allowance.
+      const key = callerKey(contextWith());
+
+      expect(key.startsWith("address:")).toBe(true);
+      expect(key).not.toBe(callerKey(contextWith({ actorId: 1, credentialId: 1 })));
     });
 
     it("puts two link-local callers on one interface in one bucket", () => {
