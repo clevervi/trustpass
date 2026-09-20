@@ -34,6 +34,21 @@ Closes TP-
 
 ---
 
+## Argued review
+
+<!-- Both accounts are one maintainer, so this is a counter-argument, not a
+     second reader. Post the case under the account that authored the commits
+     and the objection under the other one, and say so in the first comment.
+     Neither may approve: `no-self-approval.yml` is a required check and fails
+     if either does. -->
+
+- [ ] The case is posted: why this design, which option was rejected, what it
+      would have cost
+- [ ] The objection is posted under the other account — or it is stated plainly
+      that the change was simple enough not to need one
+- [ ] Every objection is answered: the design changed, the answer is written
+      down, or it is an accepted limitation with an issue behind it
+
 - [ ] CI is green
 - [ ] `pnpm lint`, `pnpm typecheck`, `pnpm test` and `pnpm build` pass locally
 - [ ] `pnpm-lock.yaml` is committed if any dependency changed — a local run
