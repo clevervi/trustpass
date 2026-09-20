@@ -36,6 +36,34 @@ function forLog(value) {
   return readable.join("").slice(0, 120);
 }
 
+/**
+ * The contract's own shape, before it is used to judge anything.
+ *
+ * `compareMergeBar` skips a rule type it cannot find, which makes
+ * `must_be_present` load-bearing: empty it and the check keeps passing while no
+ * longer checking anything. That is the same shape as a required check whose
+ * name matches nothing — a value that looks like configuration and is a
+ * control.
+ *
+ * Asserted here as well as in the tests, because a test guarding a file sits
+ * next to the file, and relaxing both is one edit more than relaxing one.
+ */
+export function contractProblems(contract) {
+  const problems = [];
+
+  for (const type of ["required_status_checks", "pull_request"]) {
+    if (!contract.must_be_present?.includes(type)) {
+      problems.push(`the contract does not require the rule "${type}" to be present`);
+    }
+  }
+
+  if (!(contract.required_status_checks?.length > 0)) {
+    problems.push("the contract lists no required status checks");
+  }
+
+  return problems;
+}
+
 /** Rules the contract says must apply, that do not. */
 function missingRules(contract, rules) {
   const present = new Set(rules.map((rule) => rule.type));
@@ -143,6 +171,21 @@ async function main() {
 
   const repository = process.env.GITHUB_REPOSITORY ?? "clevervi/trustpass";
   const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+
+  // The contract before the comparison. A relaxed contract makes every later
+  // answer meaningless, and it is the one input nothing else validates.
+  const selfProblems = contractProblems(contract);
+
+  if (selfProblems.length > 0) {
+    console.error("The contract itself has been relaxed:");
+    console.error("");
+    for (const problem of selfProblems) {
+      console.error(`  - ${problem}`);
+    }
+    console.error("");
+    console.error("Nothing below would have been checked. Restore it before trusting a pass.");
+    process.exit(1);
+  }
 
   const rules = await rulesForDevelop(repository, token);
 

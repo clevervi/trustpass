@@ -28,6 +28,13 @@ on:
   schedule:
     # Daily. A setting changed in a browser is found within a day rather than
     # whenever somebody next opens a pull request.
+    #
+    # **And a failed scheduled run reports into a page nobody has open.** There
+    # is no notification here and no other scheduled job whose failure anybody
+    # has had to notice, so in practice the drift becomes visible on the next
+    # pull request — which is the window where nobody is looking. Stated rather
+    # than implied by the word `schedule`, because a daily check that nothing
+    # reads is a daily check in name.
     - cron: "17 6 * * *"
   workflow_dispatch:
 
