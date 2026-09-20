@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { changeProductStatus } from "../repositories/product-status-repository.js";
-import { expectSqlState, SqlState } from "../testing/sql-state.js";
+import { expectSqlState, SqlState, sqlStateOf } from "../testing/sql-state.js";
 import { insertProductWithProvenance } from "../testing/with-provenance.js";
 
 const runtimeUrl = process.env.RUNTIME_DATABASE_URL;
@@ -170,9 +170,68 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
     await db.$client.end();
   });
 
-  /** Every attack in this file expects exactly this, and never a trigger. */
-  const refused = (statement: string) =>
-    expectSqlState(db.execute(sql.raw(statement)), SqlState.INSUFFICIENT_PRIVILEGE);
+  /**
+   * Every attack in this file expects exactly this, and never a trigger.
+   *
+   * **Inside a transaction that can only end in a rollback**, and the reason is
+   * in the repository's own schema. The first version ran each statement
+   * directly:
+   *
+   *   const refused = (statement: string) =>
+   *     expectSqlState(db.execute(sql.raw(statement)), INSUFFICIENT_PRIVILEGE);
+   *
+   * When the privilege is missing — the expected case — nothing happens and
+   * nothing is left behind. When it is present the statement succeeds, the test
+   * fails, **and the change is committed**. That is not hypothetical: it left a
+   * `tp_probe text` column on `product` in a development database, from the
+   * `alter a table` row below, found only when #157 added a guard that looked at
+   * columns. A leftover table fails `covers every table` and a leftover function
+   * fails `can execute no function`; a leftover column failed nothing.
+   *
+   * The file already knew this for exactly one row. The enum rename carries a
+   * comment saying an attack test that does damage when it succeeds is a test
+   * nobody should run near anything that matters — and the fix applied there was
+   * to name a value that does not exist, which defuses that statement and no
+   * other. Two entries above it, `ALTER TABLE product ADD COLUMN` was doing
+   * damage the whole time.
+   *
+   * So the rollback is unconditional and does not depend on the assertion
+   * failing. A refusal aborts the transaction on its own; a success throws a
+   * sentinel that rolls it back and then fails the test by name. Neither path
+   * can commit.
+   */
+  class AttackSucceeded extends Error {
+    constructor(readonly statement: string) {
+      super(statement);
+      this.name = "AttackSucceeded";
+    }
+  }
+
+  const refused = async (statement: string): Promise<void> => {
+    try {
+      await db.transaction(async (tx) => {
+        await tx.execute(sql.raw(statement));
+
+        // Reached only when the attack was not refused. Rolls the transaction
+        // back, which is the whole point, and carries the statement out so the
+        // failure names what succeeded rather than what was expected.
+        throw new AttackSucceeded(statement);
+      });
+    } catch (error) {
+      if (error instanceof AttackSucceeded) {
+        expect.fail(`The attack was not refused and has been rolled back: ${error.statement}`);
+      }
+
+      expect(sqlStateOf(error)).toBe(SqlState.INSUFFICIENT_PRIVILEGE);
+      return;
+    }
+
+    // Unreachable: the callback either throws the sentinel or lets the
+    // database's own error out. Asserted rather than assumed, because "the
+    // transaction returned normally" would mean the sentinel stopped being
+    // thrown and every attack in this file had quietly stopped being checked.
+    expect.fail(`The transaction returned without refusing or rolling back: ${statement}`);
+  };
 
   describe("who it is", () => {
     it("connects as trustpass_runtime and not as anybody else", async () => {
@@ -325,13 +384,45 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
       // records this as a win and moves on. A defender checking exit codes
       // records it as a breach. Only the catalogue answers the question, so
       // that is what this asserts.
-      await db.execute(sql.raw("GRANT DELETE ON lifecycle_event TO trustpass_runtime"));
+      // Rolled back like every other attack, and this one needed it most.
+      //
+      // It is the only attack asserted against the catalogue instead of against
+      // an error, so it sits outside `refused()` and did not get the transaction
+      // when the others did. Measured: with the runtime made a member of
+      // `trustpass_owner`, this GRANT stops being a no-op, succeeds, and
+      // **persists** — `trustpass_runtime` came out of that run holding DELETE
+      // on `lifecycle_event`, which then made `cannot delete history` answer
+      // TP002 instead of 42501 and `holds exactly lifecycle_event` go red.
+      //
+      // A test for privilege escalation that escalates a privilege when it
+      // fails is the same defect as #160 wearing different clothes, and it was
+      // found by the mutation for #160 rather than by reading.
+      //
+      // The catalogue is read inside the transaction, because outside it the
+      // rollback has already undone what is being asked about.
+      let granted: boolean | undefined;
 
-      const [row] = await db.execute<{ granted: boolean }>(
-        sql`SELECT has_table_privilege(current_user, 'lifecycle_event', 'DELETE') AS granted`,
-      );
+      try {
+        await db.transaction(async (tx) => {
+          await tx.execute(sql.raw("GRANT DELETE ON lifecycle_event TO trustpass_runtime"));
 
-      expect(row?.granted).toBe(false);
+          const [row] = await tx.execute<{ granted: boolean }>(
+            sql`SELECT has_table_privilege(current_user, 'lifecycle_event', 'DELETE') AS granted`,
+          );
+
+          granted = row?.granted;
+
+          throw new AttackSucceeded("GRANT DELETE ON lifecycle_event TO trustpass_runtime");
+        });
+      } catch (error) {
+        // Unconditional: the sentinel is the only way out, so the rollback does
+        // not depend on the assertion below failing.
+        if (!(error instanceof AttackSucceeded)) {
+          throw error;
+        }
+      }
+
+      expect(granted).toBe(false);
     });
   });
 
