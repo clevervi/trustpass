@@ -121,14 +121,24 @@ async function main(): Promise<void> {
     process.env[entry.variable] ?? LOCAL_DEV_PASSWORDS[entry.role];
 
   if (localDev.ok && missing.length > 0) {
-    console.log("Using published development passwords for:");
+    // The roles, not the values.
+    //
+    // The first version printed each password beside its role, reasoning that
+    // they are published and hiding them would teach somebody to treat a
+    // published default as a secret. CodeQL disagreed — `js/clear-text-logging`,
+    // high — and it is right about the thing that matters, which is not this
+    // value but the shape. A line that writes a password into stdout is a line
+    // somebody copies into a script where the password is real, and the comment
+    // explaining why this one is fine does not travel with it.
+    //
+    // Nothing is lost: `db:setup` prints the connection strings at the end,
+    // which is the output somebody actually pastes, and the values themselves
+    // are two lines of `local-dev.ts` away.
+    console.log("Using the published development passwords for:");
     for (const entry of missing) {
-      // Printed in full, because they are in the repository and pretending
-      // otherwise would teach somebody to treat a published default as a
-      // secret — and then a secret as a default.
-      console.log(`  ${entry.role}  ${LOCAL_DEV_PASSWORDS[entry.role]}`);
+      console.log(`  ${entry.role}`);
     }
-    console.log("");
+    console.log("  see packages/db/src/scripts/local-dev.ts\n");
   }
 
   const sql = postgres(databaseUrl, { max: 1, onnotice: () => {} });
