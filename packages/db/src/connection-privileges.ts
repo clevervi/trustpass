@@ -31,6 +31,7 @@ import type { Database } from "./client.js";
  * prevents, and the role model is the defence. This is the check that the role
  * model is the one being used.
  */
+
 export interface ConnectionPrivileges {
   /** `current_user`, which is the effective role, not the one in the URL. */
   role: string;
@@ -92,7 +93,76 @@ export interface ConnectionPrivileges {
    * itself folds plain ownership in as well.
    */
   reachableOwnership: number;
+  /**
+   * Entries of `FORBIDDEN_PRIVILEGES` this role actually holds, described the
+   * way somebody has to act on them.
+   *
+   * Empty on a correctly migrated database. A missing table lands here too,
+   * rather than throwing: an API pointed at a database with no schema should
+   * refuse for a reason that names the table, not with a query error.
+   */
+  forbiddenHeld: readonly string[];
 }
+
+/**
+ * Privileges the migrations deliberately do not grant, named one by one.
+ *
+ * The five attributes and `reachableOwnership` answer *"can this connection
+ * dismantle the guarantees?"*. They never ask what it may **do**, and a role
+ * that owns nothing while holding `UPDATE ON TABLE product` passes every one of
+ * them — which is the posture this application was in before `0027`, and the
+ * posture any environment is in where `0027` has not been applied.
+ *
+ * So this is the other question, and it is asked of the catalogue rather than
+ * inferred from a migration having supposedly run. Six entries rather than the
+ * whole grant matrix: each one is a capability that, on its own, undoes
+ * something a reader of this repository is told is guaranteed.
+ *
+ * The full matrix lives in `least-privilege.integration.test.ts` and is checked
+ * there against a real database. This is the subset worth refusing to start
+ * over, and duplicating six lines is the cost of the application being able to
+ * check them without a test runner.
+ */
+export const FORBIDDEN_PRIVILEGES: readonly {
+  readonly relation: string;
+  readonly privilege: string;
+  /** Set when the grant is column-level, per `0027`. */
+  readonly column?: string;
+  readonly because: string;
+}[] = [
+  {
+    relation: "product",
+    privilege: "UPDATE",
+    because: "the runtime updates two columns, not the table (0027)",
+  },
+  {
+    relation: "product",
+    privilege: "UPDATE",
+    column: "serial",
+    because: "a serial is what a passport is matched against",
+  },
+  {
+    relation: "product",
+    privilege: "UPDATE",
+    column: "trustpass_id",
+    because: "a printed label depends on it (ADR 0004)",
+  },
+  {
+    relation: "lifecycle_event",
+    privilege: "UPDATE",
+    because: "history is append-only",
+  },
+  {
+    relation: "lifecycle_event",
+    privilege: "DELETE",
+    because: "history is append-only",
+  },
+  {
+    relation: "capacity_grant",
+    privilege: "INSERT",
+    because: "a role that can grant itself authority has none worth checking",
+  },
+];
 
 /**
  * The reasons this connection should not run the application, in the order a
@@ -132,7 +202,70 @@ export function privilegeFailures(privileges: ConnectionPrivileges): string[] {
     );
   }
 
+  // Each one separately rather than "it holds 3 privileges it should not",
+  // because the remedy differs: a missing table means the migrations have not
+  // run, and a held privilege means somebody granted it.
+  for (const held of privileges.forbiddenHeld) {
+    failures.push(held);
+  }
+
   return failures;
+}
+
+/**
+ * Which of `FORBIDDEN_PRIVILEGES` this connection actually holds.
+ *
+ * One statement per entry rather than one clever query, because the entries
+ * differ — some are table-level and some are column-level — and a query that
+ * handled both would be harder to read than six that do not.
+ *
+ * **`to_regclass` first, and the reason is the case this check exists for.**
+ * `has_table_privilege` on a table that does not exist raises, so an API
+ * pointed at an empty database would have failed with a query error instead of
+ * a sentence naming the table. A missing table is the most likely way for this
+ * to trip — it means the migrations have not run — and it deserves the clearer
+ * message, not the worse one.
+ */
+async function heldForbiddenPrivileges(db: Database): Promise<string[]> {
+  const held: string[] = [];
+  // Once per table, not once per entry. An empty database has three entries
+  // naming `product` and reported the same sentence three times — six lines
+  // saying three things, in the message somebody reads while a deploy is
+  // failing. Found by pointing it at one.
+  const reportedMissing = new Set<string>();
+
+  for (const entry of FORBIDDEN_PRIVILEGES) {
+    const [row] = await db.execute<{ missing: boolean; granted: boolean | null }>(sql`
+      SELECT to_regclass(${entry.relation}) IS NULL AS missing,
+             CASE
+               WHEN to_regclass(${entry.relation}) IS NULL THEN NULL
+               WHEN ${entry.column ?? null}::text IS NULL
+                 THEN has_table_privilege(current_user, ${entry.relation}, ${entry.privilege})
+               ELSE has_column_privilege(
+                 current_user, ${entry.relation}, ${entry.column ?? ""}::text, ${entry.privilege}
+               )
+             END AS granted
+    `);
+
+    const target = entry.column ? `${entry.relation}.${entry.column}` : entry.relation;
+
+    if (row?.missing) {
+      if (!reportedMissing.has(entry.relation)) {
+        reportedMissing.add(entry.relation);
+        held.push(
+          `the table ${entry.relation} does not exist, so the migrations have not run here`,
+        );
+      }
+
+      continue;
+    }
+
+    if (row?.granted) {
+      held.push(`it may ${entry.privilege} ${target} — ${entry.because}`);
+    }
+  }
+
+  return held;
 }
 
 /**
@@ -232,6 +365,7 @@ export async function readConnectionPrivileges(db: Database): Promise<Connection
     createRole: row.create_role,
     replication: row.replication,
     bypassRowLevelSecurity: row.bypass_rls,
+    forbiddenHeld: await heldForbiddenPrivileges(db),
     // `count(*)` is bigint, and the driver hands bigint back as text rather
     // than lose precision. Parsing it here keeps that away from every caller.
     reachableOwnership: Number.parseInt(row.reachable_ownership, 10),
