@@ -36,6 +36,11 @@ updates:
       #
       # Minor and patch bumps still arrive. The major moves when the runtime
       # moves, in the same pull request, deliberately.
+      #
+      # This rule only stops the pull request being opened. The pairing itself
+      # is checked by the "Node's major and its types agree" step in ci.yml,
+      # which fails in both directions — including the one this rule cannot
+      # cover, where NODE_VERSION moves and the types are left behind.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
 
