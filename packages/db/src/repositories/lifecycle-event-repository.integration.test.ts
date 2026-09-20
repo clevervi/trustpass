@@ -33,7 +33,12 @@ async function issuerFixture(
   db: Database,
   prefix: string,
   run: string,
-): Promise<{ organizationId: number; caller: { actorId: number; grantId: number } }> {
+): Promise<{
+  organizationId: number;
+  caller: { actorId: number };
+  /** The seeded grant, returned the way `insertProduct` now asks for it. */
+  authorise: () => Promise<{ grantId: number }>;
+}> {
   const [company] = await db
     .insert(organization)
     .values({
@@ -58,7 +63,9 @@ async function issuerFixture(
   // inside the tests the exact gap the change closes.
   const grantId = await grantAuthorityOver(db, actorId, organizationId);
 
-  return { organizationId, caller: { actorId, grantId } };
+  // Returns the grant rather than being handed it, because that is the shape
+  // the real call site has now: the decision happens inside the transaction.
+  return { organizationId, caller: { actorId }, authorise: async () => ({ grantId }) };
 }
 
 describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
@@ -71,7 +78,8 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
    * Whoever is recording these. A real row, because `lifecycle_event.actor_id`
    * references `actor` and a write with no identified actor no longer compiles.
    */
-  let caller: { actorId: number; grantId: number };
+  let caller: { actorId: number };
+  let authorise: () => Promise<{ grantId: number }>;
 
   function build(overrides: Partial<NewProduct> = {}): NewProduct {
     sequence += 1;
@@ -95,6 +103,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
 
     organizationId = fixture.organizationId;
     caller = fixture.caller;
+    authorise = fixture.authorise;
   });
 
   afterAll(async () => {
@@ -102,7 +111,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   });
 
   it("writes exactly one event when a product is registered", async () => {
-    const result = await insertProduct(db, build(), caller);
+    const result = await insertProduct(db, build(), caller, authorise);
     if (!result.ok) throw new Error(`expected success, got ${result.reason}`);
 
     const history = await findProductHistory(db, result.product.id);
@@ -117,7 +126,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   });
 
   it("records the issuer as the actor, not an anonymous write", async () => {
-    const result = await insertProduct(db, build(), caller);
+    const result = await insertProduct(db, build(), caller, authorise);
     if (!result.ok) throw new Error("expected success");
 
     // The length assertion is what makes the `[0]` valid. `product_id` is not
@@ -139,7 +148,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   });
 
   it("dates the event to the product's own creation, not to a second clock", async () => {
-    const result = await insertProduct(db, build(), caller);
+    const result = await insertProduct(db, build(), caller, authorise);
     if (!result.ok) throw new Error("expected success");
 
     // Asked of Postgres, not compared in JavaScript.
@@ -160,7 +169,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   });
 
   it("says the record began rather than that an issuer committed, for a draft", async () => {
-    const result = await insertProduct(db, build({ status: "draft" }), caller);
+    const result = await insertProduct(db, build({ status: "draft" }), caller, authorise);
     if (!result.ok) throw new Error("expected success");
 
     const history = await findProductHistory(db, result.product.id);
@@ -172,13 +181,14 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
 
   it("leaves no product behind when the serial is already live", async () => {
     const values = build();
-    const first = await insertProduct(db, values, caller);
+    const first = await insertProduct(db, values, caller, authorise);
     if (!first.ok) throw new Error("expected the first insert to succeed");
 
     const second = await insertProduct(
       db,
       { ...values, trustpassId: generateTrustPassId() },
       caller,
+      authorise,
     );
 
     expect(second).toEqual({ ok: false, reason: "duplicate_live_serial" });
@@ -195,8 +205,8 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   });
 
   it("gives each product its own history", async () => {
-    const one = await insertProduct(db, build(), caller);
-    const two = await insertProduct(db, build(), caller);
+    const one = await insertProduct(db, build(), caller, authorise);
+    const two = await insertProduct(db, build(), caller, authorise);
     if (!one.ok || !two.ok) throw new Error("expected both to succeed");
 
     expect(await findProductHistory(db, one.product.id)).toHaveLength(1);
@@ -224,7 +234,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   });
 
   it("orders history by when things happened, not by when they were recorded", async () => {
-    const result = await insertProduct(db, build(), caller);
+    const result = await insertProduct(db, build(), caller, authorise);
     if (!result.ok) throw new Error("expected success");
 
     const march = new Date("2026-03-04T10:00:00Z");
@@ -247,7 +257,7 @@ describe.skipIf(!databaseUrl)("registration records its own provenance", () => {
   });
 
   it("does not expose internal keys to a reader", async () => {
-    const result = await insertProduct(db, build(), caller);
+    const result = await insertProduct(db, build(), caller, authorise);
     if (!result.ok) throw new Error("expected success");
 
     const [entry] = await findProductHistory(db, result.product.id);
@@ -264,7 +274,8 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
   const run = Math.random().toString(36).slice(2, 8).toUpperCase();
   let db: Database;
   let organizationId: number;
-  let caller: { actorId: number; grantId: number };
+  let caller: { actorId: number };
+  let authorise: () => Promise<{ grantId: number }>;
 
   beforeAll(async () => {
     db = createDatabase(databaseUrl as string);
@@ -272,6 +283,7 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
 
     organizationId = fixture.organizationId;
     caller = fixture.caller;
+    authorise = fixture.authorise;
   });
 
   afterAll(async () => {
@@ -291,6 +303,7 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
         status: "registered",
       },
       caller,
+      authorise,
     );
     if (!result.ok) throw new Error("expected success");
 
@@ -320,6 +333,7 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
           status: "registered",
         },
         caller,
+        authorise,
       ),
       insertProduct(
         db,
@@ -333,6 +347,7 @@ describe.skipIf(!databaseUrl)("history found by the public identifier", () => {
           status: "registered",
         },
         caller,
+        authorise,
       ),
     ]);
     if (!one.ok || !two.ok) throw new Error("expected both");

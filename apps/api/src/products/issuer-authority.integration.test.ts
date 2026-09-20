@@ -1,5 +1,5 @@
 import { type AuthenticatedPrincipal, createDatabase, type Database, schema } from "@trustpass/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { enrolProduct } from "../enrolments/enrol-product.js";
@@ -351,6 +351,158 @@ describe.skipIf(!databaseUrl)("acting for an organization you have authority ove
     expect(missing.status).toBe(422);
 
     await expect(missing.json()).resolves.toMatchObject({ error: "issuer_not_found" });
+  });
+
+  describe("authority lost while the write is in flight", () => {
+    /**
+     * The race #174 measured, run as a test rather than recounted.
+     *
+     * `registerProduct` used to authorise on one connection and write on
+     * another. A second session revoking the grant in between produced a `201`
+     * and a `lifecycle_event` whose `grant_id` named a grant that had already
+     * been revoked at the instant the event claimed — a false row, in an
+     * append-only table, written by the path whose purpose is provenance.
+     *
+     * The seam is forced rather than waited for: `db.transaction` is proxied, so
+     * the interference lands at exactly the moment the window was open. If the
+     * authorisation ever moves back outside the transaction, these go red.
+     */
+    function interfering(interfere: () => Promise<void>): Database {
+      return new Proxy(db, {
+        get(target, property, receiver) {
+          if (property !== "transaction") {
+            return Reflect.get(target, property, receiver);
+          }
+
+          return async (...args: unknown[]) => {
+            await interfere();
+
+            return (target.transaction as (...a: unknown[]) => unknown)(...args);
+          };
+        },
+      }) as Database;
+    }
+
+    async function registerWhile(
+      as: AuthenticatedPrincipal,
+      interfere: () => Promise<void>,
+      serial: string,
+    ) {
+      const racing = interfering(interfere);
+
+      const app = createApp(
+        buildDependencies({
+          authenticate: async () => as,
+          registerProduct: (input, who) => registerProduct(racing, input, who),
+        }),
+      );
+
+      return app.request("/products", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...credentialHeaders() },
+        body: JSON.stringify({
+          issuer: mine,
+          brand: "ASUS",
+          model: "ROG",
+          serial,
+          category: "gpu",
+        }),
+      });
+    }
+
+    async function eventCountFor(serial: string) {
+      const rows = await db
+        .select({ id: schema.lifecycleEvent.id })
+        .from(schema.lifecycleEvent)
+        .innerJoin(schema.product, eq(schema.product.id, schema.lifecycleEvent.productId))
+        .where(eq(schema.product.serial, serial));
+
+      return rows.length;
+    }
+
+    it("refuses when the grant is revoked in the window, and writes nothing", async () => {
+      const serial = `${run}-RACE-REVOKED`;
+      const racer = await principal({ name: "revoked mid-write", organizationId: mine.id });
+
+      const [grant] = await db
+        .select({ id: schema.capacityGrant.id })
+        .from(schema.capacityGrant)
+        .where(eq(schema.capacityGrant.actorId, racer.actorId));
+
+      const response = await registerWhile(
+        // As the racer, whose grant is the one being revoked. The first version
+        // of this authenticated as `authorised` and revoked somebody else's
+        // grant, then asserted no row was written — a test that could only have
+        // passed if the endpoint were broken.
+        racer,
+        async () => {
+          await db.insert(schema.capacityGrantRevocation).values({
+            grantId: grant?.id as number,
+            // The database's clock, which is the clock the event would be
+            // stamped with — so the revocation is strictly before any
+            // `occurred_at`.
+            revokedAt: sql`now()`,
+            revokedBy: racer.actorId,
+            reason: "race probe",
+          });
+        },
+        serial,
+      );
+
+      expect(response.status).toBe(403);
+      expect(await eventCountFor(serial)).toBe(0);
+    });
+
+    it("refuses when the membership ends in the window, and writes nothing", async () => {
+      // The route the issue did not list. ADR 0011 §2: a grant held through an
+      // organization applies only while a membership covers the moment, and
+      // `membership` is not append-only — so `ended_at` can move mid-write. A
+      // fix that only watched revocations would leave this open.
+      const serial = `${run}-RACE-UNMEMBERED`;
+      const racer = await principal({ name: "unmembered mid-write", organizationId: mine.id });
+
+      const app = createApp(
+        buildDependencies({
+          authenticate: async () => racer,
+          registerProduct: (input, who) =>
+            registerProduct(
+              interfering(async () => {
+                await db
+                  .update(schema.membership)
+                  .set({ endedAt: sql`now()` })
+                  .where(eq(schema.membership.actorId, racer.actorId));
+              }),
+              input,
+              who,
+            ),
+        }),
+      );
+
+      const response = await app.request("/products", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...credentialHeaders() },
+        body: JSON.stringify({
+          issuer: mine,
+          brand: "ASUS",
+          model: "ROG",
+          serial,
+          category: "gpu",
+        }),
+      });
+
+      expect(response.status).toBe(403);
+      expect(await eventCountFor(serial)).toBe(0);
+    });
+
+    it("still writes when nothing interferes, so the guard is not refusing everything", async () => {
+      // The other half. A check that refused every racing write would pass both
+      // cases above and be worthless.
+      const serial = `${run}-RACE-CLEAN`;
+      const response = await registerWhile(authorised, async () => {}, serial);
+
+      expect(response.status).toBe(201);
+      expect(await eventCountFor(serial)).toBe(1);
+    });
   });
 
   it("writes nothing when it refuses", async () => {

@@ -42,8 +42,19 @@ export interface HeldGrant {
  * the condition is `organization_id IS NULL OR a membership covers it` rather
  * than a join that would silently drop every system grant.
  */
+/**
+ * Enough of a `Database` to read, so a transaction can be passed instead.
+ *
+ * The same widening `verifyCredential` uses, and here for a sharper reason:
+ * #174 showed that authorising on one connection and writing on another leaves
+ * a window in which a `lifecycle_event` can name a grant that had already been
+ * revoked at the instant the event claims. Closing it means this runs inside
+ * the writing transaction, and a transaction is not a `Database`.
+ */
+export type GrantReader = Pick<Database, "select">;
+
 export async function grantsHeldAt(
-  db: Database,
+  db: GrantReader,
   actorId: number,
   at: Date,
 ): Promise<readonly HeldGrant[]> {

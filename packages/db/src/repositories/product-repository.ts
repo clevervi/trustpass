@@ -1,5 +1,9 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 import type { Database } from "../client.js";
+
+/** The handle Drizzle hands a transaction callback. Not a `Database`. */
+export type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
+
 import type { TrustPassId } from "../identity/trustpass-id.js";
 import { lifecycleEvent } from "../schema/lifecycle-event.js";
 import { organization, type VerificationStatus } from "../schema/organization.js";
@@ -17,9 +21,35 @@ import type { RecordingActor } from "./enrolment-repository.js";
 /** The partial unique index declared in `schema/product.ts`. */
 const LIVE_SERIAL_INDEX = "product_live_organization_serial_idx";
 
+/**
+ * Thrown to unwind the transaction when authority is refused, and never seen by
+ * a caller — `insertProduct` turns it back into an outcome.
+ *
+ * An outcome rather than an exception at the boundary, for the reason the rest
+ * of this file gives: a refusal is an expected answer to a well-formed request
+ * and modelling it as an error makes every caller wrap a normal branch in a try.
+ */
+class NotAuthorised extends Error {
+  constructor() {
+    super("The caller is not authorised to write this product.");
+    this.name = "NotAuthorised";
+  }
+}
+
 export type InsertProductResult =
   | { readonly ok: true; readonly product: Product }
-  | { readonly ok: false; readonly reason: "duplicate_live_serial" };
+  | { readonly ok: false; readonly reason: "duplicate_live_serial" }
+  | { readonly ok: false; readonly reason: "not_authorised" };
+
+/** What a caller decides, inside the transaction that will record the decision. */
+export type Authorise = (
+  tx: Transaction,
+  /**
+   * The transaction's own instant, and the same value the event will be
+   * stamped with — `now()` is `transaction_timestamp()`, measured.
+   */
+  at: Date,
+) => Promise<{ readonly grantId: number } | null>;
 
 /**
  * Inserts a product, reporting a duplicate live serial as an outcome rather
@@ -37,7 +67,28 @@ export type InsertProductResult =
 export async function insertProduct(
   db: Database,
   values: NewProduct,
-  actor: RecordingActor,
+  actor: Omit<RecordingActor, "grantId">,
+  /**
+   * Who says this write is allowed, decided **inside** this transaction.
+   *
+   * #174 measured what the alternative costs. Authorising on one connection and
+   * writing on another leaves a window where a second session can revoke the
+   * grant — or end the membership it is held through — between the two, and the
+   * event that results names a grant that was already invalid at the instant
+   * the event claims. A false row, in an append-only table, written by the path
+   * whose whole purpose is provenance.
+   *
+   * A callback rather than a grant id, and rather than moving the rule in here.
+   * Which capacity, over which organization, is `apps/api`'s decision and stays
+   * there; what this package owns is that the decision and the record of it are
+   * one act. Passing an id would put the lookup back outside the transaction
+   * and change nothing.
+   *
+   * `at` is the transaction's instant and the same value `occurred_at` gets, so
+   * "was this grant valid when the event says it happened" is true by
+   * construction rather than by two clocks agreeing.
+   */
+  authorise: Authorise,
 ): Promise<InsertProductResult> {
   try {
     // One transaction, because a product and the record of where it came from
@@ -46,6 +97,30 @@ export async function insertProduct(
     // would be invisible — nothing later can tell that its history is missing
     // rather than empty.
     return await db.transaction(async (tx) => {
+      // The transaction's own instant, read once and used twice: to decide
+      // whether the authority held, and — as `now()` below — to stamp the event.
+      // `now()` is `transaction_timestamp()`, so both are the same moment by
+      // construction rather than by two clocks being close enough.
+      //
+      // `new Date(...)` at the boundary, because this comes back as a string.
+      // The driver parses a `timestamptz` *column* into a `Date` and does not
+      // do the same for an expression in a bare `execute`, so passing it
+      // straight to `grantsHeldAt` reached Drizzle's timestamp mapper and threw
+      // `value.toISOString is not a function`. The same shape as `bigint`
+      // arriving as text: ask what the driver returns, not what the type says.
+      const [instant] = await tx.execute<{ at: string }>(sql`SELECT now() AS at`);
+      const at = new Date(instant?.at as string);
+
+      const authority = await authorise(tx, at);
+
+      if (!authority) {
+        // Refused before anything is written. Thrown rather than returned so
+        // the transaction unwinds — a `return` here would commit the empty
+        // transaction, which is harmless today and is the kind of thing that
+        // stops being harmless when somebody adds a statement above it.
+        throw new NotAuthorised();
+      }
+
       const [created] = await tx.insert(product).values(values).returning();
 
       if (!created) {
@@ -78,7 +153,7 @@ export async function insertProduct(
         // revoked or expires, `grantsHeldAt` will never return it again, and
         // without this column the event says `issuer` while nothing can say
         // which grant was held — or whether one was.
-        grantId: actor.grantId,
+        grantId: authority.grantId,
         organizationId: created.organizationId,
         // `now()` rather than the returned `created.createdAt`, and the
         // difference is not cosmetic. Postgres stores `timestamptz` to
@@ -95,6 +170,10 @@ export async function insertProduct(
       return { ok: true, product: created };
     });
   } catch (error) {
+    if (error instanceof NotAuthorised) {
+      return { ok: false, reason: "not_authorised" };
+    }
+
     const violation = violatedConstraint(error);
 
     if (violation.code === UNIQUE_VIOLATION && violation.constraint === LIVE_SERIAL_INDEX) {
