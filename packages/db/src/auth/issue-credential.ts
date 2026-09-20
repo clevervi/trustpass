@@ -20,6 +20,37 @@ import type { IssuanceRequest } from "./issuance.js";
  * may do is a separate lookup (#152). A version of this that also created a
  * membership would be doing authorisation's job quietly, and nothing today
  * would notice — the authority model has no consumers yet.
+ *
+ * ## What this function is not responsible for
+ *
+ * **It issues. It does not deliver.** There is deliberately no terminal check
+ * here: this can be called from non-interactive code, and the tests depend on
+ * that. A caller that hands the secret to a person must impose its own delivery
+ * policy — `scripts/issue-credential.ts` refuses unless stdout is a TTY and
+ * unless `CI` is unset, and any future caller owes the same of whatever channel
+ * it uses.
+ *
+ * Two responsibilities, kept apart on purpose:
+ *
+ *   issuing      mint a credential and return the secret to the caller
+ *   delivering   decide whether that secret may reach a human safely
+ *
+ * Putting the TTY check in here would merge them, make every test require an
+ * interactive terminal, and still answer nothing if a second legitimate
+ * delivery channel ever appears.
+ *
+ * ## What actually stops the API from calling this
+ *
+ * Not this file. **The grant matrix.** `trustpass_runtime` holds `SELECT` on
+ * `credential` and no `INSERT` (#119), so an endpoint wired to this would fail
+ * at the database rather than at a code review.
+ *
+ * That is a stronger guarantee than a check here would be — it survives
+ * somebody deleting the script — and it is a more fragile one in a different
+ * direction: it does not survive somebody widening the grant. So the grant is
+ * now part of the security boundary of credential issuance, and
+ * `least-privilege.integration.test.ts` asserts it by attempting the insert
+ * rather than only by reading the catalogue.
  */
 
 export interface IssuedFor {
