@@ -366,6 +366,13 @@ describe.skipIf(!databaseUrl)("acting for an organization you have authority ove
      * The seam is forced rather than waited for: `db.transaction` is proxied, so
      * the interference lands at exactly the moment the window was open. If the
      * authorisation ever moves back outside the transaction, these go red.
+     *
+     * **The proxy is coupled to a structural fact.** It assumes `insertProduct`
+     * opens exactly one transaction, from this handle, after the authority has
+     * been decided. Move that transaction earlier and the interference lands
+     * somewhere else — these keep passing while testing something different.
+     * There is no better seam without changing production code to expose one,
+     * which would be a worse trade, so the coupling is written down instead.
      */
     function interfering(interfere: () => Promise<void>): Database {
       return new Proxy(db, {

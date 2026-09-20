@@ -91,6 +91,21 @@ function eventFor(from: ProductStatus, to: ChangeableStatus): LifecycleEventType
  * both are expected answers to a well-formed request, and modelling them as
  * errors would make every caller wrap this in a try block to read a normal
  * branch.
+ *
+ * **This does not authorise anything, and `insertProduct` now does.** That
+ * difference is deliberate and it is a gap rather than a decision. `actorKind`
+ * arrives from the caller and is written onto the event as a claim; no grant is
+ * consulted, so nothing here establishes that the caller may act in the
+ * capacity the record will assert.
+ *
+ * `insertProduct` takes an `authorise` callback that runs inside its
+ * transaction, because #174 measured what deciding outside one costs — an event
+ * naming a grant that had already been revoked at the instant the event claims.
+ * The same shape applies here the moment this has a production caller, and it
+ * has none today, which is the only reason this is not a live defect.
+ *
+ * Written where somebody adding that caller will be standing, rather than only
+ * in #153.
  */
 export async function changeProductStatus(
   db: Database,
