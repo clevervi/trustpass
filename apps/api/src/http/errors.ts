@@ -52,6 +52,16 @@ export const ApiErrorCode = {
    * a caller learning which applied would learn whether a credential exists.
    */
   UNAUTHENTICATED: "unauthenticated",
+  /**
+   * Authenticated, and not permitted to act for the organization named.
+   *
+   * Deliberately distinct from `issuer_not_found`. Collapsing the two would
+   * tell somebody acting for their own organization that no such organization
+   * is registered — a lie to the honest caller, sending them to fix data that
+   * is correct. What it discloses, that the organization exists, the 422
+   * already discloses and a public registry publishes.
+   */
+  NOT_AUTHORISED_FOR_ISSUER: "not_authorised_for_issuer",
 } as const;
 
 /**
