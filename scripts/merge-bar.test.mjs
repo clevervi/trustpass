@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { compareMergeBar } from "./merge-bar.mjs";
+import { compareMergeBar, contractProblems } from "./merge-bar.mjs";
 
 /**
  * The comparison that decides whether the merge bar is still the merge bar.
@@ -190,6 +190,34 @@ describe("comparing the merge bar against what GitHub applies", () => {
       problems.every((p) => p.length < 300),
       "a message grew without bound",
     );
+  });
+
+  describe("the contract's own shape", () => {
+    it("is satisfied by the committed contract", () => {
+      assert.deepEqual(contractProblems(CONTRACT), []);
+    });
+
+    it("objects when must_be_present is emptied", () => {
+      // The relaxation that would make every other answer meaningless: the
+      // comparison skips a rule type it cannot find, so an empty list means it
+      // checks nothing and reports nothing.
+      const problems = contractProblems({ ...CONTRACT, must_be_present: [] });
+
+      assert.equal(problems.length, 2);
+      assert.match(problems.join(" "), /required_status_checks/);
+      assert.match(problems.join(" "), /pull_request/);
+    });
+
+    it("objects when the required check list is emptied", () => {
+      assert.match(
+        contractProblems({ ...CONTRACT, required_status_checks: [] }).join(" "),
+        /no required status checks/,
+      );
+    });
+
+    it("objects when the fields are missing entirely", () => {
+      assert.ok(contractProblems({}).length >= 3);
+    });
   });
 
   it("holds the contract file to the shape the comparison assumes", () => {

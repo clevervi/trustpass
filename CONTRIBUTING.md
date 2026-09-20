@@ -131,13 +131,12 @@ That check is a control, not a description. If it is ever changed to refuse only
 the pull request's own author, this section stops being true — and the check
 would still be green and still be named the same thing.
 
-Branch protection on `develop`, read from the API rather than from memory:
-
-| Setting                    | Value                                                   |
-| -------------------------- | ------------------------------------------------------- |
-| Required approving reviews | **0**                                                   |
-| Required checks            | Lint, typecheck and build; Test against Postgres; Secret scan; No approval from a listed account |
-| Enforced for admins        | yes                                                     |
+**What `develop` requires is in [`.github/merge-bar.json`](.github/merge-bar.json),
+and this document deliberately does not restate it.** A table here would be a
+second copy, updated by hand, of something a check already compares against
+reality — and the copy nobody checks is the one that goes stale while reading as
+though it were current. Zero approving reviews is quoted above because it is the
+part that explains the rest; everything else is in the file.
 
 **Checked, on every pull request and once a day.** The same requirements are
 also expressed as a ruleset on `develop`, and
