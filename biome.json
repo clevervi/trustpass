@@ -56,7 +56,7 @@
   },
   "overrides": [
     {
-      "includes": ["packages/db/src/scripts/**", "apps/api/src/scripts/**"],
+      "includes": ["packages/db/src/scripts/**", "apps/api/src/scripts/**", "scripts/**"],
       "linter": {
         "rules": {
           "suspicious": {

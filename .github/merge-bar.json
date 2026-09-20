@@ -1,0 +1,43 @@
+{
+  "_comment": [
+    "The merge bar for `develop`, as a contract this repository can check.",
+    "",
+    "GitHub enforces it; this file states what enforcement is supposed to look",
+    "like, and `pnpm ci:verify-merge-bar` compares the two. Neither is the",
+    "source of truth on its own: GitHub decides what actually happens, and this",
+    "decides whether that is what anybody agreed to.",
+    "",
+    "It is expressed as a ruleset rather than as classic branch protection for",
+    "one measured reason: the workflow-scoped GITHUB_TOKEN gets 403 on",
+    "/branches/develop/protection and can read /rules/branches/develop. Without",
+    "that, checking this from CI would need a stored token with",
+    "administration: read, which would be the first long-lived credential this",
+    "repository holds. See #165.",
+    "",
+    "Classic branch protection is still in force alongside it. Both apply and",
+    "GitHub takes the most restrictive result, so this adds a second enforcement",
+    "rather than replacing one — and removing the classic rules is a separate",
+    "decision with its own argument."
+  ],
+
+  "ruleset_name": "develop merge bar",
+
+  "required_status_checks": [
+    "Lint, typecheck and build",
+    "Test against Postgres",
+    "Secret scan",
+    "No approval from a listed account"
+  ],
+
+  "strict_required_status_checks_policy": true,
+
+  "pull_request": {
+    "required_approving_review_count": 0,
+    "dismiss_stale_reviews_on_push": true,
+    "require_code_owner_review": false,
+    "require_last_push_approval": false,
+    "required_review_thread_resolution": true
+  },
+
+  "must_be_present": ["deletion", "non_fast_forward", "required_status_checks", "pull_request"]
+}
