@@ -62,6 +62,15 @@ export const ApiErrorCode = {
    * already discloses and a public registry publishes.
    */
   NOT_AUTHORISED_FOR_ISSUER: "not_authorised_for_issuer",
+  /**
+   * Too many requests from this caller, whatever they were asking for.
+   *
+   * Carries nothing about the request. `POST /enrolments` still answers whether
+   * a serial has a live record — #120 explains why a write endpoint cannot hide
+   * that — so what a limit adds is price, and a limit that reported *what* it
+   * was limiting would hand back the detail it exists to protect.
+   */
+  TOO_MANY_REQUESTS: "too_many_requests",
 } as const;
 
 /**

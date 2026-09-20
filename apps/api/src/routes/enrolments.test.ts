@@ -154,6 +154,14 @@ describe("what a sweep over a serial range learns", () => {
             ? TAKEN
             : { ok: true, product: { ...PRODUCT, serial: input.serial } },
       }),
+      { kind: "none" },
+      // A limit this sweep will not trip, named rather than inherited.
+      //
+      // The default burst is 20 and this walks 20 serials, so it fit by
+      // arithmetic rather than by intent — one more serial and the test would
+      // have been measuring the rate limiter while claiming to measure
+      // disclosure. What the limiter does has its own tests.
+      { burst: 1_000, perSecond: 1_000 },
     );
 
     const observations = [];
