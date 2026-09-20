@@ -1,7 +1,13 @@
 services:
   postgres:
     image: postgres:18-alpine
-    container_name: trustpass-postgres
+    # Overridable, and `TP_PG_CONTAINER` is the name `pg-tools.ts` already uses
+    # for the same thing rather than a second spelling of it.
+    #
+    # Fixed, this file could not be stood up twice: a second project collided on
+    # the container name and on the volume below, which is how `pnpm db:setup`
+    # came to be untestable without touching the developer's own database.
+    container_name: ${TP_PG_CONTAINER:-trustpass-postgres}
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-trustpass}
@@ -23,4 +29,7 @@ services:
 
 volumes:
   postgres_data:
-    name: trustpass_postgres_data
+    # Named, so `docker compose down -v` in one checkout does not silently
+    # destroy another's data — and overridable for the same reason the
+    # container name is.
+    name: ${TP_PG_VOLUME:-trustpass_postgres_data}

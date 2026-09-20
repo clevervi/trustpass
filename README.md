@@ -65,12 +65,22 @@ The principles this follows, including the ones that forbid features, are in
 Requires Node 24+, pnpm 10+ and Docker.
 
 ```bash
-cp .env.example .env
 pnpm install
-pnpm db:up          # Postgres on localhost:5433
-pnpm db:migrate     # apply schema migrations
+pnpm db:setup       # container, migrations, roles — and prints the URLs
+cp .env.example .env
 pnpm dev            # API on :3001, web on :3000
 ```
+
+`pnpm db:setup` ends by printing the `DATABASE_URL` and `RUNTIME_DATABASE_URL`
+to paste into `.env`. The passwords it uses are published in
+[`packages/db/src/scripts/local-dev.ts`](packages/db/src/scripts/local-dev.ts)
+and are deliberately not secret — they are for a throwaway container on your own
+machine. The command refuses any host that is not the loopback, and refuses to
+use them at all unless it is asked explicitly.
+
+Without it, a working database is four commands and two passwords nobody wrote
+down: the roles `0024` creates have no login until `pnpm db:provision` gives
+them one, and until then every integration test **skips** rather than fails.
 
 Then open <http://localhost:3000>. The landing page reports live API and
 database health, so a red dot means the stack is genuinely broken, not that the
@@ -134,12 +144,13 @@ Every script runs from the repository root across all workspace packages.
 | `pnpm typecheck`  | Typechecks every package                         |
 | `pnpm lint`       | Biome lint and format check                      |
 | `pnpm format`     | Biome lint and format, writing fixes             |
+| `pnpm db:setup`   | Container, migrations and role passwords in one  |
 | `pnpm db:up`      | Starts Postgres via Docker Compose               |
 | `pnpm db:down`    | Stops Postgres                                   |
 | `pnpm db:logs`    | Follows the Postgres container logs              |
 | `pnpm db:migrate` | Applies pending migrations                       |
 | `pnpm db:generate`| Generates a migration from schema changes        |
-| `pnpm db:reset`   | Destroys the local volume and rebuilds from zero |
+| `pnpm db:reset`   | Destroys the local volume and runs `db:setup`    |
 | `pnpm db:studio`  | Opens Drizzle Studio against the local database  |
 
 Integration tests that need Postgres skip themselves when `DATABASE_URL` is

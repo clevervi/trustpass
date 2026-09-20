@@ -13,12 +13,19 @@
  *
  *   TRUSTPASS_MIGRATION_PASSWORD=... TRUSTPASS_RUNTIME_PASSWORD=... pnpm db:provision
  *
+ * For a throwaway database on this machine, `--local-dev` fills in the
+ * published passwords from `local-dev.ts` and prints them. It is an explicit
+ * flag and it additionally refuses any host that is not the loopback, because a
+ * script that decided on its own that a database "looked like development"
+ * would be a guard that is wrong silently. `pnpm db:setup` passes it.
+ *
  * Afterwards `DATABASE_URL` for the API must name `trustpass_runtime`, and the
  * deploy's migration step must name `trustpass_migration`. Until then the
  * privilege model exists and nothing stands in it — which this script says out
  * loud at the end rather than letting anyone believe otherwise.
  */
 import postgres from "postgres";
+import { explainRefusal, LOCAL_DEV_PASSWORDS, mayUseLocalDevPasswords } from "./local-dev.js";
 
 /**
  * Each role and the name of the environment variable that carries its
@@ -82,7 +89,15 @@ async function main(): Promise<void> {
 
   const missing = ROLE_ENVIRONMENT.filter((entry) => !process.env[entry.variable]);
 
-  if (missing.length > 0) {
+  // Asked for explicitly, every run, and never inferred. `mayUseLocalDevPasswords`
+  // also requires the connection to be to this machine — see that file for why
+  // neither condition is enough on its own.
+  const localDev = mayUseLocalDevPasswords({
+    requested: process.argv.includes("--local-dev"),
+    databaseUrl,
+  });
+
+  if (missing.length > 0 && !localDev.ok) {
     // Refusing beats generating one: a password this script invents has to be
     // printed to be usable, and a printed password is in the terminal
     // scrollback and in whatever captured the output.
@@ -90,8 +105,30 @@ async function main(): Promise<void> {
     for (const entry of missing) {
       console.error(`  ${entry.variable}  (for ${entry.role})`);
     }
-    console.error("\nSet them and run again. Nothing was changed.");
+    console.error(`\n${explainRefusal(localDev.reason)}`);
+    console.error("Nothing was changed.");
     process.exit(1);
+  }
+
+  /**
+   * The environment wins wherever it is set, even under `--local-dev`.
+   *
+   * An operator who exported a password meant it, and silently overwriting it
+   * with a published one because a flag was also present is the shape of
+   * surprise this script exists to avoid.
+   */
+  const passwordFor = (entry: (typeof ROLE_ENVIRONMENT)[number]): string =>
+    process.env[entry.variable] ?? LOCAL_DEV_PASSWORDS[entry.role];
+
+  if (localDev.ok && missing.length > 0) {
+    console.log("Using published development passwords for:");
+    for (const entry of missing) {
+      // Printed in full, because they are in the repository and pretending
+      // otherwise would teach somebody to treat a published default as a
+      // secret — and then a secret as a default.
+      console.log(`  ${entry.role}  ${LOCAL_DEV_PASSWORDS[entry.role]}`);
+    }
+    console.log("");
   }
 
   const sql = postgres(databaseUrl, { max: 1, onnotice: () => {} });
@@ -121,10 +158,12 @@ async function main(): Promise<void> {
     await sql.begin(async (tx) => {
       await tx.unsafe("SET LOCAL log_statement = 'none'");
 
-      for (const { role, variable } of ROLE_ENVIRONMENT) {
-        // Non-null: the missing-variable check above already exited on absence.
-        await grantLogin(tx, role, process.env[variable] as string);
-        console.log(`  ${role}  can now log in`);
+      // Not destructured: splitting the pair loses the type that keeps each
+      // role beside the one variable that carries its password, and the
+      // compiler then cannot tell `passwordFor` that the two belong together.
+      for (const entry of ROLE_ENVIRONMENT) {
+        await grantLogin(tx, entry.role, passwordFor(entry));
+        console.log(`  ${entry.role}  can now log in`);
       }
     });
 
