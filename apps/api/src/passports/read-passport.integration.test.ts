@@ -1,10 +1,14 @@
 import { createDatabase, type Database, generateTrustPassId, schema } from "@trustpass/db";
-import { insertProductWithProvenance, moveProductStatus } from "@trustpass/db/testing";
+import {
+  grantAuthorityOver,
+  insertProductWithProvenance,
+  moveProductStatus,
+} from "@trustpass/db/testing";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
 import { registerProduct } from "../products/register-product.js";
-import { authenticates, buildDependencies, credentialHeaders } from "../testing/dependencies.js";
+import { buildDependencies, credentialHeaders, TEST_TOKEN } from "../testing/dependencies.js";
 import { readPassport } from "./read-passport.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -53,29 +57,49 @@ describe.skipIf(!databaseUrl)("GET /passports/{trustpassId} against a real datab
 
   beforeAll(async () => {
     db = createDatabase(databaseUrl as string, { maxConnections: 4 });
+
+    // A real actor with real authority, because registering now asks for it.
+    // `TEST_PRINCIPAL` names two numbers and nothing that holds a grant, which
+    // was enough while `issuer` was taken on trust and is not any more.
+    const [person] = await db
+      .insert(schema.actor)
+      .values({ kind: "service", displayName: `${run} passport fixture` })
+      .returning({ id: schema.actor.id });
+
+    const caller = { actorId: person?.id as number, credentialId: person?.id as number };
+
     app = createApp(
       buildDependencies({
-        authenticate: authenticates(),
+        authenticate: async (presented) => (presented === TEST_TOKEN ? caller : null),
         registerProduct: (input, principal) => registerProduct(db, input, principal),
         readPassport: (trustpassId) => readPassport(db, trustpassId),
       }),
     );
 
-    await db.insert(schema.organization).values([
-      {
-        companyName: "Andes Tech Imports",
-        legalName: `ANDES VERIFIED ${run} SAS`,
-        registrationNumber: verifiedIssuer.registrationNumber,
-        country: verifiedIssuer.country,
-        verificationStatus: "verified",
-      },
-      {
-        companyName: "Unchecked Imports",
-        legalName: `UNCHECKED ${run} SAS`,
-        registrationNumber: unverifiedIssuer.registrationNumber,
-        country: unverifiedIssuer.country,
-      },
-    ]);
+    const organizations = await db
+      .insert(schema.organization)
+      .values([
+        {
+          companyName: "Andes Tech Imports",
+          legalName: `ANDES VERIFIED ${run} SAS`,
+          registrationNumber: verifiedIssuer.registrationNumber,
+          country: verifiedIssuer.country,
+          verificationStatus: "verified",
+        },
+        {
+          companyName: "Unchecked Imports",
+          legalName: `UNCHECKED ${run} SAS`,
+          registrationNumber: unverifiedIssuer.registrationNumber,
+          country: unverifiedIssuer.country,
+        },
+      ])
+      .returning({ id: schema.organization.id });
+
+    // Both, because this file registers under each in turn — the verified one
+    // and the unverified one, which is what the passport is careful about.
+    for (const organization of organizations) {
+      await grantAuthorityOver(db, caller.actorId, organization.id);
+    }
   });
 
   afterAll(async () => {

@@ -3,6 +3,7 @@ import {
   type Database,
   findOrganizationByRegistration,
   generateTrustPassId,
+  grantsHeldAt,
   insertProduct,
   type schema,
 } from "@trustpass/db";
@@ -52,6 +53,7 @@ export interface RegisteredProduct {
 export type RegisterProductResult =
   | { readonly ok: true; readonly product: RegisteredProduct }
   | { readonly ok: false; readonly reason: "issuer_not_found" }
+  | { readonly ok: false; readonly reason: "not_authorised_for_issuer" }
   | {
       readonly ok: false;
       readonly reason: "duplicate_serial";
@@ -95,6 +97,34 @@ export async function registerProduct(
 
   if (!party) {
     return { ok: false, reason: "issuer_not_found" };
+  }
+
+  // **Naming an issuer is not being one.**
+  //
+  // A registration number is public — national registries publish them and
+  // `apps/web` prints one on every passport, which is ADR 0003's argument — so
+  // until here, an authenticated caller could register under any organization
+  // in the database by naming it.
+  //
+  // `grantsHeldAt` returns what this actor holds at this instant, already
+  // filtered by the grant's own lifetime, its revocation, and a membership
+  // covering the moment (ADR 0011 §2). It does not authorise anything by
+  // itself: matching the organization and the capacity is this caller's work,
+  // and keeping it here is what leaves that function answering the other
+  // questions it will be asked.
+  //
+  // The capacity is `issuer` specifically, because `insertProduct` writes
+  // `actorKind: "issuer"` as a literal — so the event this produces *claims*
+  // that capacity. Accepting any grant would let an actor holding only
+  // `authority` produce a record saying `issuer`, which nobody granted.
+  // Authorise the claim the record will make, not a weaker one.
+  const held = await grantsHeldAt(db, principal.actorId, new Date());
+  const mayActAsIssuer = held.some(
+    (grant) => grant.capacity === "issuer" && grant.organizationId === party.id,
+  );
+
+  if (!mayActAsIssuer) {
+    return { ok: false, reason: "not_authorised_for_issuer" };
   }
 
   const inserted = await insertProduct(

@@ -91,10 +91,10 @@ const registerProductRoute = createRoute({
     "Requires a credential: `Authorization: Bearer <token>`. Every failure — absent, " +
     "malformed, unknown, expired, revoked, or minted for another environment — returns " +
     "the same 401.\n\n" +
-    "**The credential authenticates the caller. It does not yet authorise the issuer.** " +
-    "`issuer` names the organization a record belongs to and is not proof of authority " +
-    "over it: a registration number is public, and this API does not check that the " +
-    "authenticated actor has any relationship with the organization named.",
+    "**The organization must be one this credential holds authority over.** A " +
+    "registration number is public, so naming one establishes nothing on its own. The " +
+    "authenticated actor must hold a capacity grant of the issuer capacity for that " +
+    "organization, valid now, under a membership covering now — 403 otherwise.",
   request: {
     body: {
       content: { "application/json": { schema: RegisterProductRequestSchema } },
@@ -111,6 +111,13 @@ const registerProductRoute = createRoute({
         "No credential, or one this request may not use. Absent, malformed, unknown, " +
         "expired, revoked and minted for another environment all return this same " +
         "response: saying which applied would tell a caller whether a credential exists.",
+      content: { "application/json": { schema: ApiErrorSchema } },
+    },
+    403: {
+      description:
+        "Authenticated, and holding no issuer authority over the organization named. " +
+        "Deliberately distinct from the 422: collapsing them would tell a caller acting " +
+        "for its own organization that no such organization is registered.",
       content: { "application/json": { schema: ApiErrorSchema } },
     },
     409: {
@@ -152,6 +159,28 @@ export function registerProductRoutes(app: OpenAPIHono, deps: AppDependencies): 
             "That serial already has a live record under this issuer. Retire it before registering the serial again.",
         },
         409,
+      );
+    }
+
+    if (!result.ok && result.reason === "not_authorised_for_issuer") {
+      // 403 and not 422, and the distinction is for the honest caller rather
+      // than against the dishonest one. Collapsing this into "no such issuer"
+      // would tell somebody acting for their own organization that it is not
+      // registered, sending them to fix data that is correct.
+      //
+      // What it discloses — that the organization exists — the 422 below
+      // already discloses, and a national registry publishes.
+      //
+      // Not 401: this caller authenticated correctly, and answering as though
+      // the credential were the problem sends them to rotate a working one.
+      return c.json(
+        {
+          error: ApiErrorCode.NOT_AUTHORISED_FOR_ISSUER,
+          message:
+            "That credential holds no issuer authority for the organization named. " +
+            "Being a member of it is not the same as being granted the capacity.",
+        },
+        403,
       );
     }
 

@@ -1,3 +1,4 @@
+export { grantAuthorityOver } from "./authority.js";
 /**
  * Fixtures for integration tests in other packages.
  *

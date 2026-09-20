@@ -1,5 +1,5 @@
 import { type AuthenticatedPrincipal, createDatabase, type Database, schema } from "@trustpass/db";
-import { moveProductStatus } from "@trustpass/db/testing";
+import { grantAuthorityOver, moveProductStatus } from "@trustpass/db/testing";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
@@ -67,12 +67,19 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
 
     caller = { actorId: person?.id as number, credentialId: person?.id as number };
 
-    await db.insert(schema.organization).values({
-      companyName: "Andes Tech Imports",
-      legalName: `ANDES REGISTER ${run} SAS`,
-      registrationNumber: issuerReference.registrationNumber,
-      country: issuerReference.country,
-    });
+    const [andes] = await db
+      .insert(schema.organization)
+      .values({
+        companyName: "Andes Tech Imports",
+        legalName: `ANDES REGISTER ${run} SAS`,
+        registrationNumber: issuerReference.registrationNumber,
+        country: issuerReference.country,
+      })
+      .returning({ id: schema.organization.id });
+
+    // Stated, because the endpoint now asks. Before #152 a test could register
+    // under any organization by naming it, and every fixture here did.
+    await grantAuthorityOver(db, caller.actorId, andes?.id as number);
   });
 
   afterAll(async () => {
@@ -105,34 +112,34 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
     expect(stored?.status).toBe("registered");
   });
 
-  it("records the issuer the body named, which is the boundary #141 does not cross", async () => {
-    // The honest state of this endpoint, pinned so it is visible rather than
-    // inferred, and so the day it changes something fails.
+  it("records the issuer the body named, now that naming one requires authority", async () => {
+    // **This test used to assert the gap. It now asserts the rule**, and the
+    // change is the point: it was written to fail the day #152 landed, and it
+    // did — `expected 403 to be 201` — which is how the closing announced
+    // itself rather than being noticed later.
     //
-    //   who is calling       the credential, and only the credential
-    //   which organization   `body.issuer`, looked up by a public registration
-    //                        number, with no check that the caller has any
-    //                        relationship with it
+    // What survived the change is the decision underneath it. `issuer` stays in
+    // the request body, because 192 actors in this database hold two
+    // memberships and the schema has no unique constraint forbidding more:
+    // `actor -> organization` is not a function, so deriving it would force the
+    // server to choose, and choosing is inventing.
     //
-    // A second organization exists here for exactly one reason: to be named by
-    // a caller whose credential has nothing to do with it, and to be recorded
-    // anyway. That is not a defect in this commit — it is the authorization
-    // model, ADR 0009 and ADR 0011, which ADR 0014 says it does not decide.
-    //
-    // When actor -> membership -> organization lands, this test fails, and the
-    // failure is the notification.
+    //   which organization   still `body.issuer`, by public registration number
+    //   may this caller      now a grant of the issuer capacity over it, valid
+    //                        now, under a membership covering now
     const other = { country: "CO", registrationNumber: `${run}-9003` };
 
-    await db.insert(schema.organization).values({
-      companyName: "Somebody Else Entirely",
-      legalName: `OTHER REGISTER ${run} SAS`,
-      registrationNumber: other.registrationNumber,
-      country: other.country,
-    });
+    const [somebodyElse] = await db
+      .insert(schema.organization)
+      .values({
+        companyName: "Somebody Else Entirely",
+        legalName: `OTHER REGISTER ${run} SAS`,
+        registrationNumber: other.registrationNumber,
+        country: other.country,
+      })
+      .returning({ id: schema.organization.id });
 
-    const response = await post({
-      ...body({ serial: `${run}-NOT-MINE` }),
-      issuer: other,
+    const claims = {
       // Everything a caller might try alongside it. None of these is a field
       // any schema on this path declares, and none may reach the row.
       actorId: 999,
@@ -143,6 +150,25 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
       credential_id: 999,
       organizationId: 999,
       principal: { actorId: 999, credentialId: 999 },
+    };
+
+    // Naming it is no longer enough.
+    const refused = await post({
+      ...body({ serial: `${run}-NOT-MINE` }),
+      issuer: other,
+      ...claims,
+    });
+
+    expect(refused.status).toBe(403);
+
+    // And with the authority, the same request records that organization —
+    // which is what keeps `issuer` meaningful rather than redundant.
+    await grantAuthorityOver(db, caller.actorId, somebodyElse?.id as number);
+
+    const response = await post({
+      ...body({ serial: `${run}-NOW-MINE` }),
+      issuer: other,
+      ...claims,
     });
 
     expect(response.status).toBe(201);
@@ -153,30 +179,19 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
       .from(schema.product)
       .where(eq(schema.product.trustpassId, created.trustpassId as never));
 
-    const [organization] = await db
-      .select()
-      .from(schema.organization)
-      .where(eq(schema.organization.registrationNumber, other.registrationNumber));
-
-    // The organization comes from the body, today. Asserted rather than
-    // avoided: a limitation nobody wrote down is a limitation nobody fixes.
-    expect(stored?.organizationId).toBe(organization?.id);
+    expect(stored?.organizationId).toBe(somebodyElse?.id);
 
     const events = await db
       .select()
       .from(schema.lifecycleEvent)
       .where(eq(schema.lifecycleEvent.productId, stored?.id as number));
 
-    // And `actor_kind` does not come from the body, even though the body sent
-    // one. It is a literal in `insertProduct`, which is what ADR 0014 §6 means
-    // by identity not being an input.
+    // `actor_kind` still does not come from the body, even though the body sent
+    // one — it is a literal in `insertProduct`. And it is the reason the check
+    // above demands the issuer capacity specifically: the record claims it.
     expect(events).toHaveLength(1);
     expect(events[0]?.actorKind).toBe("issuer");
-    expect(events[0]?.organizationId).toBe(organization?.id);
-
-    // **Who** is the credential's actor, and the body sent a different one.
-    // **Which organization** still comes from the body, and that is #152.
-    // The two travel separately and this asserts both halves of that sentence.
+    expect(events[0]?.organizationId).toBe(somebodyElse?.id);
     expect(events[0]?.actorId).toBe(caller.actorId);
     expect(events[0]?.actorId).not.toBe(999);
   });
@@ -322,12 +337,20 @@ describe.skipIf(!databaseUrl)("POST /products against a real database", () => {
       expect((await post(body({ serial }))).status).toBe(201);
 
       const other = { country: "CO", registrationNumber: `${run}-9002` };
-      await db.insert(schema.organization).values({
-        companyName: "Sierra Distribution",
-        legalName: `SIERRA REGISTER ${run} SAS`,
-        registrationNumber: other.registrationNumber,
-        country: other.country,
-      });
+      const [sierra] = await db
+        .insert(schema.organization)
+        .values({
+          companyName: "Sierra Distribution",
+          legalName: `SIERRA REGISTER ${run} SAS`,
+          registrationNumber: other.registrationNumber,
+          country: other.country,
+        })
+        .returning({ id: schema.organization.id });
+
+      // The same caller, now also authorised for Sierra. An actor holding two
+      // memberships is the case that decided #152: `actor -> organization` is
+      // not a function, which is why `issuer` stays in the body.
+      await grantAuthorityOver(db, caller.actorId, sierra?.id as number);
 
       expect((await post(body({ serial, issuer: other }))).status).toBe(201);
     });
