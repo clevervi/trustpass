@@ -114,10 +114,14 @@ export async function insertProduct(
       const authority = await authorise(tx, at);
 
       if (!authority) {
-        // Refused before anything is written. Thrown rather than returned so
-        // the transaction unwinds — a `return` here would commit the empty
-        // transaction, which is harmless today and is the kind of thing that
-        // stops being harmless when somebody adds a statement above it.
+        // Refused before anything is written, and thrown rather than returned.
+        //
+        // Not because committing an empty transaction costs anything — it does
+        // not, today. Because of ordering: the day a statement is added above
+        // this line, a `return` becomes a silent partial commit, and a sentinel
+        // makes that impossible rather than merely unlikely. Defending it on
+        // the harmless consequence is what invites somebody to simplify it back
+        // in six months.
         throw new NotAuthorised();
       }
 
