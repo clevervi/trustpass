@@ -19,13 +19,28 @@ import { registerProductRoutes } from "./routes/products.js";
  * attacker gets the 20-request burst and then one request every five seconds,
  * so ten thousand serials is most of a day rather than an afternoon.
  *
- * Measured rather than derived, against the real server on the real clock:
- * 200,084 requests in sixty seconds got 31 serials answered and 200,053
- * refusals, the first at 0.06s. The burst is worth twenty of those thirty-one
- * and amortises to nothing over a sweep, which leaves the sustained 0.2/s —
- * 13.9 hours for ten thousand. An earlier version of this comment said "most of
- * a fortnight", which was wrong by a factor of twenty-five and arithmetic
- * nobody had run.
+ * Measured rather than derived, against the real server on the real clock. Two
+ * windows, because one of them would have been misleading:
+ *
+ * | window | requests | answered | naive average | sustained, burst removed |
+ * | ------ | -------- | -------- | ------------- | ------------------------ |
+ * | 60s    | 200,084  | 31       | 0.517/s       | 0.200/s                  |
+ * | 300s   | 855,216  | 79       | 0.263/s       | 0.1967/s                 |
+ *
+ * **The average is not a property of this limiter.** It halved between the two
+ * runs without anything changing, because the burst is a fixed twenty spent in
+ * the first 0.06s and the window it is divided by kept growing. Quoting it would
+ * describe the measurement rather than the system. The sustained figure held at
+ * 0.1967–0.200/s across both, which is the number a sweep actually pays: **14.1
+ * hours for ten thousand serials**, against 10.6 if the average were believed.
+ *
+ * The 0.1967 is not a shortfall against the nominal 0.2. Over 299.9s the bucket
+ * accrues 59.98 tokens and 59 were spent — the sixtieth had not finished
+ * arriving.
+ *
+ * An earlier version of this comment said ten thousand serials was "most of a
+ * fortnight", which was wrong by a factor of twenty-five and arithmetic nobody
+ * had run.
  *
  * Chosen against the honest caller rather than against the attacker, because
  * the attacker sets no upper bound and the honest caller does: a person
