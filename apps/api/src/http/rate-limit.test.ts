@@ -224,6 +224,14 @@ describe("what a token bucket allows", () => {
       expect(bucketKey("::1")).not.toBe(bucketKey("2001:db8::1"));
     });
 
+    it("reads one address written two ways as one caller", () => {
+      // Leading zeros and case are free choices in IPv6 text, so the same
+      // allocation can arrive spelled differently and would otherwise hold two
+      // allowances. Node canonicalises today — which is precisely the argument
+      // that turned out to be wrong about `::ffff:`.
+      expect(bucketKey("2001:0DB8:1234:5678::1")).toBe(bucketKey("2001:db8:1234:5678::1"));
+    });
+
     it("puts two link-local callers on one interface in one bucket", () => {
       // A zone index rides on the last group, so the /64 truncation discards it
       // and no separate handling is needed. There was some; a mutation showed
