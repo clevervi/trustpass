@@ -38,6 +38,22 @@ export type EnrolProductInput = Omit<NewProduct, "organizationId" | "origin" | "
 export interface RecordingActor {
   /** The authenticated principal. Never a value from a request body. */
   readonly actorId: number;
+  /**
+   * The grant this act was authorised by, per ADR 0011 §3.
+   *
+   * Required and nullable, rather than optional, so that every call site has to
+   * say which it is. Before this it did not exist, and the result was 8,133
+   * events reading `actor_kind: 'issuer'` with `grant_id` empty on every one of
+   * them: the authorisation was checked, the evidence for it was discarded, and
+   * once a grant is revoked nothing can say which one had been held — or
+   * whether one had.
+   *
+   * `null` is a real answer and the honest one for a holder enrolment. Somebody
+   * entering a serial acts on nobody's authority, so there is no grant to name,
+   * which is different from having failed to record one. That difference is the
+   * whole reason this is not optional.
+   */
+  readonly grantId: number | null;
 }
 
 /**
@@ -86,6 +102,13 @@ export async function enrolProduct(
         // that runs elsewhere (#152).
         actorId: actor.actorId,
         organizationId: null,
+        // Null here is a statement, not an omission. A holder enrolment is
+        // somebody entering a serial on nobody's authority, so there is no
+        // grant to name — and `grant_id IS NULL` on a `holder` event means
+        // exactly that, while the same null on an `issuer` event means the
+        // record lost something. Keeping both readable is why the field is
+        // required on `RecordingActor` and nullable rather than optional.
+        grantId: actor.grantId,
         reason: "holder_request",
         // `now()` rather than a JavaScript Date: `timestamptz` keeps
         // microseconds and a Date does not, so a round-tripped value lands
