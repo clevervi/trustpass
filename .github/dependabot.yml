@@ -17,6 +17,27 @@ updates:
       - clevervi
       - raishark
     open-pull-requests-limit: 10
+    ignore:
+      # `@types/node`'s major tracks the Node major it describes. CI runs
+      # NODE_VERSION 24 (.github/workflows/ci.yml) and every workspace depends
+      # on `^24`, so accepting a major bump would type the codebase against a
+      # Node this project does not run: `tsc` would accept calls to APIs added
+      # after 24 and they would fail at runtime, with every gate green.
+      #
+      # Refused once, on #168, which proposed 24.13.5 -> 26.6.1 with all eight
+      # checks passing — because nothing in CI compares the types' major against
+      # the runtime's.
+      #
+      # Measured rather than assumed, by unpacking both versions and diffing
+      # their declarations: 26.6.1 declares 697 symbols that 24.13.5 does not,
+      # across 17 more files, including `QuicEndpoint`, `QuicSession`,
+      # `QuicStream` and `DynamicLibrary`. Those are not cosmetic — they are
+      # `node:quic` and friends, absent from the runtime this repository runs.
+      #
+      # Minor and patch bumps still arrive. The major moves when the runtime
+      # moves, in the same pull request, deliberately.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
