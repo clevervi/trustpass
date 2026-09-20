@@ -79,7 +79,14 @@ export async function enrolProduct(
     },
     // Two arguments, and the separation is the point: the first is what the
     // caller described, the second is who the caller is. Nothing crosses.
-    { actorId: principal.actorId },
+    //
+    // `grantId: null` is an answer, not an omission. Enrolling a product is
+    // something anybody holding one may do on their own behalf — there is no
+    // organization, no capacity was claimed, and no grant authorised it. The
+    // field is required on `RecordingActor` so that this had to be said rather
+    // than defaulted, because the same null on an issuer event means something
+    // was lost. See #152.
+    { actorId: principal.actorId, grantId: null },
   );
 
   if (!result.ok) {

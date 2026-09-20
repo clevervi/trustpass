@@ -1,7 +1,8 @@
 import { type AuthenticatedPrincipal, createDatabase, type Database, schema } from "@trustpass/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
+import { enrolProduct } from "../enrolments/enrol-product.js";
 import { buildDependencies, credentialHeaders, TEST_TOKEN } from "../testing/dependencies.js";
 import { registerProduct } from "./register-product.js";
 
@@ -84,6 +85,15 @@ describe.skipIf(!databaseUrl)("acting for an organization you have authority ove
     readonly capacity?: "issuer" | "authority";
     readonly grantExpiresAt?: Date;
     readonly withGrant?: boolean;
+    /**
+     * An additional grant, written **before** the one under test.
+     *
+     * `grantsHeldAt` orders by id, so this actor's first held grant is not the
+     * one that authorises an issuer write. Without it every mutation that picks
+     * the wrong grant — `held[0]` instead of the one matching the capacity —
+     * would be undetectable, because the actor held exactly one.
+     */
+    readonly precededBy?: "authority";
   }): Promise<AuthenticatedPrincipal> {
     const actorId = await actorFor(options.name);
     const hour = 3_600_000;
@@ -94,6 +104,17 @@ describe.skipIf(!databaseUrl)("acting for an organization you have authority ove
       beganAt: new Date(Date.now() - 24 * hour),
       endedAt: options.membershipEndedAt ?? null,
     });
+
+    if (options.precededBy !== undefined) {
+      await db.insert(schema.capacityGrant).values({
+        actorId,
+        organizationId: options.organizationId,
+        capacity: options.precededBy,
+        scopeKind: "own_organization",
+        effectiveFrom: new Date(Date.now() - 24 * hour),
+        expiresAt: null,
+      });
+    }
 
     if (options.withGrant !== false) {
       await db.insert(schema.capacityGrant).values({
@@ -115,7 +136,14 @@ describe.skipIf(!databaseUrl)("acting for an organization you have authority ove
     mine = await organization("Andes Tech");
     theirs = await organization("Somebody Else");
 
-    authorised = await principal({ name: "authorised", organizationId: mine.id });
+    authorised = await principal({
+      name: "authorised",
+      organizationId: mine.id,
+      // Holds two grants over the same organization, the `authority` one first.
+      // Only the `issuer` grant may authorise a registration, and the event has
+      // to name that one — see "records which grant authorised the write".
+      precededBy: "authority",
+    });
     withoutGrant = await principal({
       name: "no grant",
       organizationId: mine.id,
@@ -150,6 +178,11 @@ describe.skipIf(!databaseUrl)("acting for an organization you have authority ove
       buildDependencies({
         authenticate: async (presented) => (presented === TEST_TOKEN ? as : null),
         registerProduct: (input, who) => registerProduct(db, input, who),
+        // Wired because the grant-pinning pair below needs both paths: an
+        // issuer write that must name its grant and a holder enrolment that
+        // must not. Asserting only the first would pass against an
+        // implementation that wrote a grant onto every event.
+        enrolProduct: (input, who) => enrolProduct(db, input, who),
       }),
     );
   }
@@ -221,6 +254,85 @@ describe.skipIf(!databaseUrl)("acting for an organization you have authority ove
     const response = await register(grantExpired, mine, `${run}-EXPIRED`);
 
     expect(response.status).toBe(403);
+  });
+
+  it("records which grant authorised the write, not merely that one did", async () => {
+    // ADR 0011 §3. The event already said `actor_kind: 'issuer'`, which is a
+    // claim about a capacity — a role. This asserts the *authority*: the
+    // specific grant the check consulted.
+    //
+    // The difference is invisible until it is needed. A grant is revoked or
+    // expires, `grantsHeldAt` will never return it again, and an event saying
+    // only `issuer` can no longer be traced to what permitted it — or show that
+    // anything did. Measured before this shipped: 8,133 events claiming
+    // `issuer`, zero with a grant.
+    const serial = `${run}-GRANT-PINNED`;
+
+    expect((await register(authorised, mine, serial)).status).toBe(201);
+
+    const [created] = await db
+      .select({ id: schema.product.id })
+      .from(schema.product)
+      .where(eq(schema.product.serial, serial));
+
+    const [event] = await db
+      .select({ grantId: schema.lifecycleEvent.grantId })
+      .from(schema.lifecycleEvent)
+      .where(eq(schema.lifecycleEvent.productId, created?.id as number));
+
+    // The grant this actor actually holds, read back rather than remembered, so
+    // the assertion is against the row and not against a value this test set.
+    const [held] = await db
+      .select({ id: schema.capacityGrant.id })
+      .from(schema.capacityGrant)
+      .where(
+        and(
+          eq(schema.capacityGrant.actorId, authorised.actorId),
+          // This actor also holds an `authority` grant over the same
+          // organization, written first. Naming the capacity here is what makes
+          // the assertion able to tell them apart.
+          eq(schema.capacityGrant.capacity, "issuer"),
+        ),
+      );
+
+    // Both halves. `toBe(held.id)` alone would pass against an implementation
+    // that wrote any non-null number, and `not.toBeNull()` alone would pass
+    // against one that wrote somebody else's grant.
+    expect(event?.grantId).not.toBeNull();
+    expect(event?.grantId).toBe(held?.id);
+  });
+
+  it("records no grant for an enrolment, because none authorised it", async () => {
+    // The other half, and the reason `grantId` is nullable rather than
+    // optional. A null on a `holder` event means "nobody's authority was
+    // needed"; the same null on an `issuer` event means the record lost
+    // something. A test that only asserted the issuer case would pass against
+    // an implementation that wrote the grant onto everything.
+    const serial = `${run}-ENROLMENT-NO-GRANT`;
+
+    const response = await app(authorised).request("/enrolments", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...credentialHeaders() },
+      body: JSON.stringify({ brand: "ASUS", model: "ROG", serial, category: "gpu" }),
+    });
+
+    expect(response.status).toBe(201);
+
+    const [created] = await db
+      .select({ id: schema.product.id })
+      .from(schema.product)
+      .where(eq(schema.product.serial, serial));
+
+    const [event] = await db
+      .select({
+        grantId: schema.lifecycleEvent.grantId,
+        actorKind: schema.lifecycleEvent.actorKind,
+      })
+      .from(schema.lifecycleEvent)
+      .where(eq(schema.lifecycleEvent.productId, created?.id as number));
+
+    expect(event?.actorKind).toBe("holder");
+    expect(event?.grantId).toBeNull();
   });
 
   it("keeps 403 and 422 apart, because collapsing them lies to the honest caller", async () => {
