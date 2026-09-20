@@ -26,6 +26,7 @@
     "db:studio": "pnpm --filter @trustpass/db db:studio",
     "ci:merge-bar": "node scripts/merge-bar.mjs",
     "ci:merge-bar:test": "node --test scripts/merge-bar.test.mjs",
+    "ci:operator-env": "node --test scripts/operator-env.test.mjs",
     "db:setup": "pnpm --filter @trustpass/db db:setup",
     "db:reset": "docker compose down -v && pnpm db:setup",
     "db:preflight": "pnpm --filter @trustpass/db db:preflight",

@@ -71,6 +71,18 @@ jobs:
             exit 1
           fi
 
+      # The operator scripts read the same `.env` the application does.
+      #
+      # Seven of them did not, and nothing noticed: the flag spread from `dev`
+      # and `start` by imitation and stopped. It surfaced while preparing #141's
+      # manual run — a run that needs a real terminal, cannot be scripted, and
+      # where the error arrived *after* the terminal barrier had been satisfied.
+      #
+      # A package.json read and a regular expression. It fails on the eighth
+      # script rather than on the operator.
+      - name: Operator scripts load the environment
+        run: node --test scripts/operator-env.test.mjs
+
       - name: Lint and format check
         run: pnpm lint
 
