@@ -253,10 +253,21 @@ function groupsOf(address: string): readonly string[] {
  * rewards exactly the behaviour it exists to stop. The actor alone binds a
  * credential to one allowance wherever it is presented from.
  *
- * The address path is what is left when no credential was checked. Both write
- * endpoints sit behind `requireCredential` today, so on those routes it does not
- * run — but the middleware does not get to assume where it is mounted, and
- * falling back to the address is a limit where the alternative is none.
+ * **The address path is unreachable from any route this application has**, and
+ * that is worth stating rather than leaving to be discovered. `requireCredential`
+ * is registered on `/products` and `/enrolments` before this is, and it answers
+ * 401 without calling the next handler, so a request that reaches here always
+ * carries a principal. Everything below `callerAddress` — the shared-bucket
+ * degradation, the mapped-IPv4 collapse, the /64 — is exercised by tests and by
+ * nothing else.
+ *
+ * So the honest claim is not "the limiter normalises IPv6". It is that the
+ * normalisation exists, is covered, and protects a caller that no current route
+ * produces. Whether to keep a fallback with no production caller is a real
+ * question and #189 holds it; it is kept here because a middleware does not get
+ * to assume where it is mounted, and because the failure it prevents — an IPv6
+ * client holding 2^64 buckets — is precisely what someone re-adding address
+ * keying in a hurry would reintroduce.
  */
 export function callerKey(c: Context): string {
   // Typed as always present by the module declaration in `authenticate.ts`,
