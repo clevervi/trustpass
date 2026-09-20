@@ -331,6 +331,47 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
     });
   });
 
+  describe("the boundary that keeps issuance off the API", () => {
+    it("cannot insert a credential, attempted rather than looked up", async () => {
+      // **This property is part of the security of credential issuance, and it
+      // lives here rather than in that code.**
+      //
+      // `issueCredentialFor` has no terminal check: it issues, and the caller
+      // decides whether the secret may be delivered. What stops an endpoint
+      // from calling it is not a guard in that file — it is this grant. So the
+      // grant is now load-bearing for issuance, and removing it would open a
+      // path no code review of `auth/` would catch.
+      //
+      // The matrix test above already records `credential: ["SELECT"]`, read
+      // from `has_table_privilege`. That asks the catalogue. This asks
+      // Postgres, by trying, because a catalogue that says one thing while an
+      // INSERT succeeds is the disagreement worth finding.
+      const [victim] = (await db.execute(
+        sql`SELECT id FROM actor ORDER BY id LIMIT 1`,
+      )) as unknown as [{ id: string } | undefined];
+
+      await expectSqlState(
+        db.execute(sql`
+          INSERT INTO credential (actor_id, kind, label, issued_at, handle, secret_digest)
+          VALUES (${victim?.id ?? 1}, 'api_key', 'runtime tried to issue', now(),
+                  'AAAAAAAAAAA', sha256('x'::bytea))
+        `),
+        SqlState.INSUFFICIENT_PRIVILEGE,
+      );
+    });
+
+    it("can still read one, because verifying is its whole job", async () => {
+      // The other half. A grant matrix that also stopped the runtime reading
+      // `credential` would make authentication impossible, and a test that only
+      // asserted the refusal would not notice.
+      const rows = (await db.execute(sql`
+        SELECT count(*)::int AS reachable FROM credential
+      `)) as unknown as [{ reachable: number }];
+
+      expect(rows[0]?.reachable).toBeGreaterThanOrEqual(0);
+    });
+  });
+
   describe("what the grant matrix does not decide", () => {
     it("records an event that names nobody, because no constraint asks it to", async () => {
       // **A characterization test, and #153 is the issue that closes it.**
