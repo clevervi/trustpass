@@ -118,28 +118,6 @@ export async function registerProduct(
   // that capacity. Accepting any grant would let an actor holding only
   // `authority` produce a record saying `issuer`, which nobody granted.
   // Authorise the claim the record will make, not a weaker one.
-  // `find`, not `some`. The grant that authorises this write is the grant the
-  // event has to name, per ADR 0011 §3, and a boolean throws away the only
-  // thing that can answer "under what authority" once the grant is revoked.
-  // Asking twice — once to decide, once to record — would be asking at two
-  // different instants and could disagree.
-  //
-  // **And this instant is not the one the event claims.** `new Date()` is this
-  // process's clock; `insertProduct` stamps `occurred_at` with the database's
-  // `now()`, inside a transaction this lookup has already returned from. A
-  // grant revoked in that window produces an event whose `occurred_at` is later
-  // than the moment its own `grant_id` stopped being valid. Naming the grant is
-  // what turned that from an invisible stale read into a claim in the record,
-  // so it is #174 rather than a comment nobody filed.
-  const held = await grantsHeldAt(db, principal.actorId, new Date());
-  const authorising = held.find(
-    (grant) => grant.capacity === "issuer" && grant.organizationId === party.id,
-  );
-
-  if (!authorising) {
-    return { ok: false, reason: "not_authorised_for_issuer" };
-  }
-
   const inserted = await insertProduct(
     db,
     {
@@ -154,13 +132,53 @@ export async function registerProduct(
       category: input.category,
       status: "registered",
     },
-    // From the credential and from the grant that authorised this write, and
-    // from nowhere else. Neither value can come from the request body.
-    { actorId: principal.actorId, grantId: authorising.id },
+    // From the credential, and from nowhere else.
+    { actorId: principal.actorId },
+    /**
+     * Who says this is allowed, decided inside the transaction that records it.
+     *
+     * The rule stays here: which capacity, over which organization, is this
+     * endpoint's question and `grantsHeldAt` deliberately does not answer it —
+     * it reports what an actor held and leaves the matching to the caller, so
+     * that the same function can answer the other questions it will be asked.
+     *
+     * What moved is *when*. #174 measured the cost of deciding on one
+     * connection and writing on another: a second session can revoke the grant,
+     * or end the membership it is held through, in between — and the event that
+     * results names a grant that was already invalid at the instant the event
+     * claims. Both routes were reproduced; the membership one is not even
+     * mentioned in the original report.
+     *
+     * `at` is the transaction's own instant and the same value `occurred_at`
+     * gets, because `now()` is `transaction_timestamp()` — measured, not
+     * assumed. So "the grant was valid when the event says it happened" is true
+     * by construction rather than by two clocks agreeing.
+     *
+     * The capacity is `issuer` specifically, because the event this produces
+     * claims that capacity. Accepting any grant would let an actor holding only
+     * `authority` produce a record saying `issuer`, which nobody granted.
+     */
+    async (tx, at) => {
+      const held = await grantsHeldAt(tx, principal.actorId, at);
+
+      // `find`, not `some`. The grant that authorises this write is the grant
+      // the event has to name, per ADR 0011 §3, and a boolean throws away the
+      // only thing that can answer "under what authority" once it is revoked.
+      const authorising = held.find(
+        (grant) => grant.capacity === "issuer" && grant.organizationId === party.id,
+      );
+
+      return authorising ? { grantId: authorising.id } : null;
+    },
   );
 
   if (!inserted.ok) {
-    return { ok: false, reason: "duplicate_serial" };
+    // The two outcomes are kept apart, because 403 and 409 are different
+    // answers to a caller. Collapsing a refusal into "duplicate serial" would
+    // tell somebody acting without authority to go and change their serial.
+    return inserted.reason === "not_authorised"
+      ? { ok: false, reason: "not_authorised_for_issuer" }
+      : { ok: false, reason: "duplicate_serial" };
   }
 
   const created = inserted.product;
