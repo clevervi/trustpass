@@ -226,6 +226,34 @@ describe("what a caller meets when they write too often", () => {
       expect((await post(under, BODY.serial, BOB)).status).toBe(409);
     });
 
+    it("refuses two different actors with the same bytes", async () => {
+      // `never exposes the internal key` — the rule this repository already
+      // asserts for products, passports and enrolments — applies to a refusal
+      // too. `actor.id` is a database key, and a 429 reading "Too many requests
+      // from actor:1" would put one in a response.
+      //
+      // This was very nearly not written. The mutation that adds the caller to
+      // the message survived, and the first reading called it "not a defect"
+      // because #120 is about not disclosing *what was asked for*, which the
+      // caller's own identity is not. That reasoning was scoped to this issue
+      // and missed the standing rule — the body is a constant, and two actors
+      // are the way to say so.
+      const under = appWithActors(
+        { burst: 1, perSecond: 0.001 },
+        { [ALICE]: { actorId: 1, credentialId: 1 }, [BOB]: { actorId: 2, credentialId: 2 } },
+      );
+
+      await post(under, BODY.serial, ALICE);
+      const refusedAlice = await post(under, BODY.serial, ALICE);
+
+      await post(under, BODY.serial, BOB);
+      const refusedBob = await post(under, BODY.serial, BOB);
+
+      expect(refusedAlice.status).toBe(429);
+      expect(refusedBob.status).toBe(429);
+      expect(await refusedBob.text()).toBe(await refusedAlice.text());
+    });
+
     it("gives one actor one allowance however many credentials they hold", async () => {
       // The other direction, and the one that decides whether the limit means
       // anything: keyed on the credential, a sweep buys throughput by minting
