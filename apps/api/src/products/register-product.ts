@@ -123,6 +123,14 @@ export async function registerProduct(
   // thing that can answer "under what authority" once the grant is revoked.
   // Asking twice — once to decide, once to record — would be asking at two
   // different instants and could disagree.
+  //
+  // **And this instant is not the one the event claims.** `new Date()` is this
+  // process's clock; `insertProduct` stamps `occurred_at` with the database's
+  // `now()`, inside a transaction this lookup has already returned from. A
+  // grant revoked in that window produces an event whose `occurred_at` is later
+  // than the moment its own `grant_id` stopped being valid. Naming the grant is
+  // what turned that from an invisible stale read into a claim in the record,
+  // so it is #174 rather than a comment nobody filed.
   const held = await grantsHeldAt(db, principal.actorId, new Date());
   const authorising = held.find(
     (grant) => grant.capacity === "issuer" && grant.organizationId === party.id,
