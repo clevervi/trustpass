@@ -1,23 +1,25 @@
 # The one rule in the merge bar that permissions no longer enforce.
 #
-# `CONTRIBUTING.md` records one maintainer working from two accounts, and the
-# review device in the workflow skill uses both as argumentative voices — the
-# case under one, the objection under the other, with a disclosure saying they
-# are the same person.
-#
-# Neither may ever approve. A GitHub approval is the artefact that means
-# "somebody else checked", and nothing here can produce one honestly.
-#
-# That used to be impossible rather than forbidden: the second account held no
-# write access, so it could comment and could not approve. It holds `write` now,
-# which it does not need — commenting on a public repository needs no
-# permission, measured — and which put the rule back to being a promise.
+# An approval from this repository's own collaborator accounts is not evidence
+# that anybody else checked the work, so it must not be able to open the merge
+# gate. That used to be impossible rather than forbidden — the second account
+# held no write access, so it could comment and could not approve. It holds
+# `write` now, which it does not need for the review process (commenting on a
+# public repository needs no permission, measured), and which turned the rule
+# back into a promise.
 #
 # This is the promise made mechanical again.
 #
 # **It deliberately does not block an approval from anybody else.** An outside
 # reviewer approving would be real, and would be the best thing to happen to
-# this repository. The refusal names the two accounts rather than the act.
+# this repository. The refusal names specific accounts rather than the act.
+#
+# **The list is the control. Do not narrow it to "the pull request's author".**
+# That change looks like a tightening and is the opposite: it would let one
+# listed account approve another's pull request while this check stayed green
+# and kept the same name, so branch protection would still report the rule as
+# satisfied. If the accounts ever stop needing to be listed here, remove the
+# check rather than hollowing it out.
 
 name: No self-approval
 
@@ -38,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Refuse an approval from an account the maintainer holds
+      - name: Refuse an approval from a listed account
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -48,27 +50,26 @@ jobs:
 
           # Both spellings of each, because the API returns the login as the
           # account set it and a case mismatch here would silently pass.
-          MAINTAINER_ACCOUNTS='["clevervi","Raishark","raishark","CleverVi"]'
+          BLOCKED_APPROVERS='["clevervi","Raishark","raishark","CleverVi"]'
 
           offending=$(
             gh api "repos/${REPOSITORY}/pulls/${NUMBER}/reviews" --paginate \
               --jq "[.[] | select(.state == \"APPROVED\") | .user.login] | unique
-                    | map(select(. as \$login | ${MAINTAINER_ACCOUNTS} | index(\$login)))
+                    | map(select(. as \$login | ${BLOCKED_APPROVERS} | index(\$login)))
                     | join(\", \")"
           )
 
           if [ -n "$offending" ]; then
-            echo "::error::Approved by ${offending}, which is one of the maintainer's own accounts."
+            echo "::error::Approved by ${offending}, whose approval does not satisfy this repository's merge bar."
             echo ""
-            echo "This repository has one maintainer working from two accounts, and"
-            echo "CONTRIBUTING.md says so. An approval between them is a review signal"
-            echo "with nothing behind it, and this is a public repository where somebody"
-            echo "will read it as two engineers agreeing."
+            echo "An approval from a collaborator account on this repository is not"
+            echo "evidence that an independent reviewer checked the change, and this is"
+            echo "a public repository where it would be read as one."
             echo ""
-            echo "The two accounts argue instead: the case under one, the objection under"
-            echo "the other, with the disclosure that they are the same person. Dismiss"
-            echo "the approval and leave the argument."
+            echo "Dismiss the approval and leave the argued review instead: the case for"
+            echo "the design, the strongest objection to it, and the answer. See"
+            echo "CONTRIBUTING.md."
             exit 1
           fi
 
-          echo "No approval from an account the maintainer holds."
+          echo "No approval from a listed account."

@@ -164,25 +164,30 @@ Vitest. Smart contracts (Foundry) and a Python fraud service arrive later, each
 gated on the previous layer proving its value. See
 [`docs/adr/`](docs/adr/) for the reasoning.
 
-## Maintainer
+## Contributors
 
-One person, working from two accounts:
 [@clevervi](https://github.com/clevervi) and
-[@raishark](https://github.com/raishark). Both write code — the foundation
-commits are Raishark's — and GitHub attributes each to the account that authored
-it. There is no split by area; both accounts work across the whole codebase.
+[@raishark](https://github.com/raishark). Both write code across the whole
+codebase — the foundation commits are Raishark's — and GitHub attributes each
+commit to the account that authored it. There is no split by area, and the
+commit history is the record of who wrote what.
 
-**Neither ever approves the other**, and this is enforced rather than promised:
-[`no-self-approval.yml`](.github/workflows/no-self-approval.yml) is a required
-check on `develop` and fails when either account submits an approving review. So
-an approval from either does not merely carry no weight — it blocks the merge.
-`develop` requires **zero** approving reviews, because there is nobody to give
-one.
+**An approval from either does not open the merge gate**, and that is enforced
+rather than promised: [`no-self-approval.yml`](.github/workflows/no-self-approval.yml)
+is a required check on `develop` and fails on an approving review from either
+account. `develop` requires **zero** approving reviews.
 
-What the second account is for is the argued review: one voice states the case,
-the other makes the strongest objection it can, and the objection has to be
-answered before a thread closes. [`CONTRIBUTING.md`](CONTRIBUTING.md) builds the
-merge bar around having no second reader rather than pretending to have one.
+What carries the weight instead is the argued review. Every pull request sets
+out the case for its design — including the option rejected and what it would
+have cost — and the strongest objection to it, with the evidence that would
+settle the disagreement. The objection has to be answered before a thread
+closes: the design changes, the answer is written down, or the limitation is
+accepted with an issue behind it.
+
+It is a weaker bar than an independent reviewer and
+[`CONTRIBUTING.md`](CONTRIBUTING.md) says so rather than dressing it up. What it
+does produce is a public record of *why* each decision went the way it did,
+which is most of what a review is for.
 
 ## Contributing
 

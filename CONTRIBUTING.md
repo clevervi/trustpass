@@ -108,25 +108,28 @@ writing it:
 | CodeQL                    | Security and quality defects, refreshed weekly        |
 | Dependency review         | New dependencies with known vulnerabilities or copyleft licences |
 
-**Not independent, and the accounts do not change that.** One maintainer works
-from two accounts, [@clevervi](https://github.com/clevervi) and
-[@raishark](https://github.com/raishark). Both author commits and git attributes
-each to the one that wrote it. Neither is a second reader, because they are the
-same person.
+**Not independent.** [@clevervi](https://github.com/clevervi) and
+[@raishark](https://github.com/raishark) are this repository's collaborator
+accounts. Both author commits, and git attributes each to the account that wrote
+it. Neither is treated as a second reader, and nothing here should be read as
+one having checked the other's work.
 
-What the two accounts are for is the **argued review**: every pull request
-carries a *case* — why the design is what it is, including the option rejected
-and what it would have cost — and an *objection*, the strongest available
-argument against it, naming the evidence that would settle it. When both accounts
-are authenticated the objection is posted under the one that did not author the
-commits. That is a device for forcing the counter-argument into writing, not a
-second opinion, and every exchange says so in its first comment.
+What carries the weight instead is the **argued review**. Every pull request
+sets out a *case* — why the design is what it is, which option was rejected and
+what it would have cost — and an *objection*: the strongest available argument
+against it, naming the evidence that would settle it. The objection is written
+to be answered, not to be agreed with, and a thread closes when the design
+changed, the answer was written down, or the limitation was accepted with an
+issue behind it. Never because nobody replied.
 
-**Neither account can approve, and that is mechanical rather than a promise.**
-`.github/workflows/no-self-approval.yml` fails when `clevervi` or `Raishark`
-submits an approving review, and it is a required check on `develop`. An
-approval from either account does not merely fail to count — it blocks the
-merge.
+**An approval from either account does not open the gate, and that is mechanical
+rather than a promise.** `.github/workflows/no-self-approval.yml` fails when
+either submits an approving review, and it is a required check on `develop`. So
+an approval from one of them blocks the merge rather than enabling it.
+
+That check is a control, not a description. If it is ever changed to refuse only
+the pull request's own author, this section stops being true — and the check
+would still be green and still be named the same thing.
 
 Branch protection on `develop`, read from the API rather than from memory:
 
@@ -173,9 +176,9 @@ is the bar below, and it is weaker than one. Say so rather than dressing it up.
    tests went red.
 3. **The case is posted** on the lines worth disagreeing with: why the design is
    what it is, which option was rejected, and what that would have cost.
-4. **The objection is posted** under the other account, arguing against the
-   change and naming what evidence would settle it. If there is nothing real to
-   say, say that and say why the change was simple enough not to need one — a
+4. **The objection is posted** on the diff, arguing against the change and
+   naming what evidence would settle it. If there is nothing real to say, say
+   that and say why the change was simple enough not to need one — a
    manufactured objection is as dishonest as a manufactured approval and harder
    to spot.
 5. **The objection is answered.** The design changes, or the answer is written
@@ -185,9 +188,10 @@ is the bar below, and it is weaker than one. Say so rather than dressing it up.
 6. **Review threads are resolved** before merging. Branch protection enforces it.
 
 A mutation check proves a test can fail. The argued review is the only part of
-this that asks whether the right things were tested, and it is one person
-arguing with themselves in writing — which catches less than a second reader
-and more than a second read-through.
+this that asks whether the right things were *worth* testing — and it is written
+rather than thought, because an argument that is not written down is one that
+always wins. It catches less than an independent reader would and more than a
+second read-through does, and it is not a substitute for the first.
 
 ### Every guard ships with a test that dies without it
 

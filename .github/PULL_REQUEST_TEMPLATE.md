@@ -36,16 +36,15 @@ Closes TP-
 
 ## Argued review
 
-<!-- Both accounts are one maintainer, so this is a counter-argument, not a
-     second reader. Post the case under the account that authored the commits
-     and the objection under the other one, and say so in the first comment.
-     Neither may approve: `no-self-approval.yml` is a required check and fails
-     if either does. -->
+<!-- A counter-argument, not a sign-off. Set out the case for the design and
+     the strongest objection to it, then answer the objection. An approval from
+     this repository's own collaborator accounts does not open the gate:
+     `no-self-approval.yml` is a required check and fails on one. -->
 
 - [ ] The case is posted: why this design, which option was rejected, what it
       would have cost
-- [ ] The objection is posted under the other account — or it is stated plainly
-      that the change was simple enough not to need one
+- [ ] The objection is posted on the diff — or it is stated plainly that the
+      change was simple enough not to need one
 - [ ] Every objection is answered: the design changed, the answer is written
       down, or it is an accepted limitation with an issue behind it
 

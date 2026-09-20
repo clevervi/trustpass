@@ -23,8 +23,8 @@ Send an email to **raivel.studio@gmail.com** with:
 
 ### What to expect
 
-This project has one maintainer and no support agreement, so **no response time
-is guaranteed and none is promised here.** A timeline that cannot be kept is
+This project has no support agreement and no on-call rotation, so **no response
+time is guaranteed and none is promised here.** A timeline that cannot be kept is
 worse than no timeline: it tells a reporter their disclosure clock is running
 while nobody has read the report.
 

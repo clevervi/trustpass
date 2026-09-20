@@ -8,7 +8,7 @@
 The original plan paired a FastAPI backend with a Next.js frontend. That split
 is reasonable with a team: Python owns data work, TypeScript owns the browser.
 
-This project has one maintainer. Under that constraint the split costs two
+This project does not have a team that size. At its scale the split costs two
 language runtimes, two dependency managers, two test runners, two CI matrices,
 and — the expensive part — two definitions of every domain model. A `Product`
 declared in Pydantic and again in TypeScript drifts the first week nobody is
