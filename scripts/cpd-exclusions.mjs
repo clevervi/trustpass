@@ -38,6 +38,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { forLog } from "./for-log.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const PROPERTIES = resolve(ROOT, ".sonarcloud.properties");
@@ -252,7 +253,7 @@ async function main() {
 
   if (branch !== null && branch !== "develop") {
     console.error("");
-    console.error(`This ran on "${branch}", not develop. The population above came from`);
+    console.error(`This ran on "${forLog(branch)}", not develop. The population above came from`);
     console.error("the working tree and the measures came from the project's analysis,");
     console.error("which is develop's — so a file this branch adds is absent for a reason");
     console.error("that says nothing about the exclusion. Read the rows before the verdict.");
