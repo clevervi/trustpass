@@ -62,6 +62,11 @@ const ROOT = resolve(import.meta.dirname, "..");
 const PROPERTIES = resolve(ROOT, ".sonarcloud.properties");
 const PROJECT = "clevervi_trustpass";
 
+// `merge-bar.mjs` reads the same variable, and the literal is the fallback for a
+// run by hand. A fork would read its own tree and the analysis of this project,
+// which disagree — but that is already true of every other read here.
+const REPOSITORY = process.env.GITHUB_REPOSITORY ?? "clevervi/trustpass";
+
 /**
  * The patterns this repository insists on, as a contract rather than as
  * whatever the file happens to say.
@@ -179,56 +184,69 @@ export function asRevision(value) {
   return typeof value === "string" && /^[0-9a-f]{40}$/.test(value) ? value : null;
 }
 
-const GIT_OPTIONS = {
-  cwd: ROOT,
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "ignore"],
-};
-
 /**
  * One git invocation whose arguments are all written here, by absolute path.
  *
- * Only for fixed arguments. Anything carrying an outside value spawns in the
- * function that checked it, so the check and the spawn can be read together.
+ * Only for fixed arguments. Nothing from outside this program is passed to git,
+ * and the one thing that used to be no longer needs a process at all.
  */
 function fromGit(args) {
   try {
-    return execFileSync(git(), args, GIT_OPTIONS).trim();
+    return execFileSync(git(), args, {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
   } catch {
     return null;
   }
 }
 
 /**
- * Every file in a revision's tree.
+ * Every file in a revision's tree, read over HTTP rather than from git.
  *
- * `null` when the revision is not one this program will pass to git, or is not
- * in local history — a shallow clone, or a revision from a branch that has since
- * gone. The caller says so and falls back rather than treating an empty list as
- * an empty repository.
+ * **This began as `git ls-tree` and SonarCloud reported `jssecurity:S6350`
+ * three times.** The value is a revision out of SonarCloud's own response, and
+ * `execFileSync` spawns no shell but git parses its own arguments: a "revision"
+ * beginning with `-` is an option and `--upload-pack=` is a command. `asRevision`
+ * closed that, then closed it adjacent to the spawn, and the taint analysis
+ * followed neither.
  *
- * **The check and the spawn are in one function body on purpose.** They were two
- * before, and the distance is the kind a reader has to hold in their head and a
- * taint analysis cannot follow at all. Adjacent, the guarantee is local: the only
- * value that reaches git here is one `asRevision` returned.
+ * At which point the interesting question stopped being how to convince it. This
+ * file already answers it once, about `curl` and `javascript:S4036`: the better
+ * move is not to make the spawn safe but to stop needing one. GitHub serves the
+ * tree of any revision, so there is no process, no PATH, and no argument parser
+ * — the sink is gone rather than guarded, and the check no longer needs the
+ * revision to be in local history either.
+ *
+ * `asRevision` stays. It is what keeps the value out of a URL as much as out of
+ * a command line, and it is cheaper than the failure it prevents.
+ *
+ * `null` when the revision cannot be read, which the caller announces before it
+ * falls back — including when GitHub truncates a tree too large for one page.
+ * A short list would silently shrink the population, and a check with nothing
+ * left to check is #199's failure wearing different clothes.
  */
-function filesAt(revision) {
+async function filesAt(revision) {
   const checked = asRevision(revision);
 
   if (checked === null) return null;
 
-  let listing;
+  const token = process.env.GITHUB_TOKEN;
 
   try {
-    listing = execFileSync(git(), ["ls-tree", "-r", "--name-only", checked], GIT_OPTIONS).trim();
+    const tree = await read(
+      `https://api.github.com/repos/${REPOSITORY}/git/trees/${checked}?recursive=1`,
+      "the analysed revision's tree",
+      token ? { authorization: `Bearer ${token}` } : {},
+    );
+
+    if (tree.truncated) return null;
+
+    return (tree.tree ?? []).filter((entry) => entry.type === "blob").map((entry) => entry.path);
   } catch {
     return null;
   }
-
-  return listing
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
 }
 
 /**
@@ -275,30 +293,39 @@ function currentBranch() {
 }
 
 /**
- * One SonarCloud read, retried.
+ * One read over HTTP, retried.
  *
  * `fetch` rather than `curl`: the first version spawned it, which searches PATH
  * — the rule `pg-tools.ts` and `git-path.mjs` both answer with an absolute path,
  * and SonarCloud flagged it as `javascript:S4036`. The better answer was not to
- * resolve `curl` but to stop needing it.
+ * resolve `curl` but to stop needing it. The same argument later removed the
+ * `git ls-tree` spawn, for the same reason and one rule along.
  *
  * Retried, because the alternative to a transient network failure is a red build
  * with nothing wrong in this repository — the objection this check already
- * carries, narrowed where it can be.
+ * carries, narrowed where it can be. **A 4xx is not retried**: an unknown
+ * revision or a missing project is an answer, and asking four times makes it no
+ * truer while making a failure take half a minute to report.
  */
-async function read(url, what) {
+async function read(url, what, headers = {}) {
   let lastError;
 
   for (let attempt = 1; attempt <= 4; attempt += 1) {
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+      const response = await fetch(url, { headers, signal: AbortSignal.timeout(30_000) });
+
+      if (response.status >= 400 && response.status < 500) {
+        throw Object.assign(new Error(`answered ${response.status}`), { final: true });
+      }
 
       if (!response.ok) {
-        throw new Error(`SonarCloud answered ${response.status}`);
+        throw new Error(`answered ${response.status}`);
       }
 
       return await response.json();
     } catch (error) {
+      if (error?.final) throw new Error(`Could not read ${what}: ${error.message}`);
+
       lastError = error;
       await new Promise((done) => setTimeout(done, attempt * 2_000));
     }
@@ -351,7 +378,7 @@ async function main() {
   // population from the working tree while the measures came from an older
   // analysis reported two brand new files as "absent from the analysis" — true
   // of that analysis, and nothing at all about the exclusion.
-  const tree = analysis ? filesAt(analysis.revision) : null;
+  const tree = analysis ? await filesAt(analysis.revision) : null;
   const expected = coveredFiles(tree ?? filesOnDisk());
 
   if (tree) {
