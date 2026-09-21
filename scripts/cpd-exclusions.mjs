@@ -179,14 +179,21 @@ export function asRevision(value) {
   return typeof value === "string" && /^[0-9a-f]{40}$/.test(value) ? value : null;
 }
 
-/** One git invocation, by absolute path, answering with trimmed text or null. */
+const GIT_OPTIONS = {
+  cwd: ROOT,
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "ignore"],
+};
+
+/**
+ * One git invocation whose arguments are all written here, by absolute path.
+ *
+ * Only for fixed arguments. Anything carrying an outside value spawns in the
+ * function that checked it, so the check and the spawn can be read together.
+ */
 function fromGit(args) {
   try {
-    return execFileSync(git(), args, {
-      cwd: ROOT,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
+    return execFileSync(git(), args, GIT_OPTIONS).trim();
   } catch {
     return null;
   }
@@ -195,18 +202,28 @@ function fromGit(args) {
 /**
  * Every file in a revision's tree.
  *
- * `null` when the revision is not in local history — a shallow clone, or a
- * revision from a branch that has since gone. The caller says so and falls back
- * rather than treating an empty list as an empty repository.
+ * `null` when the revision is not one this program will pass to git, or is not
+ * in local history — a shallow clone, or a revision from a branch that has since
+ * gone. The caller says so and falls back rather than treating an empty list as
+ * an empty repository.
+ *
+ * **The check and the spawn are in one function body on purpose.** They were two
+ * before, and the distance is the kind a reader has to hold in their head and a
+ * taint analysis cannot follow at all. Adjacent, the guarantee is local: the only
+ * value that reaches git here is one `asRevision` returned.
  */
 function filesAt(revision) {
   const checked = asRevision(revision);
 
   if (checked === null) return null;
 
-  const listing = fromGit(["ls-tree", "-r", "--name-only", checked]);
+  let listing;
 
-  if (listing === null) return null;
+  try {
+    listing = execFileSync(git(), ["ls-tree", "-r", "--name-only", checked], GIT_OPTIONS).trim();
+  } catch {
+    return null;
+  }
 
   return listing
     .split("\n")
