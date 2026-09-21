@@ -80,5 +80,17 @@ jobs:
       # methods, measured in #192. This reads what landed. It catches a squash
       # after the fact rather than preventing one, which is late and still
       # better than the weeks #182 went unnoticed.
+      #
+      # **Not on a pull request**, and not as a convenience. On a `pull_request`
+      # event GitHub checks out an ephemeral merge of the head into the base,
+      # whose subject is `Merge <sha> into <sha>` and whose committer is GitHub —
+      # which this check reads as a squash, correctly by its own rule and wrongly
+      # about the world. Measured: it went red on the pull request that added it.
+      #
+      # Scoping it is the fix rather than teaching it about that subject, because
+      # the question itself is wrong on a pull request. Nothing has landed yet.
+      # A squash reaches `develop` through a merge, which is a push, and that is
+      # where this runs — immediately, plus daily.
       - name: No squash merge has landed on develop
+        if: github.event_name != 'pull_request'
         run: node scripts/no-squash.mjs
