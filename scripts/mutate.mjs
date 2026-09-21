@@ -33,13 +33,25 @@ const ROOT = resolve(import.meta.dirname, "..");
  * So a red run only counts when the failure is an assertion.
  */
 export function classify(output, status) {
-  // A name filter matching nothing exits non-zero and proves nothing.
-  if (/No test (files )?found|matched|tests 0\b/i.test(output)) {
-    return "no-such-test";
-  }
-
+  // **A zero exit is a pass, whatever the output says, and this has to come
+  // first.** Every rule below reads prose, and prose contains whatever a test
+  // name contains.
+  //
+  // Found by the runner's own mutation set. The first version checked the
+  // no-such-test patterns first, and one of those patterns was a bare
+  // `matched` — which fired on this file's own test called "refuses to read a
+  // filter that matched nothing as a pass". A green suite was reported as
+  // having matched no tests, and the set that checks the runner could not even
+  // establish a baseline.
   if (status === 0) {
     return "pass";
+  }
+
+  // A name filter matching nothing exits non-zero and proves nothing. Phrases
+  // rather than words: vitest says "No test files found", `node --test` reports
+  // `tests 0`. `matched` alone matched this file.
+  if (/No test (files )?found|no tests? matched|tests 0\b/i.test(output)) {
+    return "no-such-test";
   }
 
   if (
@@ -222,10 +234,15 @@ async function main() {
   // set caught every mutation" is true when nothing was selected, and reads as
   // though something was checked — which is the one sentence this whole
   // mechanism exists to stop anybody writing.
+  if (selected.length === 0) {
+    console.log("No set was selected. Nothing was mutation-checked by this run.");
+    return;
+  }
+
   console.log(
-    selected.length === 0
-      ? "No set was selected. Nothing was mutation-checked by this run."
-      : `${selected.length} set(s) ran and caught every mutation. The rest were not checked.`,
+    skipped.length === 0
+      ? `Every set ran — ${selected.length} of them — and caught every mutation.`
+      : `${selected.length} set(s) ran and caught every mutation. ${skipped.length} were not checked.`,
   );
 }
 
