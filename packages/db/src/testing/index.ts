@@ -18,5 +18,13 @@ export {
   type MovableStatus,
   transitionEventValues,
 } from "./provenance-fixtures.js";
+export {
+  type Fingerprint,
+  fingerprintDifferences,
+  missingSections,
+  type Queryable,
+  type SectionName,
+  schemaFingerprint,
+} from "./schema-fingerprint.js";
 export { expectSqlState, SqlState, sqlMessageOf, sqlStateOf } from "./sql-state.js";
 export { insertProductWithProvenance, moveProductStatus } from "./with-provenance.js";
