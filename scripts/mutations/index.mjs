@@ -7,6 +7,7 @@
  */
 import cpdExclusions from "./cpd-exclusions.mjs";
 import forLog from "./for-log.mjs";
+import localDev from "./local-dev.mjs";
 import mutationRunner from "./mutation-runner.mjs";
 import noSquash from "./no-squash.mjs";
 import qrRoute from "./qr-route.mjs";
@@ -25,4 +26,5 @@ export const SETS = [
   schemaFingerprint,
   schemaDrift,
   readOnly,
+  localDev,
 ];

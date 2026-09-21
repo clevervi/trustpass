@@ -1,6 +1,20 @@
 import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 import { LOCAL_DEV_PASSWORDS, localDevUrls, mayUseLocalDevPasswords } from "./local-dev.js";
+
+/**
+ * What `docker compose ps --format json` says when this project's own container
+ * holds the port these URLs use.
+ *
+ * **Pinned against the installed Compose rather than its documentation**, which
+ * is what #178 asked for: v5.3.0 prints one object per line, not an array.
+ */
+const OURS = JSON.stringify({
+  Service: "postgres",
+  State: "running",
+  Publishers: [{ URL: "0.0.0.0", TargetPort: 5432, PublishedPort: 5433, Protocol: "tcp" }],
+});
 
 /**
  * The guard that decides whether a known password may be written onto a role.
@@ -14,7 +28,9 @@ describe("whether a run may use the published development passwords", () => {
 
   describe("both conditions are required, and neither is enough", () => {
     it("allows it when the operator asks and the host is this machine", () => {
-      expect(mayUseLocalDevPasswords({ requested: true, databaseUrl: local })).toEqual({
+      expect(
+        mayUseLocalDevPasswords({ requested: true, databaseUrl: local, composePs: OURS }),
+      ).toEqual({
         ok: true,
       });
     });
@@ -23,7 +39,9 @@ describe("whether a run may use the published development passwords", () => {
       // The default, and the behaviour that existed before this file. A script
       // that quietly used development passwords because the host looked local
       // would be the inference this whole design exists to avoid.
-      expect(mayUseLocalDevPasswords({ requested: false, databaseUrl: local })).toEqual({
+      expect(
+        mayUseLocalDevPasswords({ requested: false, databaseUrl: local, composePs: OURS }),
+      ).toEqual({
         ok: false,
         reason: "not_requested",
       });
@@ -34,6 +52,7 @@ describe("whether a run may use the published development passwords", () => {
         mayUseLocalDevPasswords({
           requested: true,
           databaseUrl: "postgres://trustpass:x@db.production.example.com:5432/trustpass",
+          composePs: OURS,
         }),
       ).toEqual({ ok: false, reason: "not_a_local_host" });
     });
@@ -67,7 +86,7 @@ describe("whether a run may use the published development passwords", () => {
         "postgres://trustpass:x@localtest.me:5432/trustpass",
       ],
     ])("refuses %s", (_name, databaseUrl) => {
-      expect(mayUseLocalDevPasswords({ requested: true, databaseUrl })).toEqual({
+      expect(mayUseLocalDevPasswords({ requested: true, databaseUrl, composePs: OURS })).toEqual({
         ok: false,
         reason: "not_a_local_host",
       });
@@ -80,27 +99,35 @@ describe("whether a run may use the published development passwords", () => {
       ["127.0.0.1", "postgres://trustpass:x@127.0.0.1:5433/trustpass"],
       ["::1", "postgres://trustpass:x@[::1]:5433/trustpass"],
     ])("allows %s", (_name, databaseUrl) => {
-      expect(mayUseLocalDevPasswords({ requested: true, databaseUrl })).toEqual({ ok: true });
+      expect(mayUseLocalDevPasswords({ requested: true, databaseUrl, composePs: OURS })).toEqual({
+        ok: true,
+      });
     });
   });
 
   describe("when there is nothing to check", () => {
     it("refuses with no DATABASE_URL, because the host is half the decision", () => {
-      expect(mayUseLocalDevPasswords({ requested: true, databaseUrl: undefined })).toEqual({
+      expect(
+        mayUseLocalDevPasswords({ requested: true, databaseUrl: undefined, composePs: OURS }),
+      ).toEqual({
         ok: false,
         reason: "no_database_url",
       });
     });
 
     it("refuses an empty DATABASE_URL rather than reading it as absent", () => {
-      expect(mayUseLocalDevPasswords({ requested: true, databaseUrl: "   " })).toEqual({
+      expect(
+        mayUseLocalDevPasswords({ requested: true, databaseUrl: "   ", composePs: OURS }),
+      ).toEqual({
         ok: false,
         reason: "no_database_url",
       });
     });
 
     it("refuses something that is not a URL", () => {
-      expect(mayUseLocalDevPasswords({ requested: true, databaseUrl: "localhost" })).toEqual({
+      expect(
+        mayUseLocalDevPasswords({ requested: true, databaseUrl: "localhost", composePs: OURS }),
+      ).toEqual({
         ok: false,
         reason: "unreadable_database_url",
       });
@@ -167,7 +194,11 @@ describe("whether a run may use the published development passwords", () => {
       // one it would allow. They are separate functions and nothing else makes
       // them consistent.
       expect(
-        mayUseLocalDevPasswords({ requested: true, databaseUrl: localDevUrls({}).superuser }),
+        mayUseLocalDevPasswords({
+          requested: true,
+          databaseUrl: localDevUrls({}).superuser,
+          composePs: OURS,
+        }),
       ).toEqual({ ok: true });
     });
 
@@ -187,6 +218,87 @@ describe("whether a run may use the published development passwords", () => {
       expect(urls.runtime).toBe(
         `postgres://trustpass_runtime:${LOCAL_DEV_PASSWORDS.trustpass_runtime}@localhost:6000/other`,
       );
+    });
+  });
+
+  describe("the condition a tunnel cannot satisfy", () => {
+    // #178. `ssh -L 5433:prod-db.internal:5432 bastion` makes every hostname
+    // test in the world say yes, because the hostname is true — it is the
+    // database behind it that is somebody else's.
+    const tunnelled = "postgres://trustpass:real@localhost:5433/trustpass";
+
+    it("refuses a tunnel holding a port no container of ours publishes", () => {
+      // Compose is running and publishes nothing on 5433, which is exactly what
+      // a tunnel on 5433 requires: the two cannot both hold it.
+      const elsewhere = JSON.stringify({
+        Service: "postgres",
+        State: "running",
+        Publishers: [{ TargetPort: 5432, PublishedPort: 5544, Protocol: "tcp" }],
+      });
+
+      expect(
+        mayUseLocalDevPasswords({ requested: true, databaseUrl: tunnelled, composePs: elsewhere }),
+      ).toEqual({ ok: false, reason: "port_not_served_by_compose" });
+    });
+
+    it("refuses when compose is up but nothing is running", () => {
+      expect(
+        mayUseLocalDevPasswords({ requested: true, databaseUrl: tunnelled, composePs: "" }),
+      ).toEqual({ ok: false, reason: "port_not_served_by_compose" });
+    });
+
+    it("refuses when Docker could not be asked, rather than falling back", () => {
+      // The direction that matters. `--local-dev` exists for the compose
+      // database, so a machine that cannot say whether compose is running is not
+      // one to write a published password on. Falling back to the host check
+      // would restore exactly the hole this closes.
+      expect(
+        mayUseLocalDevPasswords({ requested: true, databaseUrl: tunnelled, composePs: null }),
+      ).toEqual({ ok: false, reason: "compose_unreadable" });
+    });
+
+    it("allows the ordinary case, where our own container holds the port", () => {
+      expect(
+        mayUseLocalDevPasswords({
+          requested: true,
+          databaseUrl: "postgres://trustpass:trustpass_local_dev@localhost:5433/trustpass",
+          composePs: OURS,
+        }),
+      ).toEqual({ ok: true });
+    });
+
+    it("reads the port out of the URL rather than assuming the default", () => {
+      // A second throwaway on another port is the ordinary reason to pass a URL
+      // at all, and defaulting to 5432 here would refuse it while accepting a
+      // tunnel on 5432.
+      const other = JSON.stringify({
+        State: "running",
+        Publishers: [{ TargetPort: 5432, PublishedPort: 5439, Protocol: "tcp" }],
+      });
+
+      expect(
+        mayUseLocalDevPasswords({
+          requested: true,
+          databaseUrl: "postgres://trustpass:x@localhost:5439/trustpass",
+          composePs: other,
+        }),
+      ).toEqual({ ok: true });
+    });
+
+    it("checks the flag and the host before it ever asks Docker", () => {
+      // Order matters for the message somebody gets. A run with no flag should
+      // say so, not complain that Docker is unreachable.
+      expect(
+        mayUseLocalDevPasswords({ requested: false, databaseUrl: tunnelled, composePs: null }),
+      ).toEqual({ ok: false, reason: "not_requested" });
+
+      expect(
+        mayUseLocalDevPasswords({
+          requested: true,
+          databaseUrl: "postgres://trustpass:x@db.example.com:5433/trustpass",
+          composePs: null,
+        }),
+      ).toEqual({ ok: false, reason: "not_a_local_host" });
     });
   });
 });

@@ -25,6 +25,7 @@
  * loud at the end rather than letting anyone believe otherwise.
  */
 import postgres from "postgres";
+import { composePsJson, repositoryRoot } from "./compose-port.js";
 import { explainRefusal, LOCAL_DEV_PASSWORDS, mayUseLocalDevPasswords } from "./local-dev.js";
 
 /**
@@ -95,6 +96,8 @@ async function main(): Promise<void> {
   const localDev = mayUseLocalDevPasswords({
     requested: process.argv.includes("--local-dev"),
     databaseUrl,
+    // The third condition, asked of Docker rather than of the URL. #178.
+    composePs: composePsJson(repositoryRoot()),
   });
 
   if (missing.length > 0 && !localDev.ok) {
