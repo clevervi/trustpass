@@ -7,6 +7,7 @@
  */
 import mutationRunner from "./mutation-runner.mjs";
 import noSquash from "./no-squash.mjs";
+import qrRoute from "./qr-route.mjs";
 import writeRateLimit from "./write-rate-limit.mjs";
 
-export const SETS = [writeRateLimit, noSquash, mutationRunner];
+export const SETS = [writeRateLimit, noSquash, mutationRunner, qrRoute];
