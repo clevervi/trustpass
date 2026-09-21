@@ -176,7 +176,12 @@ const MAY_BE_EMPTY: ReadonlySet<SectionName> = new Set(["oldestLifecycleEvent"])
  * These are ASCII identifiers. Code-unit order is total, stable and the same
  * everywhere.
  */
-const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+function byCodeUnit(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+
+  return 0;
+}
 
 /**
  * Which sections came back with nothing when they had to come back with
