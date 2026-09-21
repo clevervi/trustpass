@@ -27,6 +27,7 @@
  * nobody can debug when the third one fails.
  */
 import { spawnSync } from "node:child_process";
+import { composePsJson, repositoryRoot } from "./compose-port.js";
 import { explainRefusal, localDevUrls, mayUseLocalDevPasswords } from "./local-dev.js";
 
 /**
@@ -79,7 +80,11 @@ function main(): void {
   // By construction this passes. It is here because `localDevUrls` and this
   // guard are separate functions, and the day one of them changes, the failure
   // should be a refusal rather than a published password on an unknown host.
-  const decision = mayUseLocalDevPasswords({ requested: true, databaseUrl });
+  const decision = mayUseLocalDevPasswords({
+    requested: true,
+    databaseUrl,
+    composePs: composePsJson(repositoryRoot()),
+  });
 
   if (!decision.ok) {
     console.error("This command sets up a throwaway database on this machine.");

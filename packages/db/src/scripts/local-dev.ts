@@ -17,10 +17,14 @@
  * inferred:
  *
  *   1. the operator says so, with a flag, every time;
- *   2. the connection is to this machine.
+ *   2. the connection is to this machine;
+ *   3. the port is one this project's own compose container publishes.
  *
- * The flag alone would let it run against a tunnel. The host check alone is the
- * inference this file exists to avoid.
+ * The flag alone would let it run against anything. The host check alone is the
+ * inference this file exists to avoid — **and it was not enough**: a hostname is
+ * a claim about where a socket goes, and `ssh -L 5433:prod:5432` makes that
+ * claim false for nothing. #178 added the third, which is the one a tunnel
+ * cannot satisfy, because a tunnel and the container cannot both hold the port.
  */
 
 /**
@@ -39,6 +43,9 @@ export const LOCAL_DEV_PASSWORDS = {
 
 export type LocalDevRole = keyof typeof LOCAL_DEV_PASSWORDS;
 
+// The second condition #178 adds, and the one a tunnel cannot satisfy.
+import { servesPort } from "./compose-port.js";
+
 export type LocalDevRefusal =
   /** No flag. The default, and the only behaviour that existed before. */
   | "not_requested"
@@ -47,7 +54,11 @@ export type LocalDevRefusal =
   /** Asked for, and the URL is not one. */
   | "unreadable_database_url"
   /** Asked for, and the host is not this machine. */
-  | "not_a_local_host";
+  | "not_a_local_host"
+  /** Asked for, and Docker could not say whether compose holds the port. */
+  | "compose_unreadable"
+  /** Asked for, and the port is served by something that is not our container. */
+  | "port_not_served_by_compose";
 
 export type LocalDevDecision =
   | { readonly ok: true }
@@ -62,10 +73,12 @@ export type LocalDevDecision =
  * either — a name that resolves to 127.0.0.1 today is a name whose owner can
  * point it somewhere else tomorrow.
  *
- * **What this cannot see is a tunnel**, and that limit is real rather than
- * theoretical. `ssh -L 5433:prod:5432` makes `localhost:5433` a true statement
- * about the socket and a false one about the database, and this function says
- * yes. See #178.
+ * **This set cannot see a tunnel, and no longer has to.** `ssh -L 5433:prod:5432`
+ * makes `localhost:5433` a true statement about the socket and a false one about
+ * the database, and every hostname test in the world says yes to it. That was
+ * this file's named limitation until #178; the compose-port condition below is
+ * what removed it, by asking a question about the machine instead of about a
+ * string.
  *
  * `pnpm db:setup` is not exposed to it, because it never accepts a URL — it
  * builds one carrying the published superuser password, which a real database
@@ -77,6 +90,14 @@ const LOCAL_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "::1
 export function mayUseLocalDevPasswords(input: {
   readonly requested: boolean;
   readonly databaseUrl: string | undefined;
+  /**
+   * `docker compose ps --format json`, or `null` when Docker could not answer.
+   *
+   * Passed in rather than fetched here, so the decision stays a pure function of
+   * its inputs — which is the only way it can be mutation-checked at all: the
+   * `Mutations` workflow has no Docker and no Postgres.
+   */
+  readonly composePs: string | null;
 }): LocalDevDecision {
   // Checked first, so that running without the flag never depends on anything
   // about the URL. The no-flag path behaves exactly as it did before this file
@@ -104,6 +125,23 @@ export function mayUseLocalDevPasswords(input: {
 
   if (!LOCAL_HOSTS.has(hostname)) {
     return { ok: false, reason: "not_a_local_host" };
+  }
+
+  // **The condition a tunnel cannot satisfy**, and #178 is why the host check
+  // alone is not enough: `ssh -L 5433:prod-db.internal:5432` makes the hostname
+  // `localhost` while the socket goes somewhere else entirely.
+  //
+  // A tunnel and the container cannot both hold the port. So the question stops
+  // being about a string and becomes about this machine's state — and it is a
+  // second, independent condition rather than a stronger first one.
+  if (input.composePs === null) {
+    return { ok: false, reason: "compose_unreadable" };
+  }
+
+  const port = Number(new URL(input.databaseUrl).port || "5432");
+
+  if (!servesPort(input.composePs, port)) {
+    return { ok: false, reason: "port_not_served_by_compose" };
   }
 
   return { ok: true };
@@ -154,5 +192,9 @@ export function explainRefusal(reason: LocalDevRefusal): string {
       return "DATABASE_URL could not be read as a URL, so its host could not be checked.";
     case "not_a_local_host":
       return "--local-dev only runs against localhost, 127.0.0.1 or ::1. This connection is somewhere else, and the published passwords are not going onto it.";
+    case "compose_unreadable":
+      return "Docker could not say which ports this project's compose services publish. --local-dev is for the compose database, so a machine that cannot answer is not one to write published passwords on. Start Docker, or set TRUSTPASS_MIGRATION_PASSWORD and TRUSTPASS_RUNTIME_PASSWORD instead.";
+    case "port_not_served_by_compose":
+      return "That port is not published by this project's compose services. A hostname of localhost can be a tunnel to somewhere that matters, and a tunnel cannot hold a port the container already has — so this one is not our throwaway database.";
   }
 }
