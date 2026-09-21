@@ -8,55 +8,19 @@
  * file is for, and it is the reason the refusal exists rather than a duplicate
  * of it.
  *
- * **Every mutation here runs inside a transaction that rolls back.** Vitest runs
- * test files in parallel against one database, and the residue being created is
- * a privilege escalation — a committed `GRANT UPDATE (serial)` would be visible
- * to every other suite for as long as this one held it, and a test that has to
- * be trusted to clean up after itself is a test that eventually does not.
- *
- * **Note on locks, and an unresolved observation.** The two mutating tests hold a
- * lock on the object they change — `ALTER TABLE ... DISABLE TRIGGER` takes ACCESS
- * EXCLUSIVE — for as long as the transaction lives, which is one fingerprint,
- * roughly thirty milliseconds. Fifteen runs of the full package suite were made
- * against one cluster: fourteen were clean at 505 of 505, and one reported 502
- * without its output being captured. The lock window is the obvious suspect and
- * it is a suspect, not a finding. Recorded rather than rounded down to "flaky",
- * because the next person to see it should know it has been seen once.
- * Filed as #207, with what would settle it.
+ * **Nothing here writes**, and the note at the bottom of this file is why. Two
+ * tests used to create their own evidence inside rolled-back transactions; #207
+ * has the deadlock that cost, and the measurement showing neither needed to.
+ * Read that before adding a test that changes anything — this database is shared
+ * with twenty-seven other files running at the same time.
  *
  * Skips without DATABASE_URL, because a password cannot live in the repository.
  */
-import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
-import {
-  fingerprintDifferences,
-  missingSections,
-  schemaFingerprint,
-} from "./schema-fingerprint.js";
+import { missingSections, schemaFingerprint } from "./schema-fingerprint.js";
 
 const databaseUrl = process.env.DATABASE_URL;
-
-/** Rolls back whatever the callback did, and returns what it computed. */
-async function withRollback<T>(db: Database, run: (tx: never) => Promise<T>): Promise<T> {
-  let captured: T | undefined;
-  let ran = false;
-
-  try {
-    await db.transaction(async (tx) => {
-      captured = await run(tx as never);
-      ran = true;
-      tx.rollback();
-    });
-  } catch (error) {
-    // `tx.rollback()` signals by throwing, which is Drizzle's contract. Anything
-    // thrown before the callback finished is a real failure and must surface —
-    // swallowing it would turn a broken test into a passing one.
-    if (!ran) throw error;
-  }
-
-  return captured as T;
-}
 
 describe.skipIf(!databaseUrl)("run the schema fingerprint against Postgres", () => {
   let db: Database;
@@ -106,67 +70,91 @@ describe.skipIf(!databaseUrl)("run the schema fingerprint against Postgres", () 
   // `count(*)`, which `CONTRIBUTING.md` already warns about.
   //
   // Reflexivity is proved in the unit tests, where the input is a value rather
-  // than a shared cluster. What survives here is that every assertion below is
-  // `toContain` or `some`, deliberately: this file asks whether a specific
-  // difference appeared, never whether it was the only one.
+  // than a shared cluster. What survives here is the rule that produced it:
+  // **no assertion may depend on what another suite is doing.** So the cases
+  // below name specific rows, and the one that does look at every row —
+  // `carries every trigger's enabled state` — asks about the *shape* of each
+  // value rather than its content. A trigger another file disables still matches
+  // it, which is the point.
 
-  it("sees a column privilege granted to the runtime, which a table grant hides", async () => {
-    // The measured reason `columnPrivileges` is a section at all:
-    // `role_table_grants` reports only SELECT and INSERT for the runtime on
-    // `product`, so an `UPDATE` on one column leaves that view untouched.
-    const differences = await withRollback(db, async (tx) => {
-      const before = await schemaFingerprint(tx);
+  it("sees a column privilege that a table grant hides, without creating one", async () => {
+    // The measured reason `columnPrivileges` is a section at all — and it does
+    // not need to be manufactured, because #157 already put it there.
+    //
+    // An earlier version granted `UPDATE (serial)` inside a rolled-back
+    // transaction to make the asymmetry appear. Measured first, before changing
+    // anything: the runtime already holds column-level `UPDATE` on `status` and
+    // `updated_at` and no table-level `UPDATE` at all. The grant was a third
+    // instance of something already true twice — and it was the weaker instance,
+    // because `serial` is a column this project deliberately keeps unupdatable,
+    // so the test asserted against a privilege that must never exist instead of
+    // against the two that do.
+    const fingerprint = await schemaFingerprint(db);
 
-      await (tx as unknown as Database).execute(
-        sql`GRANT UPDATE (serial) ON product TO trustpass_runtime`,
-      );
+    expect(fingerprint.columnPrivileges).toContain("trustpass_runtime product.status UPDATE");
+    expect(fingerprint.columnPrivileges).toContain("trustpass_runtime product.updated_at UPDATE");
 
-      const after = await schemaFingerprint(tx);
-
-      expect(after.tablePrivileges).toEqual(before.tablePrivileges);
-
-      return fingerprintDifferences(before, after);
-    });
-
-    expect(differences).toContain("+ columnPrivileges: trustpass_runtime product.serial UPDATE");
+    // The hiding half. Without this line the case above is just "a grant
+    // exists", which `least-privilege.integration.test.ts` already says better.
+    expect(fingerprint.tablePrivileges).not.toContain("trustpass_runtime product UPDATE");
   });
 
-  it("sees a trigger disabled while it stays listed in the catalogue", async () => {
-    const differences = await withRollback(db, async (tx) => {
-      const before = await schemaFingerprint(tx);
-      const target = before.triggers[0];
+  it("carries every trigger's enabled state, which is what a name-only list loses", async () => {
+    // A disabled trigger is still listed in `pg_trigger`, still named, still
+    // attached — so a section holding names alone reports no difference for one
+    // that has been switched off. `tgenabled` is what makes that visible, and
+    // whether it reaches the value is answerable by reading.
+    //
+    // An earlier version proved it by running `ALTER TABLE … DISABLE TRIGGER`.
+    // That is a stronger-looking test and a weaker one: it took ACCESS EXCLUSIVE
+    // on a table twenty-seven other files write to. What it added over this was
+    // that a change in the state produces a difference — and
+    // `fingerprintDifferences` already proves that against `O` and `D` fixtures,
+    // in a unit test, where it can also be mutation-checked.
+    const fingerprint = await schemaFingerprint(db);
 
-      // Not a type ceremony. An empty `triggers` section would make the rest of
-      // this test disable nothing and then assert nothing changed, which passes.
-      if (target === undefined) throw new Error("the fingerprint found no triggers to disable");
+    expect(fingerprint.triggers.length).toBeGreaterThan(0);
 
-      const table = target.slice(0, target.indexOf("."));
-      const rest = target.slice(target.indexOf(".") + 1);
-      const name = rest.slice(0, rest.lastIndexOf(" "));
+    // Every row, not some. One row carrying a state while the rest silently lost
+    // theirs is the shape a `some()` would pass.
+    const withoutState = fingerprint.triggers.filter((row) => !/ [ODRA]$/.test(row));
 
-      await (tx as unknown as Database).execute(
-        sql`ALTER TABLE ${sql.identifier(table)} DISABLE TRIGGER ${sql.identifier(name)}`,
-      );
-
-      const after = await schemaFingerprint(tx);
-
-      // Still there, still named, still attached. Only `tgenabled` moved, which
-      // is why a section listing trigger names alone would report IDENTICAL.
-      expect(after.triggers).toHaveLength(before.triggers.length);
-
-      return fingerprintDifferences(before, after);
-    });
-
-    expect(differences.some((d) => d.startsWith("+ triggers:") && d.endsWith(" D"))).toBe(true);
-  });
-
-  it("leaves nothing behind, which is the property the rollback is for", async () => {
-    const after = await schemaFingerprint(db);
-
-    // Scoped to the one grant this file creates. An earlier version also
-    // asserted that no trigger anywhere was disabled, which is a claim about the
-    // whole cluster and so a claim about what every other suite is doing — the
-    // same mistake as the stability test removed above, one file further along.
-    expect(after.columnPrivileges).not.toContain("trustpass_runtime product.serial UPDATE");
+    expect(withoutState).toEqual([]);
   });
 });
+
+/**
+ * **Nothing in this file writes, and #207 is why.**
+ *
+ * Two tests here created their own evidence — `GRANT UPDATE (serial)` and
+ * `ALTER TABLE … DISABLE TRIGGER`, inside transactions that rolled back. They
+ * passed. They also held ACCESS EXCLUSIVE on tables that twenty-seven other
+ * files write to, and the same pattern in #162 produced a deadlock with both
+ * lock modes and both process ids printed:
+ *
+ * ```
+ * 40P01  Process 263 waits for RowExclusiveLock on relation 16554;
+ *                    blocked by process 281.
+ *        Process 281 waits for AccessExclusiveLock on relation 16711;
+ *                    blocked by process 263.
+ * ```
+ *
+ * **The fix was not synchronisation.** Before changing anything, each test was
+ * asked whether its DDL was necessary for the property it claimed. Measured on a
+ * migrated cluster:
+ *
+ * - the runtime already holds column-level `UPDATE` on `status` and
+ *   `updated_at`, and no table-level `UPDATE` at all — so the asymmetry the
+ *   grant manufactured was already present, twice;
+ * - all seventeen trigger rows already carry an enabled state, so nothing had to
+ *   be disabled to see that the field reaches the value.
+ *
+ * Neither was necessary. What the DDL genuinely added — that a *change* produces
+ * a difference — is proved in `schema-fingerprint.test.ts` against fixtures,
+ * which is also the only place the mutation runner can reach, since the
+ * `Mutations` workflow has no Postgres service.
+ *
+ * A retry, a timeout or a lock ordering would have kept two tests that were
+ * asking a shared cluster to demonstrate something a fixture demonstrates
+ * better.
+ */
