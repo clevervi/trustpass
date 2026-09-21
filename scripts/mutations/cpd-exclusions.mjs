@@ -91,8 +91,8 @@ export default {
         {
           label: "anything at all may be handed to git as a revision",
           test: "rejects a revision that git would read as an option",
-          from: '  return typeof value === "string" && /^[0-9a-f]{40}$/.test(value);',
-          to: "  return true;",
+          from: '  return typeof value === "string" && /^[0-9a-f]{40}$/.test(value) ? value : null;',
+          to: "  return value;",
         },
         {
           label: "the revision shape is not anchored, so an option carrying one passes",
