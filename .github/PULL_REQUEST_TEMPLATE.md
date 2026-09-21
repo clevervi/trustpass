@@ -41,6 +41,10 @@ Closes TP-
      this repository's own collaborator accounts does not open the gate:
      `no-self-approval.yml` is a required check and fails on one. -->
 
+- [ ] Every guard this change adds or touches has a set in `scripts/mutations/`,
+      and the table below is that set's output rather than a recollection. A set
+      that exists only long enough to produce a table leaves the table
+      unverifiable — 44 of them already are
 - [ ] The rules this repository already holds about the same surface were
       searched for, and the search is named here — not the rules themselves,
       what was looked for and where. A change can satisfy every criterion on its

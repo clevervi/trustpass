@@ -206,6 +206,21 @@ is the bar below, and it is weaker than one. Say so rather than dressing it up.
    purpose — remove the check, loosen the constraint, add the forbidden field —
    run the tests, see them fail, restore it. A test that has never failed has not
    been shown to test anything.
+
+   **The set lives in `scripts/mutations/`, not in a scratch directory.** It
+   names the files it protects, and `scripts/mutate.mjs` runs it. Run yours with
+   `node scripts/mutate.mjs`, or `MUTATION_BASE=origin/develop node scripts/mutate.mjs`
+   to run only the sets your diff touches.
+
+   A set that exists only long enough to produce a table is how 44 of these
+   became unverifiable — #194 has the count. The table in the pull request body
+   is the *result*; the set is the mechanism, and the mechanism belongs in the
+   repository.
+
+   **A green pull request is not a claim that a guard is checked.** The
+   `Mutations` workflow selects by diff, so a change to something a guard depends
+   on but does not name leaves its set unselected — and the run prints what it
+   skipped. The nightly run ignores the selector and is what guarantees anything.
 2. **The mutations and their results are listed in the pull request body.** Not
    summarised as "tested thoroughly": which guard, what was broken, how many
    tests went red.

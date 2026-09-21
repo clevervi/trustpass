@@ -45,6 +45,20 @@ describe("why a test run ended", () => {
   it("reads a zero exit as a pass whatever the output says", () => {
     assert.equal(classify("some log line mentioning AssertionError in prose", 0), "pass");
   });
+
+  it("is not fooled by a test name that contains its own signal words", () => {
+    // Found by the runner's mutation set, against this file. The first version
+    // checked for the word `matched` before it checked the exit code, and this
+    // suite contains a test called "refuses to read a filter that matched
+    // nothing as a pass". A green run was classified as having matched no
+    // tests, and the set that checks the runner could not get a baseline.
+    //
+    // Every rule in `classify` reads prose, and prose contains whatever a test
+    // is called. The exit code does not.
+    const green = "✔ refuses to read a filter that matched nothing as a pass\nℹ pass 16";
+
+    assert.equal(classify(green, 0), "pass");
+  });
 });
 
 describe("what a mutation proved", () => {
