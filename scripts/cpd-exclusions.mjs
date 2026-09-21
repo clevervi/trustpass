@@ -15,13 +15,18 @@
  *
  *   for every file the exclusion covers
  *     it is present in the component tree
- *     it has ncloc > 0
+ *     it has an ncloc measure, whatever that measure says
  *     its duplication is 0
  *
- * Both halves of the first two matter. Without presence and `ncloc`,
- * `sonar.exclusions` would satisfy this by removing the files from the analysis
- * entirely — which is a different and much worse change than the one that is
- * wanted, and it would look identical in the duplication column.
+ * **Presence is the load-bearing line.** It is what separates *excluded from
+ * duplication* from *removed from the analysis* — `sonar.exclusions` would
+ * satisfy the duplication column by deleting the files outright, which is a
+ * worse change and looks identical in the number.
+ *
+ * `ncloc` is checked for existence rather than for being positive. An earlier
+ * version required it to be above zero and rejected a migration that is
+ * deliberately empty; reported-as-zero is a measurement, and only
+ * not-reported-at-all says a file was not analysed.
  *
  * **Its ceiling, stated rather than discovered.** Somebody who removed the
  * exclusion *and* genuinely deduplicated the files would pass. For forward-only
@@ -31,7 +36,6 @@
  * an observable consequence, not the syntax of a configuration, because the
  * syntax is not observable.
  */
-import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -118,39 +122,77 @@ function expand(pattern) {
   if (!existsSync(base)) return [];
 
   const suffix = pattern.endsWith(".sql") ? ".sql" : ".mjs";
-  const root = ROOT.replace(/\\/g, "/");
+  const root = ROOT.replaceAll("\\", "/");
 
   return readdirSync(base, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(suffix))
-    .map((entry) => `${entry.parentPath}/${entry.name}`.replace(/\\/g, "/"))
+    .map((entry) => `${entry.parentPath}/${entry.name}`.replaceAll("\\", "/"))
     .map((path) => path.slice(`${root}/`.length))
     .sort();
 }
 
-function fetchTree() {
-  const out = resolve(ROOT, "node_modules/.cache/sonar-tree.json");
+/**
+ * Which branch this is running on, without spawning git.
+ *
+ * The population comes from the working tree and the measures come from the
+ * project's analysis, which is `develop`'s. Those describe the same state only
+ * on `develop` — a branch that adds a file will find it missing from the
+ * analysis and report an absence that is true and means nothing.
+ *
+ * The workflow scopes this to pushes for that reason. Run by hand on a branch it
+ * would otherwise produce exactly the reading #199 produced: `ABSENT` taken for
+ * `excluded`, when it meant `not in this population`.
+ */
+function currentBranch() {
+  try {
+    const head = readFileSync(resolve(ROOT, ".git/HEAD"), "utf8").trim();
 
-  execFileSync(
-    "curl",
-    [
-      "-sS",
-      "--retry",
-      "5",
-      "--retry-all-errors",
-      "--max-time",
-      "60",
-      "--create-dirs",
-      "-o",
-      out,
-      "https://sonarcloud.io/api/measures/component_tree?component=clevervi_trustpass&metricKeys=ncloc,duplicated_lines_density&qualifiers=FIL&ps=500",
-    ],
-    { stdio: "ignore" },
-  );
-
-  return JSON.parse(readFileSync(out, "utf8"));
+    return head.startsWith("ref: refs/heads/") ? head.slice("ref: refs/heads/".length) : null;
+  } catch {
+    return null;
+  }
 }
 
-function main() {
+/**
+ * The project's component tree, read without spawning anything.
+ *
+ * The first version ran `curl`, which searches PATH — the rule `pg-tools.ts` and
+ * `git-path.mjs` both answer with an absolute path, and SonarCloud flagged it as
+ * `javascript:S4036`. The better answer here is not to resolve `curl` but to
+ * stop needing it: Node has `fetch`, so there is no process to spawn and no PATH
+ * to trust.
+ *
+ * Retried, because the alternative to a transient network failure is a red build
+ * with nothing wrong in this repository — the objection this check already
+ * carries, narrowed where it can be.
+ */
+async function fetchTree() {
+  const url =
+    "https://sonarcloud.io/api/measures/component_tree?component=clevervi_trustpass&metricKeys=ncloc,duplicated_lines_density&qualifiers=FIL&ps=500";
+
+  let lastError;
+
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+
+      if (!response.ok) {
+        throw new Error(`SonarCloud answered ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      lastError = error;
+      await new Promise((done) => setTimeout(done, attempt * 2_000));
+    }
+  }
+
+  throw new Error(
+    `Could not read the analysis after four attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+  );
+}
+
+async function main() {
   const declared = cpdExclusions(readFileSync(PROPERTIES, "utf8"));
   const missing = missingPatterns(declared);
 
@@ -160,7 +202,8 @@ function main() {
     console.error("");
     console.error("The reasoning for each is in that file. Removing one is a decision,");
     console.error("and this check exists so it cannot be an accident.");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const expected = REQUIRED_PATTERNS.flatMap(expand);
@@ -170,10 +213,11 @@ function main() {
   if (expected.length === 0) {
     console.error("No file matched the required patterns. The check has nothing to check,");
     console.error("which is a failure rather than a pass.");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
-  const tree = fetchTree();
+  const tree = await fetchTree();
   const components = new Map((tree.components ?? []).map((c) => [c.path, c]));
 
   console.log(`Analysis holds ${tree.paging?.total ?? "?"} files.`);
@@ -204,9 +248,22 @@ function main() {
   console.error("Either the exclusion stopped applying, or the files left the analysis.");
   console.error("Those are different failures and the message above says which.");
 
-  process.exit(1);
+  const branch = currentBranch();
+
+  if (branch !== null && branch !== "develop") {
+    console.error("");
+    console.error(`This ran on "${branch}", not develop. The population above came from`);
+    console.error("the working tree and the measures came from the project's analysis,");
+    console.error("which is develop's — so a file this branch adds is absent for a reason");
+    console.error("that says nothing about the exclusion. Read the rows before the verdict.");
+  }
+
+  // Not `process.exit`. The retry above leaves a timer pending, and exiting
+  // through it crashed libuv here with `UV_HANDLE_CLOSING` and status 127 —
+  // a failure mode that hides the real one behind a native assertion.
+  process.exitCode = 1;
 }
 
 if (process.argv[1]?.endsWith("cpd-exclusions.mjs")) {
-  main();
+  await main();
 }
