@@ -133,7 +133,31 @@ export function flatten(groups) {
 export function selectSets(sets, changedFiles) {
   const changed = new Set(changedFiles);
 
-  return sets.filter((set) => set.protects.some((file) => changed.has(file)));
+  return sets.filter(
+    (set) => set.protects.some((file) => changed.has(file)) || changed.has(definitionOf(set)),
+  );
+}
+
+/**
+ * Where a set's own definition lives.
+ *
+ * A set is also selected when its definition changes, and that half was missing.
+ * Found by this runner's own CI: the pull request that added the `qr-route` set
+ * selected nothing, because the set protects a route the pull request did not
+ * touch — it only added the set, the test and a config alias. The set was
+ * introduced and never executed, and the run was green.
+ *
+ * That is the shape #194 exists to remove: a result that looks like coverage and
+ * is not. A set nobody has run is a claim, and a claim is what the whole
+ * mechanism replaces.
+ *
+ * Derived from the name by convention rather than declared, because a declared
+ * path is a second place to keep in step. `runSet` refuses a set whose
+ * definition is not where this says it is, on the same rule it applies to
+ * `protects`.
+ */
+export function definitionOf(set) {
+  return `scripts/mutations/${set.name}.mjs`;
 }
 
 /** Runs one named test inside a set's runner, and says why it ended. */
@@ -170,6 +194,16 @@ function runSet(set) {
       console.error(`  the set protects ${file}, which does not exist`);
       return false;
     }
+  }
+
+  // And the set's own file, because the selector finds it by convention. A set
+  // renamed without its file moving would stop being selected by its own
+  // changes, silently — which is the failure this check exists to make loud.
+  if (!existsSync(resolve(ROOT, definitionOf(set)))) {
+    console.error(`  the set is named "${set.name}" but ${definitionOf(set)} does not exist`);
+    console.error("  the selector finds a set's own definition by that name, so it would");
+    console.error("  never be selected by a change to itself.");
+    return false;
   }
 
   const baseline = runTest(set, "");
