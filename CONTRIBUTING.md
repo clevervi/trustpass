@@ -157,12 +157,11 @@ and worth the same suspicion. The one setting that carries weight is guarded:
 `scripts/cpd-exclusions.mjs` fails when the duplication exclusions stop having
 their effect, and it needs no credential to do it.
 
-**This project claims no test coverage, and no setting is what produces that.**
-SonarCloud reports no `coverage` metric at all because nothing uploads one — not
-because a `sonar.coverage.exclusions` line asked it not to. That line existed and
-was inert. The consequence was true and the attribution was false, which is #77:
-the evidence here is mutation checking, and a coverage percentage nobody
-generates is not a claim this repository is making.
+**No coverage figure is reported, and the deleted file was not what produced
+that.** `sonar.coverage.exclusions=**/*` was one of its inert lines; SonarCloud
+computes no `coverage` metric because nothing uploads one. The consequence was
+true and the attribution was false. Why the absence is deliberate is beside the
+mutation-checking bar below, which is the reason for it.
 
 **Not independent.** [@clevervi](https://github.com/clevervi) and
 [@raishark](https://github.com/raishark) are this repository's collaborator
@@ -250,6 +249,15 @@ is the bar below, and it is weaker than one. Say so rather than dressing it up.
    `Mutations` workflow selects by diff, so a change to something a guard depends
    on but does not name leaves its set unselected — and the run prints what it
    skipped. The nightly run ignores the selector and is what guarantees anything.
+
+   **This is why no coverage figure is reported, and the absence is a choice.**
+   Line coverage can be high while missing everything above: a suite that
+   executes a guard without ever asserting it fails counts as covered. So a
+   coverage number would be a weaker claim standing next to a stronger one, and
+   the risk is that it becomes the number people look at. Nothing here uploads a
+   report and SonarCloud computes no `coverage` metric — measured, on the project
+   and on pull requests alike. If that ever changes, it should be because the
+   figure will be acted on, not because it looked untidy. #77.
 2. **The mutations and their results are listed in the pull request body.** Not
    summarised as "tested thoroughly": which guard, what was broken, how many
    tests went red.
