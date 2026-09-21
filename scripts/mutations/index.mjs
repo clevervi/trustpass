@@ -10,6 +10,7 @@ import forLog from "./for-log.mjs";
 import mutationRunner from "./mutation-runner.mjs";
 import noSquash from "./no-squash.mjs";
 import qrRoute from "./qr-route.mjs";
+import readOnly from "./read-only.mjs";
 import schemaDrift from "./schema-drift.mjs";
 import schemaFingerprint from "./schema-fingerprint.mjs";
 import writeRateLimit from "./write-rate-limit.mjs";
@@ -23,4 +24,5 @@ export const SETS = [
   forLog,
   schemaFingerprint,
   schemaDrift,
+  readOnly,
 ];
