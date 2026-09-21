@@ -3,7 +3,8 @@
  *
  * `.sonarcloud.properties` is the only Sonar configuration this repository has
  * that is actually read — #197 established that, three times, against a
- * `sonar-project.properties` that looks plausible and is ignored. Nothing checked
+ * `sonar-project.properties` that looked plausible and was ignored, and that has
+ * since been deleted for that reason. Nothing checked
  * that the file it replaced it with keeps working, and its failure mode is
  * identical: a plausible file, silently not applied.
  *

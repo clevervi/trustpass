@@ -134,6 +134,35 @@ writing it:
 | Full secret scan          | Credentials anywhere in history — weekly, not per change |
 | CodeQL                    | Security and quality defects, refreshed weekly        |
 | Dependency review         | New dependencies with known vulnerabilities or copyleft licences |
+| SonarCloud                | Duplication, security and maintainability on the new code only |
+
+**Where the analysis configuration lives, and why not here.**
+[`.sonarcloud.properties`](.sonarcloud.properties) is the file SonarCloud reads.
+Two things about it are not obvious and have each cost a day:
+
+- **It is read from `develop`, not from your branch.** A pull request cannot
+  configure its own analysis. Whatever you land applies to what comes after it.
+- **The analysis runs as a GitHub App, not from a workflow** —
+  `sonar.autoscan.enabled` is `true`, readable from the settings API. Nothing
+  here runs the scanner CLI, so a `sonar-project.properties` is never read. One
+  sat in this repository for four days documenting six settings, none of which
+  were in force; #197 has the measurement and it was deleted rather than made
+  true, because making it true costs a `SONAR_TOKEN` and its most substantive
+  line would have silenced `scripts/`, a directory that has since produced real
+  findings.
+
+Everything else is in SonarCloud's own interface, outside the repository, where
+nothing compares it to anything — the same shape as the merge bar before #165,
+and worth the same suspicion. The one setting that carries weight is guarded:
+`scripts/cpd-exclusions.mjs` fails when the duplication exclusions stop having
+their effect, and it needs no credential to do it.
+
+**This project claims no test coverage, and no setting is what produces that.**
+SonarCloud reports no `coverage` metric at all because nothing uploads one — not
+because a `sonar.coverage.exclusions` line asked it not to. That line existed and
+was inert. The consequence was true and the attribution was false, which is #77:
+the evidence here is mutation checking, and a coverage percentage nobody
+generates is not a claim this repository is making.
 
 **Not independent.** [@clevervi](https://github.com/clevervi) and
 [@raishark](https://github.com/raishark) are this repository's collaborator
