@@ -50,14 +50,14 @@ export default {
         {
           label: "every section may be empty, so the refusal never fires",
           test: "refuses a privilege section that measured nothing, which is the leak it exists for",
-          from: "    .filter((name) => !MAY_BE_EMPTY.includes(name as SectionName))",
+          from: "    .filter((name) => !MAY_BE_EMPTY.has(name as SectionName))",
           to: "    .filter(() => false)",
         },
         {
           label: "the lifecycle exception is dropped, so a fresh database is refused",
           test: "allows the lifecycle section to be empty, because no events is a real state",
-          from: 'const MAY_BE_EMPTY: readonly SectionName[] = ["oldestLifecycleEvent"];',
-          to: "const MAY_BE_EMPTY: readonly SectionName[] = [];",
+          from: 'const MAY_BE_EMPTY: ReadonlySet<SectionName> = new Set(["oldestLifecycleEvent"]);',
+          to: "const MAY_BE_EMPTY: ReadonlySet<SectionName> = new Set();",
         },
         {
           label: "only additions are reported, so a deleted object is invisible",

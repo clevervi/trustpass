@@ -160,7 +160,23 @@ export type Fingerprint = { readonly [K in SectionName]: readonly string[] };
  * moment the migrations have run, so an empty one means the query stopped
  * working rather than that the thing stopped existing.
  */
-const MAY_BE_EMPTY: readonly SectionName[] = ["oldestLifecycleEvent"];
+const MAY_BE_EMPTY: ReadonlySet<SectionName> = new Set(["oldestLifecycleEvent"]);
+
+/**
+ * Deterministic order, and deliberately not `localeCompare`.
+ *
+ * `typescript:S2871` asks for a compare function and suggests that one. It would
+ * be the wrong one here: `localeCompare` answers according to the locale the
+ * process happens to be running under, so the same set of section names could
+ * sort one way on a developer's machine and another in CI — and this value is
+ * asserted against literally in a test. The rule is right that a bare `sort()`
+ * should not be relied on; the fix it proposes trades an unspecified order for a
+ * machine-dependent one.
+ *
+ * These are ASCII identifiers. Code-unit order is total, stable and the same
+ * everywhere.
+ */
+const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
  * Which sections came back with nothing when they had to come back with
@@ -183,9 +199,9 @@ const MAY_BE_EMPTY: readonly SectionName[] = ["oldestLifecycleEvent"];
  */
 export function missingSections(sections: Record<string, readonly string[]>): readonly string[] {
   return Object.keys(SECTIONS)
-    .filter((name) => !MAY_BE_EMPTY.includes(name as SectionName))
+    .filter((name) => !MAY_BE_EMPTY.has(name as SectionName))
     .filter((name) => (sections[name]?.length ?? 0) === 0)
-    .sort();
+    .sort(byCodeUnit);
 }
 
 /**
