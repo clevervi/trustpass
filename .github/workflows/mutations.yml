@@ -1,0 +1,83 @@
+# Runs the committed mutation sets: break a guard on purpose, watch a named test
+# go red, restore.
+#
+# `CONTRIBUTING.md` has required this for every `high` and `critical` guard for
+# months, and until #194 nothing in the repository could re-run one. 44 merged
+# pull requests carry a mutation table and not one of them was reproducible.
+#
+# **Two runs with different meanings, and the difference is the point.**
+#
+# On a pull request, only the sets whose declared files the diff touches. That is
+# an execution optimisation: a change to something a guard depends on but does
+# not name leaves its set unselected, and the pull request goes green having
+# checked nothing about it. A green check here means "the selector found these
+# sets and they held", never "these guards are verified".
+#
+# On a schedule, everything, with no selector. That is the guarantee — the half
+# that catches a guard whose test stopped killing its mutant because something
+# else moved. #188 is the worked example: the anchor was intact and the assertion
+# was weaker than it read.
+#
+# Not on every pull request, following the reasoning `secret-scan-full.yml`
+# already sets out for the full history scan: the cost grows with the number of
+# sets while the value of running an unrelated one does not. Measured on the
+# largest set: 18 mutants, 36 test invocations, 80s locally.
+name: Mutations
+
+on:
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # An hour after the merge bar's sweep, so two failures on the same morning
+    # arrive separately rather than as one wall of red.
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  PNPM_VERSION: "10.33.2"
+
+jobs:
+  mutations:
+    name: Committed mutations still catch their mutants
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The selector diffs against the base branch, which a shallow clone
+          # cannot reach.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The runner before the sets, the same shape as `merge-bar.yml`. A harness
+      # that cannot tell a caught mutant from one that failed to compile would
+      # let every step below pass while measuring nothing — which is the exact
+      # failure #194 was filed for.
+      - name: The runner can tell a caught mutant from an uncaught one
+        run: node --test scripts/mutate.test.mjs
+
+      # `MUTATION_BASE` present means select; absent means run everything.
+      - name: Run the sets this change touches
+        if: github.event_name == 'pull_request'
+        env:
+          MUTATION_BASE: origin/${{ github.base_ref }}
+        run: node scripts/mutate.mjs
+
+      - name: Run every set
+        if: github.event_name != 'pull_request'
+        run: node scripts/mutate.mjs
