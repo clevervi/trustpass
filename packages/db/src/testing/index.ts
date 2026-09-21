@@ -18,6 +18,7 @@ export {
   type MovableStatus,
   transitionEventValues,
 } from "./provenance-fixtures.js";
+export { type ColumnMap, columnDifferences, declaredColumns } from "./schema-drift.js";
 export {
   type Fingerprint,
   fingerprintDifferences,
