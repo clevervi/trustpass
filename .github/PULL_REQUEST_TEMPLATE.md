@@ -41,6 +41,10 @@ Closes TP-
      this repository's own collaborator accounts does not open the gate:
      `no-self-approval.yml` is a required check and fails on one. -->
 
+- [ ] The rules this repository already holds about the same surface were
+      searched for, and the search is named here — not the rules themselves,
+      what was looked for and where. A change can satisfy every criterion on its
+      issue and still break something asserted three files away
 - [ ] The case is posted: why this design, which option was rejected, what it
       would have cost
 - [ ] The objection is posted on the diff — or it is stated plainly that the

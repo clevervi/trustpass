@@ -182,18 +182,36 @@ is the bar below, and it is weaker than one. Say so rather than dressing it up.
 2. **The mutations and their results are listed in the pull request body.** Not
    summarised as "tested thoroughly": which guard, what was broken, how many
    tests went red.
-3. **The case is posted** on the lines worth disagreeing with: why the design is
+3. **The rules this repository already holds about the same surface are looked
+   for, and the search is written down.** The issue says what the change must
+   add. It does not say what the codebase already promises, and a change can
+   satisfy every criterion on the issue while breaking a rule enforced three
+   files away. Name the surface — a response body, a column, a log line, an
+   identifier — and grep for what is already asserted about it.
+
+   Not a list of the invariants; those change, and a list of them here would be
+   stale within a month and trusted anyway. The search is recorded for the same
+   reason the argued review is written rather than thought: one nobody can see
+   is indistinguishable from one that did not happen.
+
+   Found in #188. A mutation that put `actor.id` into a 429 body was cleared as
+   "not a defect" because the issue was about not disclosing *what was asked
+   for*, and a caller's own identity is not that. The reasoning was right about
+   the issue and wrong about its scope: `never exposes the internal key` is
+   asserted for products, for passports and for enrolments, and `actor.id` is a
+   database key. Every other item on this bar was already green.
+4. **The case is posted** on the lines worth disagreeing with: why the design is
    what it is, which option was rejected, and what that would have cost.
-4. **The objection is posted** on the diff, arguing against the change and
+5. **The objection is posted** on the diff, arguing against the change and
    naming what evidence would settle it. If there is nothing real to say, say
    that and say why the change was simple enough not to need one — a
    manufactured objection is as dishonest as a manufactured approval and harder
    to spot.
-5. **The objection is answered.** The design changes, or the answer is written
+6. **The objection is answered.** The design changes, or the answer is written
    down, or it is recorded as an accepted limitation with an issue behind it. A
    thread closes when one of those three has happened, never because nobody
    replied.
-6. **Review threads are resolved** before merging. Branch protection enforces it.
+7. **Review threads are resolved** before merging. Branch protection enforces it.
 
 A mutation check proves a test can fail. The argued review is the only part of
 this that asks whether the right things were *worth* testing — and it is written
