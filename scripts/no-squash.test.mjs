@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { parseLog, squashedCommits } from "./no-squash.mjs";
 
-const FIELD = String.fromCharCode(1);
+const FIELD = String.fromCodePoint(1);
 
 /** A `git log --format=%h%x01%cn%x01%an <%ae>%x01%s` line. */
 const line = (sha, committer, author, subject) => [sha, committer, author, subject].join(FIELD);
@@ -86,6 +86,30 @@ describe("telling a squash from the other ways a commit reaches develop", () => 
     const commits = parseLog(line("eee5555", "GitHub", "SweetZer0 <x@y>", subject));
 
     assert.equal(commits[0]?.subject, subject);
+  });
+
+  it("flags GitHub's ephemeral pull-request merge, which is why the workflow scopes it", () => {
+    // Recorded rather than fixed here, because it is not wrong.
+    //
+    // On a `pull_request` event GitHub checks out a merge of the head into the
+    // base that exists only for the run. Its committer is GitHub and its subject
+    // is `Merge <sha> into <sha>`, which is not `Merge pull request` — so this
+    // function reads it as a squash, correctly by its own rule.
+    //
+    // It went red on the pull request that added it. The fix is in the workflow,
+    // which does not ask this question on a pull request at all, because nothing
+    // has landed on develop yet. Teaching the function about that subject would
+    // make it quietly wrong about a real commit shaped the same way.
+    const commits = parseLog(
+      line(
+        "6140216",
+        "GitHub",
+        "SweetZer0 <127355228+clevervi@users.noreply.github.com>",
+        "Merge 6f86990deba1ca1ebe3e09ad6eeff520f68ea792 into dd1c7a4f4b1b846a2d9e97bdedc1b186b64a476d",
+      ),
+    );
+
+    assert.equal(squashedCommits(commits).length, 1);
   });
 
   it("finds nothing in an empty log, which is the ordinary case", () => {

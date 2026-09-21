@@ -20,6 +20,53 @@
  * unnoticed for weeks. Loud beats silent even when it is late.
  */
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+
+/**
+ * Where git is, by absolute path.
+ *
+ * The same reasoning `pg-tools.ts` already applies to `docker`, and the same
+ * pattern: spawning `"git"` searches PATH, and PATH is a list of directories
+ * something else may be able to write to. Prepend a `git` there and this script
+ * runs somebody else's program with the operator's rights.
+ *
+ * The scanner rates it MINOR. The reason to fix it rather than wave it through
+ * is that a repository check nobody reads closely is a good place to hide a
+ * program, not a bad one.
+ *
+ * Forward slashes on the Windows entry, for the reason recorded next to
+ * `DOCKER_LOCATIONS`: a backslash before P, r or b is an escape sequence, and
+ * the rest of the path vanishes silently.
+ */
+const GIT_LOCATIONS = [
+  "C:/Program Files/Git/cmd/git.exe",
+  "C:/Program Files/Git/bin/git.exe",
+  "/usr/bin/git",
+  "/usr/local/bin/git",
+  "/opt/homebrew/bin/git",
+];
+
+function git() {
+  const override = process.env.TP_GIT;
+
+  if (override) {
+    if (!existsSync(override)) {
+      throw new Error(`TP_GIT is set to "${override}", which does not exist.`);
+    }
+
+    return override;
+  }
+
+  const found = GIT_LOCATIONS.find((candidate) => existsSync(candidate));
+
+  if (!found) {
+    throw new Error(
+      `git was not found at any of: ${GIT_LOCATIONS.join(", ")}. Set TP_GIT to its path.`,
+    );
+  }
+
+  return found;
+}
 
 /**
  * Where the rule starts applying.
@@ -65,7 +112,7 @@ export function squashedCommits(commits) {
  * delimiter is. That has already cost this repository a test that appeared to
  * say `includes("")`.
  */
-const FIELD = String.fromCharCode(1);
+const FIELD = String.fromCodePoint(1);
 
 /** One commit per line, split on a delimiter no commit subject can contain. */
 export function parseLog(output) {
@@ -84,7 +131,7 @@ function main() {
 
   try {
     output = execFileSync(
-      "git",
+      git(),
       ["log", `${POLICY_BEGINS}..HEAD`, "--format=%h%x01%cn%x01%an <%ae>%x01%s"],
       { encoding: "utf8" },
     );
