@@ -22,6 +22,33 @@ Rules:
 - Branch from `develop`. Merge back into `develop`.
 - `develop` merges into `main` only as a release.
 
+**Merge a feature branch with a rebase. Never a squash.**
+
+A squash attributes the commit it produces to whoever *opened* the pull request,
+not to whoever wrote the code. The author is replaced, and on `develop` — which
+is what a reader walks — there is nothing left to say otherwise.
+
+Measured rather than assumed, in #192. #182's branch carried one commit by
+`Raishark`; `develop` records `SweetZer0`. #169's three commits came out as
+`dependabot[bot]`, because dependabot opened it. A rebase keeps both facts in the
+two fields that exist for them: the author who wrote it, the committer who
+merged it.
+
+Squash is disabled in the repository settings, so the wrong answer is not one
+click away. **CI cannot confirm that**: `GET /repos/{owner}/{repo}` returns 200
+and omits `allow_squash_merge` for a token without push or admin, so checking the
+setting would need a stored administration credential — the trade #165 refused.
+What CI does instead is `scripts/no-squash.mjs`, which fails when a squash has
+already landed. That is detection, not prevention, and calling it enforcement
+would be the kind of claim this file exists to stop.
+
+The 54 squashed commits that predate this rule stay as they are. This repository
+does not rewrite history, and a rule that failed on its own past would be
+switched off rather than obeyed.
+
+A release is the exception and keeps its own rule: `develop` into `main` is a
+merge commit. See **Releases**.
+
 ## Commits — Conventional Commits
 
 ```
@@ -348,14 +375,24 @@ run, not merely built: `v0.1.0` was tagged once, found broken on first
 execution, and re-cut. That was free because it had not been pushed. After a
 push it is not free, because other people's checkouts already believe it.
 
-### `console` is allowed in `packages/db/src/scripts`, and nowhere else
+### `console` is allowed where a command's output is the point, and nowhere else
 
-`noConsole` is a warning everywhere else because application code that prints
-has usually lost an error somewhere. A command whose whole output is a report
-is the exception, and it is scoped to that directory in `biome.json` rather than
-disabled globally — eighteen standing warnings train people to stop reading
-warnings, and turning the rule off everywhere would lose it where it earns its
-keep.
+Three directories, listed in `biome.json` rather than described here, because a
+list in two places is a list that disagrees with itself:
+
+```json
+"includes": ["packages/db/src/scripts/**", "apps/api/src/scripts/**", "scripts/**"]
+```
+
+`noConsole` is a warning everywhere else because application code that prints has
+usually lost an error somewhere. A command whose whole output is a report is the
+exception, and it is scoped rather than disabled globally — eighteen standing
+warnings train people to stop reading warnings, and turning the rule off
+everywhere would lose it where it earns its keep.
+
+This heading used to name one directory and say "nowhere else" while
+`biome.json` named three. Found by the search item on the review bar, while
+adding a script to the third.
 
 ### A query that takes one row says why there is one
 

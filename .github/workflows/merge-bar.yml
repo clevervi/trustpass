@@ -48,6 +48,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The whole history. `no-squash.mjs` walks from a baseline commit to
+          # HEAD, and the default shallow clone cannot see the baseline — the
+          # check would fail for the wrong reason, or, worse, be "fixed" by
+          # loosening it until it passed.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
@@ -65,3 +71,14 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node scripts/merge-bar.mjs
+
+      # The same shape as above: prove the comparison works, then run it.
+      - name: The squash check can tell a squash from a rebase
+        run: node --test scripts/no-squash.test.mjs
+
+      # Not a check on a setting — a workflow token cannot read the merge
+      # methods, measured in #192. This reads what landed. It catches a squash
+      # after the fact rather than preventing one, which is late and still
+      # better than the weeks #182 went unnoticed.
+      - name: No squash merge has landed on develop
+        run: node scripts/no-squash.mjs
