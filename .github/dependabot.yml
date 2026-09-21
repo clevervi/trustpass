@@ -44,6 +44,31 @@ updates:
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
 
+  # **This is what stops a pinned sha becoming an unpatched dependency**, and it
+  # is the half of #123 that is easy to forget. Every `uses:` in
+  # `.github/workflows/` is a full 40-character commit sha with the version in a
+  # trailing comment; Dependabot understands that form, bumps the sha and
+  # rewrites the comment, so the pin moves deliberately instead of never.
+  #
+  # Why shas rather than tags, measured on 2026-09-21 rather than assumed:
+  #
+  #   github/codeql-action@v4   -> v4.38.1, with 47 patch tags behind it
+  #   actions/checkout@v7       -> v7.0.1, while v7.0.0 exists
+  #   pnpm/action-setup@v6      -> v6.0.10, while v6.1.0 exists
+  #
+  # A major tag is a pointer its owner moves. The last line is the other
+  # direction of the same fact: `v6` is *behind* the newest v6 release, so the
+  # tag was not even giving what it appeared to promise.
+  #
+  # And `actions/dependency-review-action@v5` was never a tag at all — no `v5`
+  # tag exists in that repository, only a `v5` **branch**, which moves on every
+  # push rather than on every release. It happened to sit on `v5.0.0`'s commit
+  # when this was checked, held there by nothing.
+  #
+  # What this does not do: notice that an action's owner has been compromised
+  # between bumps. Nothing here does. Pinning narrows the window to the moment a
+  # bump is accepted, which is a review, rather than leaving it open at every
+  # workflow run.
   - package-ecosystem: github-actions
     directory: /
     schedule:

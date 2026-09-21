@@ -136,6 +136,13 @@ writing it:
 | Dependency review         | New dependencies with known vulnerabilities or copyleft licences |
 | SonarCloud                | Duplication, security and maintainability on the new code only |
 
+**Every action these gates run is pinned to a commit, not to a tag.** A `uses:`
+line carries a full 40-character sha with the version in a trailing comment, and
+Dependabot moves it weekly — the reasoning, and the measurements behind it, are
+in [`.github/dependabot.yml`](.github/dependabot.yml) beside the mechanism that
+does the moving. A tag is a pointer its owner moves; one of the five this
+repository used was not a tag at all but a branch.
+
 **Where the analysis configuration lives, and why not here.**
 [`.sonarcloud.properties`](.sonarcloud.properties) is the file SonarCloud reads.
 Two things about it are not obvious and have each cost a day:
