@@ -158,7 +158,7 @@ export function verdictFor(component) {
 }
 
 /**
- * Whether a value is a revision this program is willing to hand to git.
+ * A value as a revision this program is willing to hand to git, or `null`.
  *
  * `jssecurity:S6350`, and the rule is right. The revision arrives in
  * SonarCloud's HTTP response, and `execFileSync` spawns no shell but git still
@@ -169,9 +169,14 @@ export function verdictFor(component) {
  * A full hexadecimal object name, or nothing. Not a sanitiser that strips the
  * dangerous parts and hopes — the shapes git accepts are many and the one this
  * needs is exactly one, so anything else takes the documented fallback.
+ *
+ * **It answers with the value rather than with a boolean**, so the only way to
+ * reach the spawn is through a binding this function produced. A predicate
+ * leaves the original variable in scope and correct only by discipline; this
+ * makes passing the unchecked one impossible rather than merely wrong.
  */
-export function isRevision(value) {
-  return typeof value === "string" && /^[0-9a-f]{40}$/.test(value);
+export function asRevision(value) {
+  return typeof value === "string" && /^[0-9a-f]{40}$/.test(value) ? value : null;
 }
 
 /** One git invocation, by absolute path, answering with trimmed text or null. */
@@ -195,9 +200,11 @@ function fromGit(args) {
  * rather than treating an empty list as an empty repository.
  */
 function filesAt(revision) {
-  if (!isRevision(revision)) return null;
+  const checked = asRevision(revision);
 
-  const listing = fromGit(["ls-tree", "-r", "--name-only", revision]);
+  if (checked === null) return null;
+
+  const listing = fromGit(["ls-tree", "-r", "--name-only", checked]);
 
   if (listing === null) return null;
 

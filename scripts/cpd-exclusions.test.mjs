@@ -9,9 +9,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  asRevision,
   coveredFiles,
   cpdExclusions,
-  isRevision,
   matchesPattern,
   missingPatterns,
   verdictFor,
@@ -192,29 +192,29 @@ describe("what may be handed to git as a revision", () => {
   const objectName = "becb372f1a2b3c4d5e6f708192a3b4c5d6e7f809";
 
   it("accepts a full object name", () => {
-    assert.equal(isRevision(objectName), true);
+    assert.equal(asRevision(objectName), objectName);
   });
 
   it("rejects a revision that git would read as an option", () => {
     // `jssecurity:S6350`. `execFileSync` spawns no shell, and git still parses
     // its own arguments — `--upload-pack=` names a command to run.
-    assert.equal(isRevision("--upload-pack=touch owned"), false);
+    assert.equal(asRevision("--upload-pack=touch owned"), null);
   });
 
   it("rejects an option that merely contains a full object name", () => {
     // The anchors are the guard. Unanchored, this passes and the leading
     // dashes reach git intact.
-    assert.equal(isRevision(`--upload-pack=${objectName}`), false);
+    assert.equal(asRevision(`--upload-pack=${objectName}`), null);
   });
 
   it("rejects a short object name, which git would otherwise resolve", () => {
-    assert.equal(isRevision("becb372"), false);
+    assert.equal(asRevision("becb372"), null);
   });
 
   it("rejects a value that is not a string at all", () => {
     // It comes out of a parsed HTTP response, so it can be absent or a number.
-    assert.equal(isRevision(undefined), false);
-    assert.equal(isRevision(null), false);
-    assert.equal(isRevision(42), false);
+    assert.equal(asRevision(undefined), null);
+    assert.equal(asRevision(null), null);
+    assert.equal(asRevision(42), null);
   });
 });
