@@ -199,7 +199,8 @@ async function main() {
 
   if (missing.length > 0) {
     console.error(".sonarcloud.properties no longer excludes what it must:");
-    for (const pattern of missing) console.error(`  ${pattern}`);
+    // Read out of `.sonarcloud.properties`, so not this program's either.
+    for (const pattern of missing) console.error(`  ${forLog(pattern)}`);
     console.error("");
     console.error("The reasoning for each is in that file. Removing one is a decision,");
     console.error("and this check exists so it cannot be an accident.");
@@ -221,7 +222,13 @@ async function main() {
   const tree = await fetchTree();
   const components = new Map((tree.components ?? []).map((c) => [c.path, c]));
 
-  console.log(`Analysis holds ${tree.paging?.total ?? "?"} files.`);
+  // Everything from outside goes through the sanitiser, not only the values
+  // that look like text. Sonar traces the HTTP response into the log and is
+  // right to: a count is a number because the API said so, and the API is not
+  // this program. `merge-bar.mjs` takes the same blanket position for the same
+  // reason, and the first version of this file sanitised only the branch name —
+  // which is the narrow reading that leaves the next value unguarded.
+  console.log(`Analysis holds ${forLog(tree.paging?.total ?? "?")} files.`);
   console.log(`The exclusions cover ${expected.length} of them.`);
   console.log("");
 
@@ -241,8 +248,8 @@ async function main() {
   console.error("");
 
   for (const { path, problem } of problems) {
-    console.error(`  ${path}`);
-    console.error(`      ${problem}`);
+    console.error(`  ${forLog(path)}`);
+    console.error(`      ${forLog(problem)}`);
   }
 
   console.error("");
