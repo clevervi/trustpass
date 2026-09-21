@@ -94,3 +94,20 @@ jobs:
       - name: No squash merge has landed on develop
         if: github.event_name != 'pull_request'
         run: node scripts/no-squash.mjs
+
+      - name: The duplication exclusions can tell excluded from absent
+        run: node --test scripts/cpd-exclusions.test.mjs
+
+      # #197: `sonar-project.properties` looked like configuration and was
+      # ignored. `.sonarcloud.properties` replaced it and nothing checked that
+      # the replacement kept working — the same failure one step along.
+      #
+      # **Not on a pull request**, for the reason the squash check is not. This
+      # reads the project's analysis, which is `develop`'s, and compares it
+      # against the properties file in the working tree. On a pull request that
+      # edits that file the two disagree by construction until it merges, and a
+      # check that is red for a reason it cannot be right about is worse than no
+      # check.
+      - name: The duplication exclusions are still in force
+        if: github.event_name != 'pull_request'
+        run: node scripts/cpd-exclusions.mjs
