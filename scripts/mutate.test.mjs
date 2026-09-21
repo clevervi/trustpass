@@ -156,6 +156,27 @@ describe("which sets a diff selects", () => {
     );
   });
 
+  it("selects a set when its own definition changed", () => {
+    // The hole this runner's CI found in itself. The pull request that added
+    // the `qr-route` set selected nothing: the set protects a route that pull
+    // request did not touch, so a brand new set was introduced and never run,
+    // and the check was green.
+    //
+    // A set nobody has executed is a claim, and replacing claims with runs is
+    // the whole of #194.
+    assert.deepEqual(
+      selectSets(sets, ["scripts/mutations/one.mjs"]).map((set) => set.name),
+      ["one"],
+    );
+  });
+
+  it("does not select a set because some other set's definition changed", () => {
+    // The match is on this set's own file, not on the directory. Otherwise
+    // every set runs whenever any set is edited, and the selector stops being
+    // a selector.
+    assert.deepEqual(selectSets(sets, ["scripts/mutations/three.mjs"]), []);
+  });
+
   it("matches a whole path rather than a prefix", () => {
     // `src/a.ts` must not be selected by `src/a.ts.bak` or by `other/src/a.ts`.
     // A prefix match would quietly run sets that have nothing to do with the

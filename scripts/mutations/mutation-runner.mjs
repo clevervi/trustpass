@@ -55,6 +55,12 @@ export default {
           to: "    return { patched };",
         },
         {
+          label: "a set is not selected by a change to its own definition",
+          test: "selects a set when its own definition changed",
+          from: "    (set) => set.protects.some((file) => changed.has(file)) || changed.has(definitionOf(set)),",
+          to: "    (set) => set.protects.some((file) => changed.has(file)),",
+        },
+        {
           label: "the selector matches a prefix instead of a path",
           test: "matches a whole path rather than a prefix",
           from: "  return sets.filter((set) => set.protects.some((file) => changed.has(file)));",
