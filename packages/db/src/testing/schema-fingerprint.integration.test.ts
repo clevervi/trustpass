@@ -22,6 +22,7 @@
  * without its output being captured. The lock window is the obvious suspect and
  * it is a suspect, not a finding. Recorded rather than rounded down to "flaky",
  * because the next person to see it should know it has been seen once.
+ * Filed as #207, with what would settle it.
  *
  * Skips without DATABASE_URL, because a password cannot live in the repository.
  */
