@@ -67,7 +67,7 @@ export default {
         {
           label: "the literal parts of a pattern are not escaped",
           test: "treats the dot in an extension as a dot and not as any character",
-          from: '      return part.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");',
+          from: "      return part.replace(/[.*+?^${}()|[\\]\\\\]/g, String.raw`\\$&`);",
           to: "      return part;",
         },
         {
@@ -87,6 +87,18 @@ export default {
           test: "keeps only what a required pattern covers",
           from: "matchesPattern(path, pattern))).sort();",
           to: "matchesPattern(path, pattern))).slice();",
+        },
+        {
+          label: "anything at all may be handed to git as a revision",
+          test: "rejects a revision that git would read as an option",
+          from: '  return typeof value === "string" && /^[0-9a-f]{40}$/.test(value);',
+          to: "  return true;",
+        },
+        {
+          label: "the revision shape is not anchored, so an option carrying one passes",
+          test: "rejects an option that merely contains a full object name",
+          from: "/^[0-9a-f]{40}$/.test(value)",
+          to: "/[0-9a-f]{40}/.test(value)",
         },
       ],
     },

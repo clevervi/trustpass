@@ -111,7 +111,7 @@ export function matchesPattern(path, pattern) {
       if (part === "**") return ".*";
       if (part === "*") return "[^/]*";
 
-      return part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return part.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
     })
     .join("");
 
@@ -157,6 +157,23 @@ export function verdictFor(component) {
   return null;
 }
 
+/**
+ * Whether a value is a revision this program is willing to hand to git.
+ *
+ * `jssecurity:S6350`, and the rule is right. The revision arrives in
+ * SonarCloud's HTTP response, and `execFileSync` spawns no shell but git still
+ * parses its own arguments: a "revision" beginning with `-` is read as an
+ * option, and `--upload-pack=` is a command. The API is not this program, which
+ * is the same reason every value it returns already goes through `forLog`.
+ *
+ * A full hexadecimal object name, or nothing. Not a sanitiser that strips the
+ * dangerous parts and hopes — the shapes git accepts are many and the one this
+ * needs is exactly one, so anything else takes the documented fallback.
+ */
+export function isRevision(value) {
+  return typeof value === "string" && /^[0-9a-f]{40}$/.test(value);
+}
+
 /** One git invocation, by absolute path, answering with trimmed text or null. */
 function fromGit(args) {
   try {
@@ -178,6 +195,8 @@ function fromGit(args) {
  * rather than treating an empty list as an empty repository.
  */
 function filesAt(revision) {
+  if (!isRevision(revision)) return null;
+
   const listing = fromGit(["ls-tree", "-r", "--name-only", revision]);
 
   if (listing === null) return null;
@@ -313,10 +332,10 @@ async function main() {
 
   if (tree) {
     const current = analysis.revision === head;
+    const short = (revision) => forLog(String(revision ?? "unknown").slice(0, 7));
+    const relation = current ? "which is HEAD" : `not HEAD (${short(head)})`;
 
-    console.log(
-      `Analysis describes ${forLog(analysis.revision.slice(0, 7))}, ${current ? "which is HEAD" : `not HEAD (${forLog((head ?? "unknown").slice(0, 7))})`}.`,
-    );
+    console.log(`Analysis describes ${short(analysis.revision)}, ${relation}.`);
 
     if (!current) {
       console.log("So the population below is that revision's, not the working tree's,");
