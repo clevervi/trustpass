@@ -12,7 +12,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { applyPatch, classify, selectSets, verdict } from "./mutate.mjs";
+import { applyPatch, classify, flatten, selectSets, verdict } from "./mutate.mjs";
 
 describe("why a test run ended", () => {
   it("reads an assertion failure as an assertion failure", () => {
@@ -98,6 +98,34 @@ describe("applying a patch", () => {
 
   it("replaces the first occurrence and leaves the rest", () => {
     assert.deepEqual(applyPatch("a a a", { from: "a", to: "b" }), { patched: "b a a" });
+  });
+});
+
+describe("flattening a set's file groups", () => {
+  it("gives every mutation the file its group names", () => {
+    const flat = flatten([
+      { file: "a.ts", mutations: [{ label: "one" }, { label: "two" }] },
+      { file: "b.ts", mutations: [{ label: "three" }] },
+    ]);
+
+    assert.deepEqual(flat, [
+      { label: "one", file: "a.ts" },
+      { label: "two", file: "a.ts" },
+      { label: "three", file: "b.ts" },
+    ]);
+  });
+
+  it("does not let a mutation override the group it is in", () => {
+    // A stray `file:` inside a mutation would otherwise patch a file the set
+    // does not declare — and the set's declared files are what the selector
+    // reads, so the mutation would run on a diff that never mentioned it.
+    const flat = flatten([{ file: "a.ts", mutations: [{ label: "one", file: "elsewhere.ts" }] }]);
+
+    assert.equal(flat[0]?.file, "a.ts");
+  });
+
+  it("produces nothing from a group with no mutations", () => {
+    assert.deepEqual(flatten([{ file: "a.ts", mutations: [] }]), []);
   });
 });
 
