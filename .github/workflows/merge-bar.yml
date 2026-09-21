@@ -95,6 +95,9 @@ jobs:
         if: github.event_name != 'pull_request'
         run: node scripts/no-squash.mjs
 
+      - name: What reaches a log cannot fabricate a line in it
+        run: node --test scripts/for-log.test.mjs
+
       - name: The duplication exclusions can tell excluded from absent
         run: node --test scripts/cpd-exclusions.test.mjs
 

@@ -11,30 +11,7 @@
  * failure this exists to catch is a comparison that quietly passes.
  */
 
-/**
- * Anything from the API, on its way into a message somebody will read.
- *
- * A ruleset's check names are external input: they are set in a web interface
- * and this prints them into a CI log, which is the shape of a log injection —
- * a newline and a fabricated line, and the log says whatever the person who
- * named the check wanted it to say. Sonar flagged it as `jssecurity:S5145` and
- * it is right: the value is untrusted even though the person setting it today
- * is the person reading the log.
- */
-function forLog(value) {
-  // Character codes rather than a regular expression range. The range was
-  // written as an escape sequence and the formatter rewrote it into the literal
-  // control characters it denotes — which still worked, was unreadable, and
-  // left a test that appeared to say `includes("")`. A guard nobody can read is
-  // a guard somebody deletes.
-  const readable = Array.from(String(value), (character) => {
-    const code = character.codePointAt(0);
-
-    return code < 0x20 || code === 0x7f ? " " : character;
-  });
-
-  return readable.join("").slice(0, 120);
-}
+import { forLog } from "./for-log.mjs";
 
 /**
  * The contract's own shape, before it is used to judge anything.
