@@ -22,32 +22,33 @@ export default {
 
   mutations: [
     {
-      label: "the committer is not consulted",
-      test: "leaves a rebase-merged commit alone",
       file: "scripts/no-squash.mjs",
-      from: 'commit.committer === "GitHub" &&',
-      to: "true &&",
-    },
-    {
-      label: "a release merge commit is treated as a squash",
-      test: "leaves a release merge commit alone, which GitHub also authors",
-      file: "scripts/no-squash.mjs",
-      from: '!commit.subject.startsWith("Merge pull request")',
-      to: "true",
-    },
-    {
-      label: "nothing is ever flagged",
-      test: "catches a squash",
-      file: "scripts/no-squash.mjs",
-      from: 'commit.committer === "GitHub" &&',
-      to: "false &&",
-    },
-    {
-      label: "the subject is truncated at the first delimiter",
-      test: "keeps a subject that contains the delimiter rather than truncating it",
-      file: "scripts/no-squash.mjs",
-      from: "subject: rest.join(FIELD)",
-      to: 'subject: rest[0] ?? ""',
+      mutations: [
+        {
+          label: "the committer is not consulted",
+          test: "leaves a rebase-merged commit alone",
+          from: 'commit.committer === "GitHub" &&',
+          to: "true &&",
+        },
+        {
+          label: "a release merge commit is treated as a squash",
+          test: "leaves a release merge commit alone, which GitHub also authors",
+          from: '!commit.subject.startsWith("Merge pull request")',
+          to: "true",
+        },
+        {
+          label: "nothing is ever flagged",
+          test: "catches a squash",
+          from: 'commit.committer === "GitHub" &&',
+          to: "false &&",
+        },
+        {
+          label: "the subject is truncated at the first delimiter",
+          test: "keeps a subject that contains the delimiter rather than truncating it",
+          from: "subject: rest.join(FIELD)",
+          to: 'subject: rest[0] ?? ""',
+        },
+      ],
     },
   ],
 };

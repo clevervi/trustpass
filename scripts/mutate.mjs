@@ -107,6 +107,23 @@ export function applyPatch(source, { from, to }) {
 }
 
 /**
+ * A set's mutations, flattened out of the files they belong to.
+ *
+ * The definitions group by file — one entry per file, then the mutations inside
+ * it — because `file:` repeated on every mutation is the same string written
+ * eighteen times, and a scanner reading it as copy-paste was not wrong about the
+ * shape even if it was wrong about the cause.
+ *
+ * Grouping is also how the sets read: a set protects files, and each file has
+ * things that can be broken in it.
+ */
+export function flatten(groups) {
+  return groups.flatMap(({ file, mutations }) =>
+    mutations.map((mutation) => ({ ...mutation, file })),
+  );
+}
+
+/**
  * The sets a diff touches.
  *
  * Computed, never chosen. A set that depended on somebody remembering to name it
@@ -164,7 +181,7 @@ function runSet(set) {
 
   let healthy = true;
 
-  for (const mutation of set.mutations) {
+  for (const mutation of flatten(set.mutations)) {
     const path = resolve(ROOT, mutation.file);
     const original = readFileSync(path, "utf8");
     const { patched, problem } = applyPatch(original, mutation);
