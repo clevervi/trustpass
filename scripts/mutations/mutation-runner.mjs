@@ -63,8 +63,8 @@ export default {
         {
           label: "the selector matches a prefix instead of a path",
           test: "matches a whole path rather than a prefix",
-          from: "  return sets.filter((set) => set.protects.some((file) => changed.has(file)));",
-          to: "  return sets.filter((set) =>\n    set.protects.some((file) => [...changed].some((c) => c.includes(file))),\n  );",
+          from: "    (set) => set.protects.some((file) => changed.has(file)) || changed.has(definitionOf(set)),",
+          to: "    (set) => set.protects.some((file) => [...changed].some((c) => c.includes(file))),",
         },
         {
           label: "a filter that matched no test counts as a pass",
