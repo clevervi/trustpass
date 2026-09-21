@@ -3,7 +3,7 @@
  *
  * `.sonarcloud.properties` is the only Sonar configuration this repository has
  * that is actually read — #197 established that, three times, against a
- * `sonar-project.properties` that looks plausible and is ignored. Nothing checks
+ * `sonar-project.properties` that looks plausible and is ignored. Nothing checked
  * that the file it replaced it with keeps working, and its failure mode is
  * identical: a plausible file, silently not applied.
  *
@@ -13,10 +13,24 @@
  * file is in force — measured. The only observable is the effect, so that is
  * what this checks:
  *
- *   for every file the exclusion covers
+ *   for every file the exclusion covers, at the revision that was analysed
  *     it is present in the component tree
  *     it has an ncloc measure, whatever that measure says
  *     its duplication is 0
+ *
+ * **"At the revision that was analysed" is not a detail, and #202 is what it
+ * cost to learn.** The first version took its population from the working tree
+ * and its measures from the most recent completed analysis, then assumed that on
+ * `develop` those describe one state. They describe one state *eventually*.
+ * SonarCloud analyses a push asynchronously and the merge bar starts at once, so
+ * the guard's own first run on `develop` compared a tree containing two new
+ * files against an analysis fifty-four minutes older than them, and called them
+ * absent. True, and about the wrong population.
+ *
+ * Knowing the revision is what separates **not analysed yet** from **no longer
+ * analysed**, and those are the two answers this entire check exists to tell
+ * apart. So the population comes from that revision's tree, and both sides of the
+ * comparison describe one commit.
  *
  * **Presence is the load-bearing line.** It is what separates *excluded from
  * duplication* from *removed from the analysis* — `sonar.exclusions` would
@@ -28,20 +42,25 @@
  * deliberately empty; reported-as-zero is a measurement, and only
  * not-reported-at-all says a file was not analysed.
  *
- * **Its ceiling, stated rather than discovered.** Somebody who removed the
- * exclusion *and* genuinely deduplicated the files would pass. For forward-only
- * migrations that `CONTRIBUTING.md` forbids editing, that is close to
- * impossible; for `scripts/mutations/` it would mean reshaping data this
- * repository decided in #194 not to reshape. Small, and not zero. This protects
- * an observable consequence, not the syntax of a configuration, because the
- * syntax is not observable.
+ * **Its ceiling, stated rather than discovered.** Two of them now. Somebody who
+ * removed the exclusion *and* genuinely deduplicated the files would pass; for
+ * forward-only migrations that `CONTRIBUTING.md` forbids editing that is close to
+ * impossible, and for `scripts/mutations/` it would mean reshaping data #194
+ * decided not to reshape. And because the population is pinned to the analysed
+ * revision, the claim is *the exclusions were in force as of that revision* — a
+ * push that removes one while the analysis lags is caught on the next run rather
+ * than on itself. Both are smaller than they look from the outside, and both are
+ * what the data supports.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { forLog } from "./for-log.mjs";
+import { git } from "./git-path.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const PROPERTIES = resolve(ROOT, ".sonarcloud.properties");
+const PROJECT = "clevervi_trustpass";
 
 /**
  * The patterns this repository insists on, as a contract rather than as
@@ -72,6 +91,36 @@ export function cpdExclusions(properties) {
 /** What the contract requires and the file does not say. */
 export function missingPatterns(declared) {
   return REQUIRED_PATTERNS.filter((required) => !declared.includes(required));
+}
+
+/**
+ * Whether one path is covered by one Sonar pattern.
+ *
+ * `*` stops at a path separator and `**` crosses them, which is Sonar's own
+ * rule and is the difference between `packages/db/drizzle/*.sql` meaning *the
+ * migrations* and meaning *every `.sql` file underneath, however deep*. The
+ * first version approximated this by taking the text before the first `*` as a
+ * directory and matching on file extension, which read both patterns as `**`
+ * and would have quietly enlarged the population if anybody ever nested a
+ * directory in there.
+ */
+export function matchesPattern(path, pattern) {
+  const expression = pattern
+    .split(/(\*\*|\*)/)
+    .map((part) => {
+      if (part === "**") return ".*";
+      if (part === "*") return "[^/]*";
+
+      return part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    })
+    .join("");
+
+  return new RegExp(`^${expression}$`).test(path);
+}
+
+/** The subset of a file list the exclusions cover, sorted. */
+export function coveredFiles(paths, patterns = REQUIRED_PATTERNS) {
+  return paths.filter((path) => patterns.some((pattern) => matchesPattern(path, pattern))).sort();
 }
 
 /**
@@ -108,41 +157,69 @@ export function verdictFor(component) {
   return null;
 }
 
+/** One git invocation, by absolute path, answering with trimmed text or null. */
+function fromGit(args) {
+  try {
+    return execFileSync(git(), args, {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
 /**
- * The files a pattern covers, from the working tree.
+ * Every file in a revision's tree.
  *
- * `readdirSync` rather than a shell listing. The first version ran `dir` and
- * `find`, which failed here because this checkout's path contains a space — and
- * would have needed the absolute-path treatment `git-path.mjs` gives `git`,
- * for a job the standard library already does.
+ * `null` when the revision is not in local history — a shallow clone, or a
+ * revision from a branch that has since gone. The caller says so and falls back
+ * rather than treating an empty list as an empty repository.
  */
-function expand(pattern) {
-  const [directory = ""] = pattern.split("*");
-  const base = resolve(ROOT, directory);
+function filesAt(revision) {
+  const listing = fromGit(["ls-tree", "-r", "--name-only", revision]);
 
-  if (!existsSync(base)) return [];
+  if (listing === null) return null;
 
-  const suffix = pattern.endsWith(".sql") ? ".sql" : ".mjs";
+  return listing
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Every file under the literal prefix of each required pattern, from disk.
+ *
+ * The fallback population, for when the analysed revision cannot be resolved.
+ * `readdirSync` rather than a shell listing: the first version ran `dir` and
+ * `find`, which failed here because this checkout's path contains a space — and
+ * would have needed the absolute-path treatment `git-path.mjs` gives `git`, for
+ * a job the standard library already does.
+ */
+function filesOnDisk() {
   const root = ROOT.replaceAll("\\", "/");
 
-  return readdirSync(base, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(suffix))
-    .map((entry) => `${entry.parentPath}/${entry.name}`.replaceAll("\\", "/"))
-    .map((path) => path.slice(`${root}/`.length))
-    .sort();
+  return REQUIRED_PATTERNS.flatMap((pattern) => {
+    const [directory = ""] = pattern.split("*");
+    const base = resolve(ROOT, directory);
+
+    if (!existsSync(base)) return [];
+
+    return readdirSync(base, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => `${entry.parentPath}/${entry.name}`.replaceAll("\\", "/"))
+      .map((path) => path.slice(`${root}/`.length));
+  });
 }
 
 /**
  * Which branch this is running on, without spawning git.
  *
- * The population comes from the working tree and the measures come from the
- * project's analysis, which is `develop`'s. Those describe the same state only
- * on `develop` — a branch that adds a file will find it missing from the
- * analysis and report an absence that is true and means nothing.
- *
- * The workflow scopes this to pushes for that reason. Run by hand on a branch it
- * would otherwise produce exactly the reading #199 produced: `ABSENT` taken for
- * `excluded`, when it meant `not in this population`.
+ * Kept even now that the population is pinned to a revision: the message it
+ * feeds explains a *branch* mismatch, which is a different confusion from a
+ * *revision* one and still worth naming. Reading `.git/HEAD` rather than asking
+ * git, because this one does not need a process.
  */
 function currentBranch() {
   try {
@@ -155,22 +232,18 @@ function currentBranch() {
 }
 
 /**
- * The project's component tree, read without spawning anything.
+ * One SonarCloud read, retried.
  *
- * The first version ran `curl`, which searches PATH — the rule `pg-tools.ts` and
- * `git-path.mjs` both answer with an absolute path, and SonarCloud flagged it as
- * `javascript:S4036`. The better answer here is not to resolve `curl` but to
- * stop needing it: Node has `fetch`, so there is no process to spawn and no PATH
- * to trust.
+ * `fetch` rather than `curl`: the first version spawned it, which searches PATH
+ * — the rule `pg-tools.ts` and `git-path.mjs` both answer with an absolute path,
+ * and SonarCloud flagged it as `javascript:S4036`. The better answer was not to
+ * resolve `curl` but to stop needing it.
  *
  * Retried, because the alternative to a transient network failure is a red build
  * with nothing wrong in this repository — the objection this check already
  * carries, narrowed where it can be.
  */
-async function fetchTree() {
-  const url =
-    "https://sonarcloud.io/api/measures/component_tree?component=clevervi_trustpass&metricKeys=ncloc,duplicated_lines_density&qualifiers=FIL&ps=500";
-
+async function read(url, what) {
   let lastError;
 
   for (let attempt = 1; attempt <= 4; attempt += 1) {
@@ -189,7 +262,27 @@ async function fetchTree() {
   }
 
   throw new Error(
-    `Could not read the analysis after four attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+    `Could not read ${what} after four attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+  );
+}
+
+/** The revision the project's current analysis describes, and when it ran. */
+async function analysedRevision() {
+  const found = await read(
+    `https://sonarcloud.io/api/project_analyses/search?project=${PROJECT}&branch=develop&ps=1`,
+    "the analysis history",
+  );
+
+  const [latest] = found.analyses ?? [];
+
+  return latest?.revision ? { revision: latest.revision, date: latest.date } : null;
+}
+
+/** The project's component tree. */
+function componentTree() {
+  return read(
+    `https://sonarcloud.io/api/measures/component_tree?component=${PROJECT}&metricKeys=ncloc,duplicated_lines_density&qualifiers=FIL&ps=500`,
+    "the analysis",
   );
 }
 
@@ -208,7 +301,34 @@ async function main() {
     return;
   }
 
-  const expected = REQUIRED_PATTERNS.flatMap(expand);
+  const analysis = await analysedRevision();
+  const head = fromGit(["rev-parse", "HEAD"]);
+
+  // The population and the measures must describe one commit. #202: taking the
+  // population from the working tree while the measures came from an older
+  // analysis reported two brand new files as "absent from the analysis" — true
+  // of that analysis, and nothing at all about the exclusion.
+  const tree = analysis ? filesAt(analysis.revision) : null;
+  const expected = coveredFiles(tree ?? filesOnDisk());
+
+  if (tree) {
+    const current = analysis.revision === head;
+
+    console.log(
+      `Analysis describes ${forLog(analysis.revision.slice(0, 7))}, ${current ? "which is HEAD" : `not HEAD (${forLog((head ?? "unknown").slice(0, 7))})`}.`,
+    );
+
+    if (!current) {
+      console.log("So the population below is that revision's, not the working tree's,");
+      console.log("and a file added since is out of scope rather than missing.");
+    }
+  } else {
+    // Loudly, because this is the weaker reading and it should not pass as the
+    // strong one. An unresolvable revision is the case #202 was about.
+    console.log("The analysed revision could not be resolved — falling back to the");
+    console.log("working tree. A file newer than the analysis will read as absent,");
+    console.log("which says nothing about the exclusion. Read the rows, not the verdict.");
+  }
 
   // #199's lesson. An empty expectation passes every assertion below it and
   // proves nothing, which is exactly how "absent" once read as "excluded".
@@ -219,8 +339,8 @@ async function main() {
     return;
   }
 
-  const tree = await fetchTree();
-  const components = new Map((tree.components ?? []).map((c) => [c.path, c]));
+  const measured = await componentTree();
+  const components = new Map((measured.components ?? []).map((c) => [c.path, c]));
 
   // Everything from outside goes through the sanitiser, not only the values
   // that look like text. Sonar traces the HTTP response into the log and is
@@ -228,7 +348,7 @@ async function main() {
   // this program. `merge-bar.mjs` takes the same blanket position for the same
   // reason, and the first version of this file sanitised only the branch name —
   // which is the narrow reading that leaves the next value unguarded.
-  console.log(`Analysis holds ${forLog(tree.paging?.total ?? "?")} files.`);
+  console.log(`Analysis holds ${forLog(measured.paging?.total ?? "?")} files.`);
   console.log(`The exclusions cover ${expected.length} of them.`);
   console.log("");
 
@@ -260,10 +380,10 @@ async function main() {
 
   if (branch !== null && branch !== "develop") {
     console.error("");
-    console.error(`This ran on "${forLog(branch)}", not develop. The population above came from`);
-    console.error("the working tree and the measures came from the project's analysis,");
-    console.error("which is develop's — so a file this branch adds is absent for a reason");
-    console.error("that says nothing about the exclusion. Read the rows before the verdict.");
+    console.error(`This ran on "${forLog(branch)}", not develop. The measures come from the`);
+    console.error("project's analysis, which is develop's, so a file that exists only on");
+    console.error("this branch is absent for a reason that says nothing about the");
+    console.error("exclusion. Read the rows before the verdict.");
   }
 
   // Not `process.exit`. The retry above leaves a timer pending, and exiting

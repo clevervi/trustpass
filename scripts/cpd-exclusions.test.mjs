@@ -8,7 +8,13 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { cpdExclusions, missingPatterns, verdictFor } from "./cpd-exclusions.mjs";
+import {
+  coveredFiles,
+  cpdExclusions,
+  matchesPattern,
+  missingPatterns,
+  verdictFor,
+} from "./cpd-exclusions.mjs";
 
 describe("reading the exclusions out of the properties file", () => {
   it("finds the patterns on the line, however many there are", () => {
@@ -97,5 +103,86 @@ describe("whether a component satisfies the property", () => {
 
   it("rejects a file with no ncloc, which may not have been analysed", () => {
     assert.match(verdictFor({ measures: [] }), /no ncloc/);
+  });
+});
+
+describe("which paths a pattern covers", () => {
+  // Sonar's own rule, and the reason #202 could enlarge the population without
+  // anybody noticing: the first version took the text before the first `*` as a
+  // directory and matched on extension, which reads every pattern as `**`.
+  it("matches a file directly under the directory a single star names", () => {
+    assert.equal(
+      matchesPattern("packages/db/drizzle/0001_first.sql", "packages/db/drizzle/*.sql"),
+      true,
+    );
+  });
+
+  it("stops a single star at a path separator", () => {
+    assert.equal(
+      matchesPattern("packages/db/drizzle/old/0001_first.sql", "packages/db/drizzle/*.sql"),
+      false,
+    );
+  });
+
+  it("carries a double star across path separators", () => {
+    assert.equal(
+      matchesPattern("scripts/mutations/nested/deep/set.mjs", "scripts/mutations/**"),
+      true,
+    );
+  });
+
+  it("treats the dot in an extension as a dot and not as any character", () => {
+    // Unescaped, `*.sql` matches "aXsql" — which would put a file in the
+    // population that the exclusion does not cover, and then demand it be
+    // excluded.
+    assert.equal(matchesPattern("packages/db/drizzle/aXsql", "packages/db/drizzle/*.sql"), false);
+  });
+
+  it("anchors at the start, so a path that merely contains the directory misses", () => {
+    assert.equal(
+      matchesPattern("vendor/packages/db/drizzle/0001.sql", "packages/db/drizzle/*.sql"),
+      false,
+    );
+  });
+
+  it("anchors at the end, so a longer suffix misses", () => {
+    assert.equal(
+      matchesPattern("packages/db/drizzle/0001.sql.bak", "packages/db/drizzle/*.sql"),
+      false,
+    );
+  });
+
+  it("does not match a file beside the directory a double star names", () => {
+    assert.equal(matchesPattern("scripts/mutate.mjs", "scripts/mutations/**"), false);
+  });
+});
+
+describe("the population the exclusions cover", () => {
+  const tree = [
+    "scripts/mutations/for-log.mjs",
+    "README.md",
+    "packages/db/drizzle/0001_first.sql",
+    "packages/db/src/schema.ts",
+    "scripts/mutations/cpd-exclusions.mjs",
+  ];
+
+  it("keeps only what a required pattern covers", () => {
+    assert.deepEqual(coveredFiles(tree), [
+      "packages/db/drizzle/0001_first.sql",
+      "scripts/mutations/cpd-exclusions.mjs",
+      "scripts/mutations/for-log.mjs",
+    ]);
+  });
+
+  it("returns nothing for a tree that holds none of them", () => {
+    // This is what feeds #199's empty-population failure. It must be reachable,
+    // or that failure can never fire.
+    assert.deepEqual(coveredFiles(["README.md", "apps/web/app/page.tsx"]), []);
+  });
+
+  it("is sorted, so the report reads the same on every platform", () => {
+    const sorted = coveredFiles(tree);
+
+    assert.deepEqual(sorted, [...sorted].sort());
   });
 });
