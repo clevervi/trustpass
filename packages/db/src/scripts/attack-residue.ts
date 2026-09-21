@@ -193,8 +193,17 @@ async function main(): Promise<void> {
       return;
     }
 
-    console.log("\nEvery attack succeeded, every rollback held, and the control proves");
-    console.log("the comparison can tell the difference.");
+    // Scoped deliberately. An earlier version ended on "every attack succeeded,
+    // every rollback held", which reads as a result about the privilege model
+    // and is not one: these ran as the owner, and the runtime never gets far
+    // enough to need cleaning up after. What was measured is the harness.
+    console.log("\nEvery statement that succeeded was undone, and the control proves the");
+    console.log("comparison can see residue when there is some.");
+    console.log("");
+    console.log("That is a result about the rollback, not about the privilege model. These");
+    console.log("ran on the owning connection; trustpass_runtime is refused before it");
+    console.log("touches anything, which is least-privilege.integration.test.ts's 59 cases");
+    console.log("and not this script's.");
   } finally {
     await db.$client.end();
   }
