@@ -10,6 +10,15 @@ import forLog from "./for-log.mjs";
 import mutationRunner from "./mutation-runner.mjs";
 import noSquash from "./no-squash.mjs";
 import qrRoute from "./qr-route.mjs";
+import schemaFingerprint from "./schema-fingerprint.mjs";
 import writeRateLimit from "./write-rate-limit.mjs";
 
-export const SETS = [writeRateLimit, noSquash, mutationRunner, qrRoute, cpdExclusions, forLog];
+export const SETS = [
+  writeRateLimit,
+  noSquash,
+  mutationRunner,
+  qrRoute,
+  cpdExclusions,
+  forLog,
+  schemaFingerprint,
+];
