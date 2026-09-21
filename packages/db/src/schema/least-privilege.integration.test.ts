@@ -1,9 +1,10 @@
-import { sql } from "drizzle-orm";
+import { type SQL, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabase, type Database } from "../client.js";
 import { generateTrustPassId } from "../identity/trustpass-id.js";
 import { changeProductStatus } from "../repositories/product-status-repository.js";
-import { expectSqlState, SqlState, sqlStateOf } from "../testing/sql-state.js";
+import { readOnly } from "../testing/read-only.js";
+import { SqlState, type SqlStateCode, sqlStateOf } from "../testing/sql-state.js";
 import { insertProductWithProvenance } from "../testing/with-provenance.js";
 
 const runtimeUrl = process.env.RUNTIME_DATABASE_URL;
@@ -163,7 +164,19 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
   let db: Database;
 
   beforeAll(() => {
-    db = createDatabase(runtimeUrl as string);
+    // **Read-only, and #171 is the reason.** Six write attacks used to run
+    // through a bare `db.execute`, where `expectSqlState` checks the error code
+    // after awaiting the promise — so a statement that *succeeds* fails the test
+    // having already committed. Demonstrated: one `GRANT UPDATE (trustpass_id)`
+    // weakening the privilege model left a `product` row permanently carrying
+    // `TP1-NOPE`.
+    //
+    // Now a write through this handle throws before it is sent, naming
+    // `attempt()`. `transaction` is untouched, which is how `attempt()` and the
+    // fixtures below still work — those use the query builder inside a
+    // transaction rather than raw `execute`, which is the same distinction said
+    // twice: raw execute is what an attack uses.
+    db = readOnly(createDatabase(runtimeUrl as string));
   });
 
   afterAll(async () => {
@@ -210,7 +223,11 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
   type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
   /**
-   * **The only place in this file where an attack reaches the database.**
+   * **The only place in this file where an attack reaches the database** — true
+   * since #171, and asserted here for some time before it was. Six writes ran
+   * through a bare `db.execute` the whole time, and a seventh was found by the
+   * guard that now enforces this. A comment claiming a property is not the
+   * property, which is the shape #165, #194 and #197 all have.
    *
    * It reports what happened rather than asserting it, so that a test needing a
    * different assertion can have one without needing its own transaction —
@@ -223,9 +240,13 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
    * `observe` runs inside the transaction, because a catalogue read after the
    * rollback asks about a state that has already been undone.
    *
-   * ponytail: this makes the invariant *easy* to hold, not enforced. A
-   * fifteenth attack can still be written with a bare `db.execute` and nothing
-   * will say so — see #171 for making it checkable.
+   * **The invariant is enforced now, not merely easy to hold.** This note used
+   * to say a fifteenth attack could still be written with a bare `db.execute`
+   * and nothing would say so. That was true and it understated the case: #171
+   * counted **six already written that way**, and the guard found a seventh on
+   * its first run. `db` is a read-only handle — a write through it throws before
+   * the statement is sent, naming this function. `transaction` is untouched,
+   * which is how this helper and the fixtures still work.
    *
    * Note on locks: a statement that is refused never gets past the privilege
    * check and takes nothing. One that *succeeds* holds whatever it locked —
@@ -236,17 +257,40 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
    * as a finding.
    */
   async function attempt<T>(
-    statement: string,
-    observe?: (tx: Tx) => Promise<T>,
+    statement: string | SQL,
+    // Receives the statement's own rows as well as the transaction. A write with
+    // `RETURNING` is the case: without them the only way to find the row again
+    // is to describe it, and a description that matches two rows is the
+    // ambiguity this file already fixed once by naming the row instead.
+    observe?: (tx: Tx, rows: unknown[]) => Promise<T>,
+    options: { readonly constraintsImmediate?: boolean } = {},
   ): Promise<{ readonly sqlState?: string; readonly observed?: T }> {
     let observed: T | undefined;
 
     try {
       await db.transaction(async (tx) => {
-        await tx.execute(sql.raw(statement));
+        // **For a refusal that would otherwise arrive at COMMIT.**
+        // `product_requires_provenance` is DEFERRABLE INITIALLY DEFERRED, so it
+        // fires when the transaction commits — and this transaction never does.
+        // Measured before relying on it: the insert returns without error inside
+        // the transaction, and with constraints made immediate the same insert
+        // raises the provenance error there instead. Without this the statement
+        // would read as "not refused" and the test would fail describing a
+        // guarantee that holds.
+        if (options.constraintsImmediate) await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
+
+        // A `SQL` object as well as a string, and #171 is why. Six attacks used
+        // to run through a bare `db.execute` because they need interpolation —
+        // `${victim}`, `sql.identifier(column)` — which a string signature
+        // cannot carry. They were not written outside the harness carelessly;
+        // the harness could not accept them, and every one of them committed
+        // whenever the privilege model failed to refuse it.
+        const rows = await tx.execute(
+          typeof statement === "string" ? sql.raw(statement) : statement,
+        );
 
         // Reached only when the statement was not refused.
-        observed = await observe?.(tx);
+        observed = await observe?.(tx, rows as unknown as unknown[]);
 
         // Rolls the transaction back, which is the whole point, and carries the
         // statement out so a failure names what succeeded rather than what was
@@ -254,7 +298,9 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
         // which is the mistake a DDL test in this repository made once before —
         // under mutation the assertion passed, nothing rolled back, and
         // `actor.id` was left GENERATED BY DEFAULT in a live database.
-        throw new AttackSucceeded(statement);
+        throw new AttackSucceeded(
+          typeof statement === "string" ? statement : "an interpolated statement",
+        );
       });
     } catch (error) {
       if (error instanceof AttackSucceeded) {
@@ -271,15 +317,26 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
     return expect.fail(`The transaction returned without refusing or rolling back: ${statement}`);
   }
 
-  /** Every attack in this file expects exactly this, and never a trigger. */
-  const refused = async (statement: string): Promise<void> => {
-    const { sqlState } = await attempt(statement);
+  /**
+   * An attack, refused, and rolled back either way.
+   *
+   * The code is a parameter because not every refusal is a privilege one: the
+   * six writes #171 moved in here expect `GENERATED_ALWAYS` and
+   * `PROVENANCE_REQUIRED` as well. Defaulted, because most of them are.
+   */
+  const refused = async (
+    statement: string | SQL,
+    code: SqlStateCode = SqlState.INSUFFICIENT_PRIVILEGE,
+    options: { readonly constraintsImmediate?: boolean } = {},
+  ): Promise<void> => {
+    const { sqlState } = await attempt(statement, undefined, options);
+    const shown = typeof statement === "string" ? statement : "the statement";
 
     if (sqlState === undefined) {
-      expect.fail(`The attack was not refused and has been rolled back: ${statement}`);
+      expect.fail(`The attack was not refused and has been rolled back: ${shown}`);
     }
 
-    expect(sqlState).toBe(SqlState.INSUFFICIENT_PRIVILEGE);
+    expect(sqlState).toBe(code);
   };
 
   describe("who it is", () => {
@@ -589,11 +646,8 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
       // or foreign key is consulted — so the statement needs no value that
       // would be valid, and inventing one would only add a second reason it
       // could fail.
-      await expectSqlState(
-        db.execute(
-          sql`UPDATE product SET ${sql.identifier(column)} = ${sql.identifier(column)} WHERE id = ${victim}`,
-        ),
-        SqlState.INSUFFICIENT_PRIVILEGE,
+      await refused(
+        sql`UPDATE product SET ${sql.identifier(column)} = ${sql.identifier(column)} WHERE id = ${victim}`,
       );
     });
 
@@ -602,8 +656,8 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
       // issue's. Asserting 42501 here would claim the grant protects `id` when
       // the grant is never reached — and that claim would survive the grant
       // being removed, which is the definition of a test that proves nothing.
-      await expectSqlState(
-        db.execute(sql`UPDATE product SET id = id WHERE id = ${victim}`),
+      await refused(
+        sql`UPDATE product SET id = id WHERE id = ${victim}`,
         SqlState.GENERATED_ALWAYS,
       );
     });
@@ -617,11 +671,8 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
       // reason: a real status change trips `product_requires_provenance` and
       // answers TP004, so it would have gone green the day the grant arrived
       // while proving only that the provenance trigger still works.
-      await expectSqlState(
-        db.execute(
-          sql`UPDATE product SET status = status, trustpass_id = 'TP1-NOPE' WHERE id = ${victim}`,
-        ),
-        SqlState.INSUFFICIENT_PRIVILEGE,
+      await refused(
+        sql`UPDATE product SET status = status, trustpass_id = 'TP1-NOPE' WHERE id = ${victim}`,
       );
     });
 
@@ -637,11 +688,8 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
       //
       // The privilege refuses the statement without reading the row, which is
       // why this is written as a grant and not as a constraint.
-      await expectSqlState(
-        db.execute(
-          sql`UPDATE product SET origin = 'holder', organization_id = NULL WHERE id = ${victim}`,
-        ),
-        SqlState.INSUFFICIENT_PRIVILEGE,
+      await refused(
+        sql`UPDATE product SET origin = 'holder', organization_id = NULL WHERE id = ${victim}`,
       );
     });
 
@@ -697,14 +745,11 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
         sql`SELECT id FROM actor ORDER BY id LIMIT 1`,
       )) as unknown as [{ id: string } | undefined];
 
-      await expectSqlState(
-        db.execute(sql`
-          INSERT INTO credential (actor_id, kind, label, issued_at, handle, secret_digest)
-          VALUES (${victim?.id ?? 1}, 'api_key', 'runtime tried to issue', now(),
-                  'AAAAAAAAAAA', sha256('x'::bytea))
-        `),
-        SqlState.INSUFFICIENT_PRIVILEGE,
-      );
+      await refused(sql`
+        INSERT INTO credential (actor_id, kind, label, issued_at, handle, secret_digest)
+        VALUES (${victim?.id ?? 1}, 'api_key', 'runtime tried to issue', now(),
+                'AAAAAAAAAAA', sha256('x'::bytea))
+      `);
     });
 
     it("can still read one, because verifying is its whole job", async () => {
@@ -774,26 +819,42 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
       // counting every unattributed row for this product would have passed
       // whether or not this insert did anything. Scoping fixed that; naming
       // the row removes the inference entirely.
-      const inserted = (await db.execute(sql`
-        INSERT INTO lifecycle_event (product_id, type, actor_kind, actor_id, organization_id, reason, occurred_at)
-        VALUES (${created.id}, 'product_suspended', 'authority', NULL, NULL, 'theft_report', now())
-        RETURNING id
-      `)) as unknown as { id: string }[];
+      // Through the harness, and this one is not an attack — it is a write that
+      // is *supposed* to succeed, pinning a boundary until #153 closes it. It
+      // was the seventh write outside the harness and the one #171's own count
+      // missed; the guard found it on its first run.
+      //
+      // Rolling it back also removes a residue nobody had noticed: this insert
+      // committed a `lifecycle_event` naming no actor on every run of this
+      // suite, into a table that is append-only by design.
+      const { observed } = await attempt(
+        sql`
+          INSERT INTO lifecycle_event (product_id, type, actor_kind, actor_id, organization_id, reason, occurred_at)
+          VALUES (${created.id}, 'product_suspended', 'authority', NULL, NULL, 'theft_report', now())
+          RETURNING id
+        `,
+        async (tx, rows) => {
+          // `RETURNING` rather than a description of the row. The count this
+          // replaced was already scoped to the suspension, because
+          // `insertProductWithProvenance` also writes an event with no actor —
+          // naming the row removes the inference entirely, and that precision is
+          // why `attempt` hands the statement's rows to `observe`.
+          const eventId = (rows as { id: string }[])[0]?.id;
 
-      const eventId = inserted[0]?.id;
+          expect(eventId).toBeDefined();
 
-      expect(eventId).toBeDefined();
+          return (await tx.execute(sql`
+            SELECT actor_id, actor_kind, type
+            FROM lifecycle_event
+            WHERE id = ${eventId}
+          `)) as unknown as { actor_id: string | null; actor_kind: string; type: string }[];
+        },
+      );
 
-      const stored = (await db.execute(sql`
-        SELECT actor_id, actor_kind, type
-        FROM lifecycle_event
-        WHERE id = ${eventId}
-      `)) as unknown as { actor_id: string | null; actor_kind: string; type: string }[];
-
-      expect(stored).toHaveLength(1);
-      expect(stored[0]?.actor_id).toBeNull();
-      expect(stored[0]?.actor_kind).toBe("authority");
-      expect(stored[0]?.type).toBe("product_suspended");
+      expect(observed).toHaveLength(1);
+      expect(observed?.[0]?.actor_id).toBeNull();
+      expect(observed?.[0]?.actor_kind).toBe("authority");
+      expect(observed?.[0]?.type).toBe("product_suspended");
     });
   });
 
@@ -835,12 +896,19 @@ describe.skipIf(!runtimeUrl)("the runtime role cannot remove what protects the r
       // so the insert never reached COMMIT and never reached the provenance
       // check at all. The first version of this test asserted TP004 and got
       // 23514, passing the row-level constraint off as the deferred one.
-      await expectSqlState(
-        db.execute(sql`
+      // Through the harness like every other write, and `constraintsImmediate`
+      // because this refusal is a deferred one: the trigger fires at COMMIT, and
+      // a transaction that only ever rolls back has no COMMIT to fire at. What
+      // is still asserted is that the constraint refuses the row; that it is
+      // *deferred* is `provenance.integration.test.ts`'s subject, not this
+      // file's.
+      await refused(
+        sql`
           INSERT INTO product (trustpass_id, brand, model, serial, category, status, origin)
           VALUES (${generateTrustPassId()}, 'ASUS', 'ROG Strix', ${`NP-${Math.random().toString(36).slice(2, 10).toUpperCase()}`}, 'gpu', 'registered', 'holder')
-        `),
+        `,
         SqlState.PROVENANCE_REQUIRED,
+        { constraintsImmediate: true },
       );
     });
   });
