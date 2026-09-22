@@ -1,0 +1,147 @@
+# Turns "the backup restores" into "if the backup stops restoring, CI goes red."
+#
+# `pnpm db:restore-drill` proves a dump rebuilds the database — the schema, the
+# data, the roles, and the privilege boundary that makes the data worth
+# something. Until now it ran when somebody remembered, which is the same kind
+# of claim as a backup nobody restored. #140.
+#
+# **Not on every pull request.** The property changes rarely and the drill takes
+# a minute; paying that on every change buys nothing and is how a check gets
+# deleted. Weekly, on a push to `main`, and on demand.
+#
+# **The client tools are the reason this needed its own work.** `pg_dump` refuses
+# to dump a server newer than itself, so "whatever the runner ships" is a version
+# mismatch waiting to break a backup on the day it matters. The drill solves that
+# locally by running the tools *inside* the server's own container, and the same
+# answer works here — but only if the container is one this file names.
+#
+# So this does not use a `services:` container. It starts its own, with the image
+# written below, and points the drill at it with `TP_PG_CONTAINER`. The version
+# is stated in this file rather than inherited from the runner, which is what
+# #140 asked for. Finding the Actions-managed service container by image was the
+# alternative and is fragile: the name is generated, and matching on the image
+# breaks the first time two containers share one.
+
+name: Restore drill
+
+on:
+  schedule:
+    # Weekly. A drill that runs on a schedule nobody reads is still better than
+    # one that runs when somebody remembers — and unlike the merge bar's daily
+    # check, this one has an artefact that outlives the run.
+    - cron: "23 5 * * 1"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # One place, and both the container and the drill read it. A drill against a
+  # different version from the one the project runs would prove something about
+  # a database nobody has.
+  POSTGRES_IMAGE: postgres:18-alpine
+  PG_CONTAINER: trustpass-drill
+  # The same value `ci.yml` pins, and pinned for the same reason: the version
+  # the lockfile was written with. Duplicated rather than shared because a
+  # workflow cannot import another's env, and a mismatch here would install a
+  # different pnpm to test the same lockfile.
+  PNPM_VERSION: "10.33.2"
+
+jobs:
+  drill:
+    name: A backup still restores into a working database
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Started here rather than declared as a service, so `docker exec` can
+      # reach it by a name this file chose. That is the whole mechanism: the
+      # client tools come from inside the server's own image, so they cannot be
+      # older than the server.
+      - name: Start a database this workflow names
+        run: |
+          docker run -d --name "${PG_CONTAINER}" \
+            -e POSTGRES_USER=trustpass \
+            -e POSTGRES_PASSWORD=trustpass_ci \
+            -e POSTGRES_DB=trustpass \
+            -p 5432:5432 \
+            "${POSTGRES_IMAGE}"
+
+          for _ in $(seq 1 30); do
+            if docker exec "${PG_CONTAINER}" pg_isready -U trustpass >/dev/null 2>&1; then
+              echo "ready"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "::error::the database never became ready"
+          docker logs "${PG_CONTAINER}" | tail -20
+          exit 1
+
+      # The drill deliberately never migrates the restored database — it asserts
+      # a *dump* rebuilt it. But the database being dumped has to exist, so the
+      # source is built the ordinary way.
+      - name: Build the database the drill will back up
+        working-directory: packages/db
+        env:
+          DATABASE_URL: postgres://trustpass:trustpass_ci@localhost:5432/trustpass
+        run: pnpm exec drizzle-kit migrate
+
+      - name: Provision the roles whose survival the drill asserts
+        working-directory: packages/db
+        env:
+          DATABASE_URL: postgres://trustpass:trustpass_ci@localhost:5432/trustpass
+          TRUSTPASS_MIGRATION_PASSWORD: drill_migration_not_a_secret
+          TRUSTPASS_RUNTIME_PASSWORD: drill_runtime_not_a_secret
+        run: pnpm exec tsx src/scripts/provision-roles.ts
+
+      # 31 checks. It exits non-zero on any of them, and nothing here swallows
+      # that — a drill that reports and continues is a drill nobody reads.
+      - name: The backup restores, and brings the boundary with it
+        working-directory: packages/db
+        env:
+          DATABASE_URL: postgres://trustpass:trustpass_ci@localhost:5432/trustpass
+          TP_PG_CONTAINER: trustpass-drill
+          TP_PG_SUPERUSER: trustpass
+        run: pnpm exec tsx src/scripts/restore-drill.ts
+
+      # The other half, and the half the drill's own closing message asks for:
+      # the restored database is handed to the suite that asks what the runtime
+      # may do. 59 cases, against a database rebuilt from a dump rather than from
+      # migrations.
+      - name: The restored database refuses what the original refused
+        working-directory: packages/db
+        env:
+          DATABASE_URL: postgres://trustpass:trustpass_ci@localhost:5432/trustpass_restore_drill
+          RUNTIME_DATABASE_URL: postgres://trustpass_runtime:drill_runtime_not_a_secret@localhost:5432/trustpass_restore_drill
+        run: pnpm exec vitest run src/schema/least-privilege.integration.test.ts
+
+      # So a claim about a drill can be checked without rerunning it, which is
+      # the difference between evidence and a memory of evidence.
+      - name: Publish what the drill measured
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: restore-report
+          path: packages/db/.backups/drill/restore-report.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Stop the database
+        if: always()
+        run: docker rm -f "${PG_CONTAINER}" || true
