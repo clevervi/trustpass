@@ -124,8 +124,21 @@ report that does not say so invites the assumption.
   `roles.sql` is verified by content rather than by being applied to a cluster
   that lacks the roles. Restoring onto fresh hardware is the case this procedure
   describes and has not rehearsed.
-- **Scheduling, retention, offsite storage and point-in-time recovery.** Nothing
-  is deployed, so a schedule would be a schedule for nothing. What was missing
-  was the procedure and the proof it works.
+- **Scheduling *backups*, retention, offsite storage and point-in-time
+  recovery.** Nothing is deployed, so a backup schedule would be a schedule for
+  nothing. What was missing was the procedure and the proof it works.
+
+  **The *drill* is scheduled, and that is a different thing.**
+  [`.github/workflows/restore-drill.yml`](../../.github/workflows/restore-drill.yml)
+  runs it weekly, on a push to `main` and on demand, publishing
+  `restore-report.json` as a build artefact so a claim about a drill can be
+  checked without rerunning it. #140, and the reason it is separate: a rehearsal
+  that runs when somebody remembers is the same kind of claim as a backup nobody
+  restored.
+
+  It starts its own container rather than using a service one, because
+  `pg_dump` refuses to dump a server newer than itself and the tools have to
+  come from inside the server's own image. The version is written in that
+  workflow rather than inherited from the runner.
 - **Timing.** The drill records when it started and finished; no RTO or RPO is
   claimed, because a number measured once on a developer's laptop is not one.
