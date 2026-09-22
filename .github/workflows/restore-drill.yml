@@ -32,6 +32,21 @@ on:
     - cron: "23 5 * * 1"
   push:
     branches: [main]
+  # **And when this file changes**, which is not a contradiction of the line
+  # above. A drill that only ever runs on a schedule is one whose first real
+  # execution happens after it merges, and a workflow nobody has watched run is
+  # the same kind of claim as a drill nobody has run. Scoped to its own path, so
+  # an ordinary pull request still pays nothing.
+  #
+  # `scripts/mutate.mjs` makes the same move for the same reason: a set is
+  # selected when its own definition changes, not only when the code it protects
+  # does.
+  pull_request:
+    paths:
+      - .github/workflows/restore-drill.yml
+      - packages/db/src/scripts/restore-drill.ts
+      - packages/db/src/scripts/backup.ts
+      - packages/db/src/scripts/pg-tools.ts
   workflow_dispatch:
 
 permissions:
