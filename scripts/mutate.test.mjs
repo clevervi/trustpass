@@ -12,7 +12,15 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { applyPatch, classify, flatten, selectSets, verdict } from "./mutate.mjs";
+import {
+  applyPatch,
+  classify,
+  flatten,
+  nameSelector,
+  ranNothing,
+  selectSets,
+  verdict,
+} from "./mutate.mjs";
 
 describe("why a test run ended", () => {
   it("reads an assertion failure as an assertion failure", () => {
@@ -183,5 +191,101 @@ describe("which sets a diff selects", () => {
     // change, which is the cheap direction to be wrong in — and would also miss
     // the point of measuring the intersection at all.
     assert.deepEqual(selectSets(sets, ["src/a.ts.bak", "other/src/a.ts"]), []);
+  });
+});
+
+describe("a selector means the name the set declared", () => {
+  // #215. The flag takes a regular expression; a mutation declares a literal
+  // name. The property is not "escape carets" — it is that a selector cannot
+  // mean something other than the identity the set wrote down.
+  const selects = (pattern, name) => new RegExp(pattern).test(name);
+
+  it("selects a name containing a caret, which anchored to nothing before", () => {
+    const name = "counts one IPv6 allocation as one caller, not as 2^64 of them";
+
+    // The measurement that opened #215: the raw name is not a pattern that
+    // matches itself.
+    assert.equal(new RegExp(name).test(name), false);
+    assert.equal(selects(nameSelector(name), name), true);
+  });
+
+  it("selects a name containing every metacharacter that would change its meaning", () => {
+    for (const name of [
+      "refuses $10 and nothing else",
+      "reads a.b as one name",
+      "accepts (only) the first",
+      "handles [brackets] literally",
+      "treats a+b as text",
+      "asks whether it is there?",
+      "takes a|b as one thing",
+      "keeps a\\b intact",
+      "ends at the end$",
+      "starts ^here",
+      "allows {braces}",
+      "matches * exactly",
+    ]) {
+      assert.equal(selects(nameSelector(name), name), true, name);
+    }
+  });
+
+  it("stops selecting a different test whose name differs by one character", () => {
+    // The half escaping is really for. `a.b` as a pattern matches `axb`, so an
+    // unescaped selector could run a neighbouring test and report a verdict
+    // about it — which reads exactly like a working mutation.
+    assert.equal(selects("reads a.b as one name", "reads axb as one name"), true);
+    assert.equal(selects(nameSelector("reads a.b as one name"), "reads axb as one name"), false);
+  });
+
+  it("leaves an ordinary name alone", () => {
+    const name = "answers 429 once the burst is spent";
+
+    assert.equal(nameSelector(name), name);
+  });
+});
+
+describe("a clean exit over an empty selection", () => {
+  // The other half of #215, and the one that makes it silent: vitest exits 0
+  // when a name filter matches nothing. Measured:
+  //
+  //   Test Files  4 skipped (4)
+  //         Tests  89 skipped (89)
+  //   exit: 0
+  const SKIPPED = " Test Files  4 skipped (4)\n      Tests  89 skipped (89)\n";
+  const PASSED = " Test Files  1 passed (1)\n      Tests  22 passed (22)\n";
+  const MIXED = "      Tests  1 failed | 58 passed (59)\n";
+
+  it("is not a pass, because no test was asked anything", () => {
+    assert.equal(ranNothing(SKIPPED), true);
+    assert.equal(classify(SKIPPED, 0), "no-such-test");
+  });
+
+  it("is still a pass when tests actually ran", () => {
+    assert.equal(ranNothing(PASSED), false);
+    assert.equal(classify(PASSED, 0), "pass");
+  });
+
+  it("counts a run that had failures as having run", () => {
+    assert.equal(ranNothing(MIXED), false);
+  });
+
+  it("reads node --test's own summary", () => {
+    assert.equal(ranNothing("ℹ pass 0\nℹ fail 0\n"), true);
+    assert.equal(ranNothing("ℹ pass 22\nℹ fail 0\n"), false);
+  });
+
+  it("does not mistake a test's name for a summary line", () => {
+    // The trap this file already fell into once, from the other direction: a
+    // pattern that fires on prose. A name is indented inside a suite and never
+    // begins a line with the runner's summary word.
+    const green = `${PASSED}  ✓ Tests  0 passed is a phrase inside a test name\n`;
+
+    assert.equal(ranNothing(green), false);
+  });
+
+  it("says nothing about a runner whose output it does not recognise", () => {
+    // Answering "nothing ran" here would turn every unrecognised runner into a
+    // refusal, which is a worse failure than the one being fixed.
+    assert.equal(ranNothing("some other tool said something else entirely"), false);
+    assert.equal(classify("some other tool said something else entirely", 0), "pass");
   });
 });

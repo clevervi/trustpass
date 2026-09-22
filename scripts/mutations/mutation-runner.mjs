@@ -72,6 +72,26 @@ export default {
           from: '    return "no-such-test";',
           to: '    return "pass";',
         },
+        {
+          // #215. The flag takes a regular expression and the set declares a
+          // literal name, and  anchored to nothing at all.
+          label: "a test name is passed as a pattern rather than as itself",
+          test: "selects a name containing a caret, which anchored to nothing before",
+          from: "  return name.replace(/[.*+?^${}()|[\\]\\\\]/g, String.raw`\\$&`);",
+          to: "  return name;",
+        },
+        {
+          label: "a clean exit over an empty selection counts as a pass",
+          test: "is not a pass, because no test was asked anything",
+          from: '    return ranNothing(output) ? "no-such-test" : "pass";',
+          to: '    return "pass";',
+        },
+        {
+          label: "every clean run is read as having executed nothing",
+          test: "is still a pass when tests actually ran",
+          from: "  if (vitest) return !/\\b[1-9]\\d* (passed|failed)\\b/.test(vitest[1]);",
+          to: "  if (vitest) return true;",
+        },
       ],
     },
   ],
