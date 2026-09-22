@@ -32,6 +32,65 @@ const ROOT = resolve(import.meta.dirname, "..");
  *
  * So a red run only counts when the failure is an assertion.
  */
+/**
+ * A test name as a selector that means exactly that name.
+ *
+ * `vitest -t` and `node --test --test-name-pattern` both take a **regular
+ * expression**. A mutation declares a literal test name, and the two are not the
+ * same language: #215 found `counts one IPv6 allocation as one caller, not as
+ * 2^64 of them` selecting nothing at all, because `^` is an anchor.
+ *
+ *   new RegExp(thatName).test(thatName)  ->  false
+ *
+ * So the name is escaped into a pattern that matches itself and nothing else it
+ * did not already match. The property is not "escape carets"; it is that **a
+ * selector cannot mean something other than the literal identity the set
+ * declares.** A name containing `.` would otherwise select a neighbouring test
+ * whose name differs by one character, and report a verdict about it.
+ */
+export function nameSelector(name) {
+  return name.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+}
+
+/**
+ * Whether a run that ended cleanly actually executed anything.
+ *
+ * **The hole #215 found**, and the reason it is a separate question from the
+ * one below. `classify` answers `pass` on a zero exit before reading any prose,
+ * deliberately — an earlier version checked the no-such-test patterns first and
+ * one of them fired on this file's own test names. That ordering is right and
+ * stays.
+ *
+ * What it misses is that a filter selecting nothing **also** exits zero:
+ *
+ *   $ vitest run src/http/ -t "matches nothing"
+ *     Test Files  4 skipped (4)
+ *           Tests  89 skipped (89)
+ *     exit: 0
+ *
+ * Measured. So a mutation whose selector matched no test was reported as a guard
+ * that survived — or, worse, could have been reported as one that was caught.
+ *
+ * Anchored to the start of a line, because the trap this file already fell into
+ * was a pattern matching a *test name* rather than a summary. A name would have
+ * to begin a line with the runner's own summary word to be mistaken for one.
+ */
+export function ranNothing(output) {
+  // vitest: `Tests  22 passed (22)` / `Tests  89 skipped (89)`.
+  const vitest = output.match(/^\s*Tests\s+(.+)$/m);
+
+  if (vitest) return !/\b[1-9]\d* (passed|failed)\b/.test(vitest[1]);
+
+  // node --test: `ℹ pass 22`, on its own line.
+  const node = output.match(/^\s*ℹ\s+pass\s+(\d+)\s*$/m);
+
+  if (node) return node[1] === "0";
+
+  // No summary at all is not evidence either way, and answering "nothing ran"
+  // here would turn every runner this does not recognise into a refusal.
+  return false;
+}
+
 export function classify(output, status) {
   // **A zero exit is a pass, whatever the output says, and this has to come
   // first.** Every rule below reads prose, and prose contains whatever a test
@@ -44,7 +103,10 @@ export function classify(output, status) {
   // having matched no tests, and the set that checks the runner could not even
   // establish a baseline.
   if (status === 0) {
-    return "pass";
+    // …unless nothing ran. A clean exit over an empty selection is not a
+    // passing test, and reporting it as one is #215: a verdict about a guard
+    // the runner never exercised.
+    return ranNothing(output) ? "no-such-test" : "pass";
   }
 
   // A name filter matching nothing exits non-zero and proves nothing. Phrases
@@ -163,12 +225,30 @@ export function definitionOf(set) {
 /** Runs one named test inside a set's runner, and says why it ended. */
 function runTest(set, name) {
   const [command, ...rest] = set.runner.command;
-  const args = name ? [...rest, set.runner.nameFlag, name] : rest;
+  // **Two transformations sit between a name and the test it selects**, and
+  // #215 found both lying.
+  //
+  // The flag takes a regular expression while the set declares a literal name,
+  // so the name is escaped into a pattern that means itself.
+  //
+  // And on Windows the command goes through a shell — `pnpm` is `pnpm.cmd` and
+  // `spawnSync` will not find it otherwise — where arguments are concatenated
+  // rather than passed, which Node's own DEP0190 says out loud. Measured: the
+  // selector `answers 429 once the burst is spent` ran **four** tests, because
+  // the shell split it and `-t answers` is what filtered. Every multi-word name
+  // in every set was selecting by its first word.
+  //
+  // Quoting closes that. It is the narrowest fix: the alternative is resolving
+  // `pnpm` by absolute path the way `git-path.mjs` does for git, which is a
+  // better answer and a larger one.
+  const shell = process.platform === "win32";
+  const selector = name ? nameSelector(name) : undefined;
+  const args = selector ? [...rest, set.runner.nameFlag, shell ? `"${selector}"` : selector] : rest;
 
   const result = spawnSync(command, args, {
     cwd: resolve(ROOT, set.runner.cwd),
     encoding: "utf8",
-    shell: process.platform === "win32",
+    shell,
   });
 
   return classify(`${result.stdout}${result.stderr}`, result.status);
