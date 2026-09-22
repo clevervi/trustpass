@@ -83,6 +83,31 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Generated per run and masked, which is `ci.yml`'s shape rather than a new
+      # one — found by looking for what this repository already does, which is a
+      # step the merge bar asks for and this change initially skipped. A literal
+      # would be a password in the repository for a container that lives thirty
+      # seconds: harmless, and indistinguishable at a glance from one that is
+      # not, which is why `secrets:S6698` is right to refuse it.
+      - name: Invent the passwords this run will use
+        run: |
+          SUPERUSER_PASSWORD="$(openssl rand -hex 24)"
+          MIGRATION_PASSWORD="$(openssl rand -hex 24)"
+          RUNTIME_PASSWORD="$(openssl rand -hex 24)"
+
+          echo "::add-mask::$SUPERUSER_PASSWORD"
+          echo "::add-mask::$MIGRATION_PASSWORD"
+          echo "::add-mask::$RUNTIME_PASSWORD"
+
+          {
+            echo "SUPERUSER_PASSWORD=$SUPERUSER_PASSWORD"
+            echo "MIGRATION_PASSWORD=$MIGRATION_PASSWORD"
+            echo "RUNTIME_PASSWORD=$RUNTIME_PASSWORD"
+            echo "DATABASE_URL=postgres://trustpass:${SUPERUSER_PASSWORD}@localhost:5432/trustpass"
+            echo "DRILL_DATABASE_URL=postgres://trustpass:${SUPERUSER_PASSWORD}@localhost:5432/trustpass_restore_drill"
+            echo "RUNTIME_DATABASE_URL=postgres://trustpass_runtime:${RUNTIME_PASSWORD}@localhost:5432/trustpass_restore_drill"
+          } >> "$GITHUB_ENV"
+
       # Started here rather than declared as a service, so `docker exec` can
       # reach it by a name this file chose. That is the whole mechanism: the
       # client tools come from inside the server's own image, so they cannot be
@@ -91,7 +116,7 @@ jobs:
         run: |
           docker run -d --name "${PG_CONTAINER}" \
             -e POSTGRES_USER=trustpass \
-            -e POSTGRES_PASSWORD=trustpass_ci \
+            -e POSTGRES_PASSWORD="${SUPERUSER_PASSWORD}" \
             -e POSTGRES_DB=trustpass \
             -p 5432:5432 \
             "${POSTGRES_IMAGE}"
@@ -113,16 +138,13 @@ jobs:
       # source is built the ordinary way.
       - name: Build the database the drill will back up
         working-directory: packages/db
-        env:
-          DATABASE_URL: postgres://trustpass:trustpass_ci@localhost:5432/trustpass
         run: pnpm exec drizzle-kit migrate
 
       - name: Provision the roles whose survival the drill asserts
         working-directory: packages/db
         env:
-          DATABASE_URL: postgres://trustpass:trustpass_ci@localhost:5432/trustpass
-          TRUSTPASS_MIGRATION_PASSWORD: drill_migration_not_a_secret
-          TRUSTPASS_RUNTIME_PASSWORD: drill_runtime_not_a_secret
+          TRUSTPASS_MIGRATION_PASSWORD: ${{ env.MIGRATION_PASSWORD }}
+          TRUSTPASS_RUNTIME_PASSWORD: ${{ env.RUNTIME_PASSWORD }}
         run: pnpm exec tsx src/scripts/provision-roles.ts
 
       # 31 checks. It exits non-zero on any of them, and nothing here swallows
@@ -130,7 +152,6 @@ jobs:
       - name: The backup restores, and brings the boundary with it
         working-directory: packages/db
         env:
-          DATABASE_URL: postgres://trustpass:trustpass_ci@localhost:5432/trustpass
           TP_PG_CONTAINER: trustpass-drill
           TP_PG_SUPERUSER: trustpass
         run: pnpm exec tsx src/scripts/restore-drill.ts
@@ -142,8 +163,7 @@ jobs:
       - name: The restored database refuses what the original refused
         working-directory: packages/db
         env:
-          DATABASE_URL: postgres://trustpass:trustpass_ci@localhost:5432/trustpass_restore_drill
-          RUNTIME_DATABASE_URL: postgres://trustpass_runtime:drill_runtime_not_a_secret@localhost:5432/trustpass_restore_drill
+          DATABASE_URL: ${{ env.DRILL_DATABASE_URL }}
         run: pnpm exec vitest run src/schema/least-privilege.integration.test.ts
 
       # So a claim about a drill can be checked without rerunning it, which is
