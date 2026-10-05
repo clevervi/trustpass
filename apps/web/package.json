@@ -22,6 +22,6 @@
     "@types/react-dom": "^19",
     "jsqr": "^1.4.0",
     "tailwindcss": "^4",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.3"
   }
 }
