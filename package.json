@@ -34,7 +34,7 @@
     "verify-credential": "pnpm --filter @trustpass/api verify-credential"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.14",
+    "@biomejs/biome": "^2.5.15",
     "typescript": "^7.0.2"
   }
 }
