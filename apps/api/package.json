@@ -24,6 +24,6 @@
     "@hono/zod-openapi": "^1.6.3",
     "@trustpass/db": "workspace:*",
     "hono": "^4.13.8",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   }
 }
